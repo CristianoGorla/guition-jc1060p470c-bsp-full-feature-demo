@@ -178,25 +178,127 @@ Total devices: 0  ← RTC NOT FOUND!
 // - 0x32: RX8025T RTC
 ```
 
-**RTC Driver Added**:
-**Commit**: `9fe3b67` + `aa66203` - "feat: add RTC enable flag + initialization"
-- Created `rtc_rx8025t.c/.h` driver
-- Added `ENABLE_RTC` flag
-- Integrated RTC init after I2C scan
+---
 
-**Expected Boot Log** (awaiting test):
+### ❌ Problem 4: RTC I2C Error 0x103 - Bus Reset Failed
+
+**Commit**: `aa66203` + `0af9a98` - RTC driver integrated
+
+**Symptoms**:
 ```
-========== I2C BUS SCAN (Audio + Touch + RTC) ==========
-[0x14] ✓ GT911 Touch
-[0x18] ✓ ES8311 Audio Codec
-[0x32] ✓ RX8025T RTC  ← SHOULD APPEAR NOW!
-
+I (14313) GUITION_MAIN: 
 ========== RTC INITIALIZATION ==========
-I (xxxx) RX8025T: Initializing RX8025T RTC...
-I (xxxx) RX8025T: Clearing PON/VLF flags...
-I (xxxx) RX8025T: ✓ RTC initialized successfully
-I (xxxx) GUITION_MAIN: Current RTC time: 2026-03-01 15:56:00
+I (14319) RX8025T: Initializing RX8025T RTC...
+I (14323) RX8025T: I2C Address: 0x32
+I (14327) RX8025T: Clearing PON/VLF flags...
+E (14382) i2c.master: clear bus failed.
+E (14382) i2c.master: s_i2c_transaction_start(686): reset hardware failed
+E (14382) RX8025T: Failed to clear flags (0x103)
+E (14385) GUITION_MAIN: Failed to initialize RTC (0x103)
 ```
+
+**I2C Scan Results**:
+```
+========== I2C BUS SCAN ==========
+[0x14] ✓ GT911 Touch (INT=HIGH)
+[0x18] ✓ ES8311 Audio Codec
+Total devices: 2  ← RTC NOT RESPONDING!
+```
+
+**Root Cause Analysis**:
+1. **RTC not detected in I2C scan** → Device not ACKing at 0x32
+2. **I2C bus reset fails** when trying to write → Hardware issue or wrong address
+3. **ESP_ERR_INVALID_STATE (0x103)** → I2C transaction cannot start
+
+**Possible Causes**:
+- ✅ RTC not populated on board (hardware missing)
+- ⚠️ RTC in low-power mode (needs VBAT)
+- ⚠️ Wrong I2C address (should verify with schematic)
+- ⚠️ RTC requires specific wake-up sequence
+- ⚠️ I2C timing issue (400kHz too fast?)
+
+**Next Steps to Debug**:
+1. **Check if RTC chip is physically present** (look for U9 on PCB)
+2. **Try lower I2C speed** (100kHz instead of 400kHz)
+3. **Probe with oscilloscope** (check SDA/SCL signals)
+4. **Try alternative I2C addresses** (0x30, 0x31, 0x33)
+5. **Read RTC without write** (try read-only operation first)
+
+---
+
+## Boot Logs History
+
+### 🔴 Latest Boot Log - RTC I2C Error (2026-03-01 16:02)
+
+**Date**: 2026-03-01 16:02:18 CET  
+**Commit**: `aa66203` - RTC driver integrated  
+**Status**: ❌ RTC initialization failed (0x103)
+
+**Full Boot Log**:
+```
+ESP-ROM:esp32p4-eco2-20240710
+Build:Jul 10 2024
+rst:0x17 (CHIP_USB_UART_RESET),boot:0xc (SPI_FAST_FLASH_BOOT)
+
+I (27) boot: ESP-IDF v5.5.3-dirty 2nd stage bootloader
+I (28) boot: compile time Mar  1 2026 16:02:18
+I (956) cpu_start: cpu freq: 360000000 Hz
+I (958) app_init: Application information:
+I (962) app_init: Project name:     sd_card
+I (966) app_init: App version:      aa66203
+I (970) app_init: Compile time:     Mar  1 2026 16:01:46
+
+=== SD CARD INIT ===
+I (1117) GUITION_MAIN: Initializing SD card (Slot 0 - forced)...
+I (1369) GUITION_MAIN: SD Card power enabled via GPIO45 (waited 250ms)
+I (1371) GUITION_MAIN: Slot 0 initialized successfully
+I (1526) GUITION_MAIN: ✓ SD card mounted successfully
+I (1526) GUITION_MAIN: Card name: SU08G
+I (1526) GUITION_MAIN: Capacity: 7580 MB
+
+=== WIFI INIT ===
+I (1527) GUITION_MAIN: Initializing WiFi (ESP-Hosted via C6)...
+I (3222) H_SDIO_DRV: Card init success, TRANSPORT_RX_ACTIVE
+I (3323) transport: Identified slave [esp32c6]
+I (8849) RPC_WRAP: ESP Event: StaScanDone
+I (8850) GUITION_MAIN: ✓ WiFi scan successful - ESP-Hosted is working!
+
+=== I2C BUS SCAN ===
+I (9683) GUITION_MAIN: 
+========== I2C BUS SCAN (Audio + Touch + RTC) ==========
+
+[0x14] ✓ GT911 Touch (INT=HIGH)
+[0x18] ✓ ES8311 Audio Codec
+
+Total devices: 2
+
+I (14289) I2C_SCAN: Expected devices:
+I (14292) I2C_SCAN:   ✓ 0x14 = GT911 Touch (board config)
+I (14298) I2C_SCAN:   ✓ 0x18 = ES8311 Audio Codec
+I (14302) I2C_SCAN:   ? 0x32 = RX8025T RTC (needs init)  ← NOT FOUND!
+
+=== RTC INIT (FAILED) ===
+I (14313) GUITION_MAIN: 
+========== RTC INITIALIZATION ==========
+I (14319) RX8025T: Initializing RX8025T RTC...
+I (14323) RX8025T: I2C Address: 0x32
+I (14327) RX8025T: Clearing PON/VLF flags...
+E (14382) i2c.master: clear bus failed.               ← I2C ERROR!
+E (14382) i2c.master: s_i2c_transaction_start(686): reset hardware failed
+E (14382) RX8025T: Failed to clear flags (0x103)      ← ESP_ERR_INVALID_STATE
+E (14385) GUITION_MAIN: Failed to initialize RTC (0x103)
+W (14390) GUITION_MAIN: RTC might not be populated on board or on different I2C address
+I (14398) GUITION_MAIN: ========== RTC INIT COMPLETE ==========
+
+I (14408) GUITION_MAIN: === System ready ===
+```
+
+**Summary**:
+- ✅ SD Card: Working (7580 MB)
+- ✅ WiFi: Working (scan successful)
+- ✅ I2C Bus: Working (GT911 + ES8311 found)
+- ❌ RTC: Not detected at 0x32
+- ❌ RTC Init: I2C transaction failed (0x103)
 
 ---
 
@@ -216,7 +318,7 @@ I (xxxx) GUITION_MAIN: Current RTC time: 2026-03-01 15:56:00
 4. Hardware Reset (GPIO toggles for I2C devices)
 5. I2C Bus Init (single bus GPIO7+8)
 6. I2C Scan (detect all devices)
-7. RTC Init (RX8025T driver)
+7. RTC Init (RX8025T driver) ← FAILING
 8. Display Init (MIPI DSI - disabled)
 9. Touch Init (GT911 - disabled)
 ```
@@ -227,7 +329,7 @@ I (xxxx) GUITION_MAIN: Current RTC time: 2026-03-01 15:56:00
 #define ENABLE_SD_CARD 1  // ✅ Working
 #define ENABLE_WIFI 1     // ✅ Working  
 #define ENABLE_I2C 1      // ✅ Working (single bus)
-#define ENABLE_RTC 1      // 🔄 Testing
+#define ENABLE_RTC 1      // ❌ Failed (not detected)
 #define ENABLE_DISPLAY 0  // Not tested yet
 #define ENABLE_TOUCH 0    // Not tested yet
 ```
@@ -251,7 +353,7 @@ static esp_err_t sdmmc_host_deinit_dummy(void)
 #endif
 ```
 
-**I2C Bus Configuration (CORRECTED)**:
+**I2C Bus Configuration**:
 ```c
 // Single I2C bus for ALL devices
 i2c_master_bus_config_t i2c_bus_config = {
@@ -284,18 +386,22 @@ i2c_master_bus_config_t i2c_bus_config = {
 3. Add 100ms delay after slot init
 4. Force `host.slot = SDMMC_HOST_SLOT_0`
 
-### Error: `ESP_ERR_INVALID_STATE (0x103)` - Slot Init Fails
+### Error: `ESP_ERR_INVALID_STATE (0x103)` - I2C Transaction Failed
 
-**Symptoms**: `sdmmc_host_init_slot()` returns 0x103
+**Symptoms**: I2C master cannot start transaction, bus reset fails
 
 **Causes**:
-- Controller in inconsistent state after deinit
-- Trying to init already initialized slot without proper deinit
+- Device not responding (missing or powered off)
+- Wrong I2C address
+- Bus timing issue
+- Device in low-power mode
 
 **Solutions**:
-- Remove `sdmmc_host_deinit_slot()` call
-- Let ESP-Hosted keep controller initialized
-- Only reconfigure slot GPIO/settings
+1. Verify device is physically present on PCB
+2. Check power supply to device (VBAT for RTC)
+3. Try lower I2C speed (100kHz)
+4. Probe with oscilloscope to verify signals
+5. Try read-only operations first
 
 ### Error: `assert failed: xQueueSemaphoreTake` - FreeRTOS Crash
 
@@ -338,9 +444,9 @@ i2c_master_bus_config_t i2c_bus_config = {
 | SCL (Clock) | GPIO 8 | Richiede resistenze di pull-up esterne (2.2kΩ tipiche) |
 
 **Devices su I2C_NUM_0 (GPIO7+8)**:
-- `0x14`: GT911 Touch Controller
-- `0x18`: ES8311 Audio Codec
-- `0x32`: RX8025T RTC (U9)
+- `0x14`: GT911 Touch Controller ✅ Working
+- `0x18`: ES8311 Audio Codec ✅ Working
+- `0x32`: RX8025T RTC (U9) ❌ Not detected
 
 ### Touch Screen (GT911)
 
@@ -350,7 +456,7 @@ i2c_master_bus_config_t i2c_bus_config = {
 | Reset (RST) | GPIO 22 | Pin TOUCH_RST usato per definire l'indirizzo I2C |
 
 **Indirizzo I2C:**
-- INT=HIGH durante reset → Indirizzo 0x14
+- INT=HIGH durante reset → Indirizzo 0x14 ✅ Configured
 - INT=LOW durante reset → Indirizzo 0x5D (default)
 
 ### SD Card (Slot 0)
@@ -392,21 +498,6 @@ i2c_master_bus_config_t i2c_bus_config = {
 
 ---
 
-## Boot Logs History
-
-### 🔄 Latest Boot Log (awaiting RTC test)
-
-**Date**: 2026-03-01 15:57 CET  
-**Commit**: `aa66203` - RTC driver integrated  
-**Status**: Awaiting boot log with RTC init
-
-**Expected output**:
-```
-[Paste boot log here when received]
-```
-
----
-
 ## Testing Checklist
 
 - [x] SD Card Mount (7580 MB SanDisk)
@@ -414,8 +505,9 @@ i2c_master_bus_config_t i2c_bus_config = {
 - [x] WiFi Scan (networks detected)
 - [x] I2C Bus Init (single bus GPIO7+8)
 - [x] I2C Scan (GT911 + ES8311 found)
-- [ ] RTC Detection on I2C scan
-- [ ] RTC Initialization
+- [x] RTC Driver Integration
+- [ ] **RTC Detection on I2C (FAILING - not at 0x32)**
+- [ ] **RTC Initialization (FAILING - 0x103 error)**
 - [ ] RTC Read Time
 - [ ] RTC Write Time
 - [ ] Display Init (JD9165)
@@ -452,7 +544,8 @@ b5e40f6 - fix: remove halt after I2C scan
 139033a - fix: remove I2C Bus 1 - RTC is on Bus 0 ✅ CORRECTED
 73128f0 - docs: update hw_init - all I2C devices on single bus
 9fe3b67 - feat: add RTC enable flag to feature_flags
-aa66203 - feat: add RTC initialization and test ✅ CURRENT
+aa66203 - feat: add RTC initialization and test ❌ I2C ERROR 0x103
+0af9a98 - docs: fix I2C bus config + add boot log section
 ```
 
 ---
