@@ -216,9 +216,9 @@ I (4429) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
 I (6429) GUITION_MAIN: === WiFi Connection Test ===
 I (6429) GUITION_MAIN: Connecting to: YourWiFiSSID
 I (8500) GUITION_MAIN: ✓ WiFi connected!
-I (8500) GUITION_MAIN:    IP Address: 192.168.1.123
+I (8500) GUITION_MAIN:    IP Address: 10.0.0.100
 I (8501) GUITION_MAIN:    Netmask:    255.255.255.0
-I (8502) GUITION_MAIN:    Gateway:    192.168.1.1
+I (8502) GUITION_MAIN:    Gateway:    10.0.0.1
 I (8503) GUITION_MAIN:    RSSI: -45 dBm
 ```
 
@@ -256,7 +256,7 @@ Test RTC synchronization with NTP server (requires WiFi connection):
 **Expected Output:**
 ```
 I (7868) GUITION_MAIN: ✓ WiFi connected!
-I (7868) GUITION_MAIN:    IP Address: 192.168.188.88
+I (7868) GUITION_MAIN:    IP Address: 10.0.0.100
 
 I (7869) RTC_NTP: ========================================
 I (7870) RTC_NTP:    RTC NTP Sync Test
@@ -365,11 +365,11 @@ I (2163) esp_cli: Remove any existing deep_sleep cmd in cli
 I (2163) esp_cli: Registering command: crash
 I (2173) esp_cli: Registering command: reboot
 I (2173) esp_cli: Registering command: mem-dump
-I (2173) esp_cli: Registering command: task-dump
+I (2183) esp_cli: Registering command: task-dump
 I (2183) esp_cli: Registering command: cpu-dump
-I (2183) esp_cli: Registering command: heap-trace
+I (2193) esp_cli: Registering command: heap-trace
 I (2193) esp_cli: Registering command: sock-dump
-I (2193) esp_cli: Registering command: host-power-save
+I (2203) esp_cli: Registering command: host-power-save
 I (2203) hci_stub_drv: Host BT Support: Disabled
 I (2203) H_SDIO_DRV: Received INIT event
 I (2203) H_SDIO_DRV: Event type: 0x22
