@@ -14,6 +14,7 @@
 
 #include "display_jd9165.h"
 #include "touch_gt911.h"
+#include "feature_flags.h"  // <-- Flag di controllo
 
 static const char *TAG = "GUITION_MAIN";
 
@@ -24,21 +25,24 @@ static const char *TAG = "GUITION_MAIN";
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static esp_lcd_touch_handle_t touch_handle = NULL;
 
+#if ENABLE_SD_CARD
 // Workaround per ESP-Hosted
 #ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
 static esp_err_t sdmmc_host_init_dummy(void) 
 { 
-    ESP_LOGI(TAG, "Skipping sdmmc_host_init (controller already initialized by ESP-Hosted)");
+    LOG_SD(TAG, "Skipping sdmmc_host_init (controller already initialized by ESP-Hosted)");
     return ESP_OK; 
 }
 
 static esp_err_t sdmmc_host_deinit_dummy(void) 
 { 
-    ESP_LOGI(TAG, "Skipping sdmmc_host_deinit (keep controller active for ESP-Hosted)");
+    LOG_SD(TAG, "Skipping sdmmc_host_deinit (keep controller active for ESP-Hosted)");
     return ESP_OK; 
 }
 #endif
+#endif // ENABLE_SD_CARD
 
+#if ENABLE_DISPLAY && ENABLE_DISPLAY_TEST
 // Test RAW Display: riempie schermo di colore
 void test_display_fill_color(uint16_t color)
 {
@@ -49,7 +53,7 @@ void test_display_fill_color(uint16_t color)
 
     const int width = 1024;
     const int height = 600;
-    const int buffer_lines = 10; // Processa 10 linee alla volta
+    const int buffer_lines = 10;
     
     uint16_t *line_buffer = heap_caps_malloc(width * buffer_lines * sizeof(uint16_t), MALLOC_CAP_DMA);
     if (!line_buffer) {
@@ -57,24 +61,22 @@ void test_display_fill_color(uint16_t color)
         return;
     }
 
-    // Riempi buffer con il colore
     for (int i = 0; i < width * buffer_lines; i++) {
         line_buffer[i] = color;
     }
 
-    ESP_LOGI(TAG, "Filling display with color 0x%04X...", color);
+    LOG_DISPLAY(TAG, "Filling display with color 0x%04X...", color);
 
-    // Scrivi tutte le linee con delay per DMA
     for (int y = 0; y < height; y += buffer_lines) {
         esp_lcd_panel_draw_bitmap(panel_handle, 0, y, width, y + buffer_lines, line_buffer);
-        vTaskDelay(pdMS_TO_TICKS(5)); // Aspetta DMA
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     free(line_buffer);
-    ESP_LOGI(TAG, "Display fill complete");
+    LOG_DISPLAY(TAG, "Display fill complete");
 }
 
-// Test RAW Display: pattern RGB (versione più lenta con più linee per batch)
+// Test RAW Display: pattern RGB
 void test_display_rgb_pattern(void)
 {
     if (!panel_handle) {
@@ -82,17 +84,16 @@ void test_display_rgb_pattern(void)
         return;
     }
 
-    ESP_LOGI(TAG, "Drawing RGB pattern...");
+    LOG_DISPLAY(TAG, "Drawing RGB pattern...");
     
-    // Rosso, Verde, Blu (RGB565 format)
-    const uint16_t RED   = 0xF800;  // 0b1111100000000000
-    const uint16_t GREEN = 0x07E0;  // 0b0000011111100000
-    const uint16_t BLUE  = 0x001F;  // 0b0000000000011111
+    const uint16_t RED   = 0xF800;
+    const uint16_t GREEN = 0x07E0;
+    const uint16_t BLUE  = 0x001F;
     
     const int width = 1024;
     const int height = 600;
     const int stripe_width = width / 3;
-    const int lines_per_batch = 10;  // Disegna 10 linee alla volta
+    const int lines_per_batch = 10;
     
     uint16_t *line_buffer = heap_caps_malloc(width * lines_per_batch * sizeof(uint16_t), MALLOC_CAP_DMA);
     if (!line_buffer) {
@@ -100,7 +101,6 @@ void test_display_rgb_pattern(void)
         return;
     }
 
-    // Prepara buffer con pattern RGB (tutte le linee uguali)
     for (int i = 0; i < lines_per_batch; i++) {
         for (int x = 0; x < width; x++) {
             int idx = i * width + x;
@@ -114,17 +114,18 @@ void test_display_rgb_pattern(void)
         }
     }
 
-    // Disegna tutte le linee a batch
     for (int y = 0; y < height; y += lines_per_batch) {
         esp_lcd_panel_draw_bitmap(panel_handle, 0, y, width, y + lines_per_batch, line_buffer);
-        vTaskDelay(pdMS_TO_TICKS(5));  // Stesso delay del fill
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     free(line_buffer);
-    ESP_LOGI(TAG, "RGB pattern complete");
+    LOG_DISPLAY(TAG, "RGB pattern complete");
 }
+#endif // ENABLE_DISPLAY && ENABLE_DISPLAY_TEST
 
-// Test RAW Touch: API corretta con struct point_data
+#if ENABLE_TOUCH && ENABLE_TOUCH_TEST
+// Test RAW Touch
 void test_touch_read_loop(void)
 {
     if (!touch_handle) {
@@ -132,8 +133,8 @@ void test_touch_read_loop(void)
         return;
     }
 
-    ESP_LOGI(TAG, "Touch test started. Touch the screen...");
-    ESP_LOGI(TAG, "Press Ctrl+C to stop");
+    LOG_TOUCH(TAG, "Touch test started. Touch the screen...");
+    LOG_TOUCH(TAG, "Press Ctrl+C to stop");
 
     esp_lcd_touch_point_data_t point_data[1];
     uint8_t touch_cnt = 0;
@@ -144,19 +145,21 @@ void test_touch_read_loop(void)
         esp_err_t ret = esp_lcd_touch_get_data(touch_handle, point_data, &touch_cnt, 1);
         
         if (ret == ESP_OK && touch_cnt > 0) {
-            ESP_LOGI(TAG, "Touch detected: X=%d, Y=%d, Strength=%d", 
+            LOG_TOUCH(TAG, "Touch detected: X=%d, Y=%d, Strength=%d", 
                      point_data[0].x, point_data[0].y, point_data[0].strength);
         }
         
-        vTaskDelay(pdMS_TO_TICKS(100)); // Poll ogni 100ms
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
+#endif // ENABLE_TOUCH && ENABLE_TOUCH_TEST
 
 void app_main(void)
 {
     esp_err_t ret;
 
-    // 1. NVS
+    // ========== 1. NVS ==========
+#if ENABLE_NVS
     ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
@@ -164,10 +167,14 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "NVS initialized");
+    LOG_NVS(TAG, "NVS initialized");
+#else
+    ESP_LOGI(TAG, "NVS disabled by feature flags");
+#endif
 
-    // 2. SD Card (con workaround)
-    ESP_LOGI(TAG, "Initializing SD card (Slot %d)...", CONFIG_EXAMPLE_SDMMC_SLOT);
+    // ========== 2. SD Card ==========
+#if ENABLE_SD_CARD
+    LOG_SD(TAG, "Initializing SD card (Slot %d)...", CONFIG_EXAMPLE_SDMMC_SLOT);
 
 #ifdef CONFIG_EXAMPLE_PIN_CARD_POWER_RESET
     gpio_config_t pwr_io_conf = {
@@ -180,7 +187,7 @@ void app_main(void)
     gpio_config(&pwr_io_conf);
     gpio_set_level(CONFIG_EXAMPLE_PIN_CARD_POWER_RESET, 0);
     vTaskDelay(pdMS_TO_TICKS(100));
-    ESP_LOGI(TAG, "SD Card power enabled via GPIO%d", CONFIG_EXAMPLE_PIN_CARD_POWER_RESET);
+    LOG_SD(TAG, "SD Card power enabled via GPIO%d", CONFIG_EXAMPLE_PIN_CARD_POWER_RESET);
 #endif
 
     sdmmc_slot_config_t slot_config = {
@@ -199,13 +206,13 @@ void app_main(void)
     };
 
 #ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-    ESP_LOGI(TAG, "ESP-Hosted detected - using workaround");
+    LOG_SD(TAG, "ESP-Hosted detected - using workaround");
     ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to init slot 0 (0x%x)", ret);
         goto sd_failed;
     }
-    ESP_LOGI(TAG, "Slot 0 initialized successfully");
+    LOG_SD(TAG, "Slot 0 initialized successfully");
 #endif
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
@@ -231,15 +238,19 @@ void app_main(void)
     }
     else
     {
-        ESP_LOGI(TAG, "SD card mounted successfully");
-        ESP_LOGI(TAG, "Card name: %s", card->cid.name);
-        ESP_LOGI(TAG, "Capacity: %llu MB",
+        LOG_SD(TAG, "SD card mounted successfully");
+        LOG_SD(TAG, "Card name: %s", card->cid.name);
+        LOG_SD(TAG, "Capacity: %llu MB",
                  ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
     }
 
 sd_failed:
+#else
+    ESP_LOGI(TAG, "SD card disabled by feature flags");
+#endif // ENABLE_SD_CARD
 
-    // 3. I2C
+    // ========== 3. I2C Bus ==========
+#if ENABLE_I2C
     i2c_master_bus_config_t i2c_bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
@@ -250,51 +261,63 @@ sd_failed:
     };
     i2c_master_bus_handle_t bus_handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &bus_handle));
-    ESP_LOGI(TAG, "I2C bus initialized");
+    LOG_I2C(TAG, "I2C bus initialized");
+#else
+    ESP_LOGI(TAG, "I2C disabled by feature flags");
+    i2c_master_bus_handle_t bus_handle = NULL;
+#endif
 
-    // 4. Display
-    ESP_LOGI(TAG, "Initializing display...");
+    // ========== 4. Display ==========
+#if ENABLE_DISPLAY
+    LOG_DISPLAY(TAG, "Initializing display...");
     panel_handle = init_jd9165_display();
-    ESP_LOGI(TAG, "Display ready");
+    LOG_DISPLAY(TAG, "Display ready");
+#else
+    ESP_LOGI(TAG, "Display disabled by feature flags");
+#endif
 
-    // 5. Touch
-    ESP_LOGI(TAG, "Initializing touch...");
-    touch_handle = init_touch_gt911(bus_handle);
-    ESP_LOGI(TAG, "Touch ready");
+    // ========== 5. Touch ==========
+#if ENABLE_TOUCH
+    if (bus_handle) {
+        LOG_TOUCH(TAG, "Initializing touch...");
+        touch_handle = init_touch_gt911(bus_handle);
+        LOG_TOUCH(TAG, "Touch ready");
+    } else {
+        ESP_LOGW(TAG, "Touch skipped (I2C not initialized)");
+    }
+#else
+    ESP_LOGI(TAG, "Touch disabled by feature flags");
+#endif
 
     ESP_LOGI(TAG, "=== System ready ===");
 
-    // ============================================================
-    // TEST RAW DISPLAY E TOUCH
-    // ============================================================
-
+    // ========== TEST SEQUENZA ==========
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    // Test 1: Riempi schermo di rosso
+#if ENABLE_DISPLAY && ENABLE_DISPLAY_TEST
     ESP_LOGI(TAG, "\n=== TEST 1: Fill RED ===");
     test_display_fill_color(0xF800);
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    // Test 2: Riempi schermo di verde
     ESP_LOGI(TAG, "\n=== TEST 2: Fill GREEN ===");
     test_display_fill_color(0x07E0);
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    // Test 3: Riempi schermo di blu
     ESP_LOGI(TAG, "\n=== TEST 3: Fill BLUE ===");
     test_display_fill_color(0x001F);
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    // Test 4: Pattern RGB a strisce
     ESP_LOGI(TAG, "\n=== TEST 4: RGB Pattern ===");
     test_display_rgb_pattern();
     vTaskDelay(pdMS_TO_TICKS(2000));
+#endif
 
-    // Test 5: Touch input loop (infinito)
+#if ENABLE_TOUCH && ENABLE_TOUCH_TEST
     ESP_LOGI(TAG, "\n=== TEST 5: Touch Input ===");
     test_touch_read_loop();
+#endif
 
-    // Non dovrebbe mai arrivare qui
+    // Idle loop
     while (1)
     {
         vTaskDelay(pdMS_TO_TICKS(10000));
