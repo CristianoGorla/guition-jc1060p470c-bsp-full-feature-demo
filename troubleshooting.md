@@ -45,6 +45,43 @@ I (1830) GUITION_MAIN: GT911 active at 0x14 (INT=HIGH during reset)
 
 ---
 
+## ESP-Hosted WiFi/BLE Interrupt Configuration
+
+### Hardware Schematic Analysis (JC1060P470C Board)
+
+**Control Lines Between ESP32-C6 and ESP32-P4:**
+
+```
+Function            C6 Pin      P4 Pin      Description
+─────────────────────────────────────────────────────────
+Interrupt/OOB       GPIO 2  →   GPIO 6      Data ready signal
+Reset               CHIP_PU →   GPIO 54     Hardware reset
+Debug (unused)      GPIO 9  →   JP1 Pin 18  External header only
+```
+
+**Important:** The C6 GPIO9 signal is **NOT** internally connected to any P4 GPIO. It routes only to external header JP1 for debug purposes.
+
+### Configuration Required
+
+In `sdkconfig.defaults`:
+```
+CONFIG_ESP_HOSTED_DATA_READY_GPIO=6
+CONFIG_ESP_HOSTED_RESETPIN_GPIO=54
+```
+
+**Why GPIO6 Matters:**
+- Without interrupt configuration, ESP-Hosted uses polling mode (less efficient)
+- With GPIO6 configured, the C6 can wake the P4 when data is ready
+- Improves WiFi/BLE performance and reduces power consumption
+
+**Expected Boot Log:**
+```
+I (2287) os_wrapper_esp: GPIO [54] configured  // Reset pin
+I (xxxx) os_wrapper_esp: GPIO [6] configured   // Interrupt pin (with fix)
+```
+
+---
+
 ## RTC RX8025T Initialization
 
 ### Best Practice: Direct Initialization (No Pre-Probe)
@@ -194,30 +231,45 @@ GPIO45 - Power enable
 
 ### SDMMC Slot 1 (ESP-Hosted WiFi/BLE)
 ```
+╔══════════════════════════════════════════╗
+║  SDIO Data Bus (4-bit)                    ║
+╠══════════════════════════════════════════╣
 GPIO18 - CLK
 GPIO19 - CMD
 GPIO14 - D0
 GPIO15 - D1
 GPIO16 - D2
 GPIO17 - D3
-GPIO54 - ESP32-C6 reset
+╚══════════════════════════════════════════╝
+
+╔══════════════════════════════════════════╗
+║  Control Lines (C6 <-> P4)                ║
+╠══════════════════════════════════════════╣
+GPIO54 - ESP32-C6 reset (C6 CHIP_PU)
+GPIO6  - Interrupt/Data Ready (C6 GPIO2)
+╚══════════════════════════════════════════╝
 ```
+
+**Note:** C6 GPIO9 is routed to external header JP1 only, NOT connected to P4.
 
 ---
 
-## Complete Initialization Sequence (Final)
+## Complete Initialization Sequence (All Peripherals)
 
 **Optimized Boot Order:**
 ```
 1. NVS Flash Init
-2. I2C Bus Init (GPIO7/8 @ 400kHz)
-3. ❌ SKIP I2C Scan (prevents device wake-up)
-4. ES8311 Audio Init (direct init at 0x18)
-5. RTC RX8025T Init (direct init at 0x32)
-6. Display JD9165 Init (MIPI DSI, no I2C conflict)
-7. Touch GT911 Init (auto-reset, detects 0x14 or 0x5D)
-8. SD Card (optional)
-9. WiFi ESP-Hosted (optional)
+2. ESP-Hosted Init (SDMMC Slot 1 → ESP32-C6)
+   - GPIO54 reset configuration
+   - GPIO6 interrupt configuration (⚡ NEW)
+3. I2C Bus Init (GPIO7/8 @ 400kHz)
+4. ❌ SKIP I2C Scan (prevents device wake-up)
+5. ES8311 Audio Init (direct init at 0x18)
+6. RTC RX8025T Init (direct init at 0x32)
+7. Display JD9165 Init (MIPI DSI, no I2C conflict)
+8. Touch GT911 Init (auto-reset, detects 0x14 or 0x5D)
+9. SD Card Mount (SDMMC Slot 0)
+10. WiFi Scan/Connect Test
 ```
 
 **Key Principles:**
@@ -225,7 +277,9 @@ GPIO54 - ESP32-C6 reset
 2. Each driver validates device presence internally
 3. Direct init without pre-probe
 4. MIPI DSI does not interfere with I2C
-5. Consistent pattern across all devices
+5. SDMMC Slot 0 and Slot 1 coexist without conflicts
+6. GPIO6 interrupt enabled for efficient ESP-Hosted communication
+7. Consistent pattern across all devices
 
 ---
 
@@ -347,6 +401,7 @@ The I2C bus issues were caused by **I2C scan timing**, not MIPI DSI initializati
 - **ESP-IDF GT911 Driver:** `components/esp_lcd_touch_gt911`
 - **ESP-IDF ES8311 Component:** https://components.espressif.com/components/espressif/es8311
 - **ESP Codec Dev BSP:** https://components.espressif.com/components/espressif/esp_codec_dev
+- **ESP-Hosted Project:** https://github.com/espressif/esp-hosted
 - **Board BSP:** `esp32_p4_function_ev_board.h`
 - **RTC Datasheet:** Epson RX8025T Real-Time Clock Module
 - **ES8311 Datasheet:** http://www.everest-semi.com/pdf/ES8311%20PB.pdf
@@ -389,4 +444,5 @@ Final Approach → I2C init → Direct device init (driver self-validates)
                   ✅ Consistent pattern
                   ✅ All devices working
                   ✅ SD + WiFi coexisting
+                  ✅ GPIO6 interrupt enabled
 ```
