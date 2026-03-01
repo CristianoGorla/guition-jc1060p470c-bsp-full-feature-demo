@@ -17,7 +17,7 @@
 // ========== I2C BUS ==========
 #define ENABLE_I2C 1      // I2C bus (required for Touch/Audio/RTC)
 #define DEBUG_I2C 1       // Detailed I2C logs
-#define ENABLE_I2C_SCAN 1 // Scan I2C bus for devices
+#define ENABLE_I2C_SCAN 0 // Scan I2C bus (DISABLED - interferes with GT911 reset)
 
 // ========== AUDIO CODEC ==========
 #define ENABLE_AUDIO 0 // ES8311 audio codec
