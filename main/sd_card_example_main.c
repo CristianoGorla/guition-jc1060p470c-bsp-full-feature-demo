@@ -170,7 +170,7 @@ void app_main(void)
     ESP_LOGI(TAG, "NVS disabled by feature flags");
 #endif
 
-    // ========== 2. SD Card (NO DEINIT!) ==========
+    // ========== 2. SD Card ==========
 #if ENABLE_SD_CARD
     LOG_SD(TAG, "Initializing SD card (Slot 0 - forced)...");
 
@@ -266,7 +266,7 @@ sd_failed:
     ESP_LOGI(TAG, "WiFi disabled by feature flags");
 #endif
 
-    // ========== 4. Hardware Reset (DOPO SD, PRIMA I2C) ==========
+    // ========== 4. Hardware Reset (DOPO SD+WiFi, PRIMA I2C) ==========
 #if ENABLE_I2C || ENABLE_DISPLAY || ENABLE_TOUCH
     ESP_LOGI(TAG, "Running hardware reset for peripherals (GT911/ES8311/RTC)...");
     hw_reset_all_peripherals();
@@ -301,18 +301,13 @@ sd_failed:
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
 
-    // ========== 7. I2C SCAN ==========
+    // ========== 7. I2C SCAN (NO HALT) ==========
 #if ENABLE_I2C && ENABLE_I2C_SCAN
     if (bus_handle) {
         vTaskDelay(pdMS_TO_TICKS(500));
+        ESP_LOGI(TAG, "\n========== I2C SCAN START ==========");
         i2c_scan_bus(bus_handle);
-        
-        ESP_LOGI(TAG, "I2C scan complete. System halted.");
-        ESP_LOGI(TAG, "Check the devices found above before continuing.");
-        
-        while (1) {
-            vTaskDelay(pdMS_TO_TICKS(10000));
-        }
+        ESP_LOGI(TAG, "========== I2C SCAN COMPLETE ==========");
     }
 #endif
 
