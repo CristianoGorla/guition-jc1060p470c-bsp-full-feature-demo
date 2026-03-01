@@ -173,9 +173,51 @@ void app_main(void)
     ESP_LOGI(TAG, "NVS disabled by feature flags");
 #endif
 
-    // ========== 2. I2C Bus (EARLY INIT - before peripherals!) ==========
+    // ========== 2. GPIO RAW STATE CHECK (before I2C config) ==========
 #if ENABLE_I2C
-    ESP_LOGI(TAG, "\n=== EARLY I2C INIT (before peripheral resets) ===");
+    ESP_LOGI(TAG, "\n=== GPIO RAW STATE CHECK ===");
+    ESP_LOGI(TAG, "Checking GPIO7 (SDA) and GPIO8 (SCL) BEFORE I2C configuration...");
+    
+    // Reset GPIO to default state
+    gpio_reset_pin(GPIO_NUM_7);
+    gpio_reset_pin(GPIO_NUM_8);
+    
+    // Configure as input with pullup
+    gpio_set_direction(GPIO_NUM_7, GPIO_MODE_INPUT);
+    gpio_set_direction(GPIO_NUM_8, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(GPIO_NUM_7, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(GPIO_NUM_8, GPIO_PULLUP_ONLY);
+    
+    vTaskDelay(pdMS_TO_TICKS(10));  // Let pullups stabilize
+    
+    int sda_level = gpio_get_level(GPIO_NUM_7);
+    int scl_level = gpio_get_level(GPIO_NUM_8);
+    
+    ESP_LOGI(TAG, "GPIO7 (SDA) level: %d", sda_level);
+    ESP_LOGI(TAG, "GPIO8 (SCL) level: %d", scl_level);
+    
+    if (sda_level == 1 && scl_level == 1) {
+        ESP_LOGI(TAG, "\u2713 GPIO levels OK (both HIGH with pullups)");
+    } else {
+        ESP_LOGE(TAG, "\u2717 GPIO FAULT DETECTED!");
+        if (sda_level == 0) {
+            ESP_LOGE(TAG, "  \u2192 SDA (GPIO7) stuck LOW - possible short to GND or slave holding bus");
+        }
+        if (scl_level == 0) {
+            ESP_LOGE(TAG, "  \u2192 SCL (GPIO8) stuck LOW - possible short to GND or clock stretch issue");
+        }
+        ESP_LOGE(TAG, "  Possible causes:");
+        ESP_LOGE(TAG, "    1. Missing or damaged pull-up resistors");
+        ESP_LOGE(TAG, "    2. Short circuit on PCB traces");
+        ESP_LOGE(TAG, "    3. I2C slave holding bus (power issue)");
+        ESP_LOGE(TAG, "    4. GPIO conflict with other peripheral");
+    }
+    ESP_LOGI(TAG, "===========================\n");
+#endif
+
+    // ========== 3. I2C Bus (EARLY INIT - before peripherals!) ==========
+#if ENABLE_I2C
+    ESP_LOGI(TAG, "=== EARLY I2C INIT (before peripheral resets) ===");
     i2c_master_bus_config_t i2c_bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
@@ -186,14 +228,14 @@ void app_main(void)
     };
     i2c_master_bus_handle_t bus_handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &bus_handle));
-    LOG_I2C(TAG, "✓ I2C bus initialized EARLY (SDA=%d, SCL=%d)", I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
+    LOG_I2C(TAG, "\u2713 I2C bus initialized EARLY (SDA=%d, SCL=%d)", I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
     LOG_I2C(TAG, "This prevents bus lockup from GT911 reset\n");
 #else
     ESP_LOGI(TAG, "I2C disabled by feature flags");
     i2c_master_bus_handle_t bus_handle = NULL;
 #endif
 
-    // ========== 3. RTC Init (BEFORE GT911 reset!) ==========
+    // ========== 4. RTC Init (BEFORE GT911 reset!) ==========
 #if ENABLE_RTC
     if (bus_handle) {
         LOG_RTC(TAG, "\n========== RTC EARLY INITIALIZATION ==========");
@@ -208,11 +250,11 @@ void app_main(void)
         ret = i2c_master_probe(bus_handle, 0x32, 500);
         
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "✓ RTC responds to probe!");
+            ESP_LOGI(TAG, "\u2713 RTC responds to probe!");
             
             ret = rtc_rx8025t_init(bus_handle);
             if (ret == ESP_OK) {
-                LOG_RTC(TAG, "✓ RTC initialized successfully");
+                LOG_RTC(TAG, "\u2713 RTC initialized successfully");
                 
 #if ENABLE_RTC_TEST
                 rtc_time_t current_time;
@@ -248,7 +290,7 @@ void app_main(void)
     ESP_LOGI(TAG, "RTC disabled by feature flags");
 #endif
 
-    // ========== 4. SD Card ==========
+    // ========== 5. SD Card ==========
 #if ENABLE_SD_CARD
     LOG_SD(TAG, "Initializing SD card (Slot 0 - forced)...");
 
@@ -316,7 +358,7 @@ void app_main(void)
     }
     else
     {
-        LOG_SD(TAG, "✓ SD card mounted successfully");
+        LOG_SD(TAG, "\u2713 SD card mounted successfully");
         LOG_SD(TAG, "Card name: %s", card->cid.name);
         LOG_SD(TAG, "Capacity: %llu MB",
                  ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
@@ -327,16 +369,16 @@ sd_failed:
     ESP_LOGI(TAG, "SD card disabled by feature flags");
 #endif
 
-    // ========== 5. WiFi (ESP-Hosted) ==========
+    // ========== 6. WiFi (ESP-Hosted) ==========
 #if ENABLE_WIFI
     LOG_WIFI(TAG, "Initializing WiFi (ESP-Hosted via C6)...");
     init_wifi();
-    LOG_WIFI(TAG, "✓ WiFi initialized - scanning networks...");
+    LOG_WIFI(TAG, "\u2713 WiFi initialized - scanning networks...");
     
     vTaskDelay(pdMS_TO_TICKS(2000));
     
     if (do_wifi_scan_and_check(NULL)) {
-        LOG_WIFI(TAG, "✓ WiFi scan successful - ESP-Hosted is working!");
+        LOG_WIFI(TAG, "\u2713 WiFi scan successful - ESP-Hosted is working!");
     } else {
         ESP_LOGW(TAG, "WiFi scan returned 0 networks (check C6 firmware)");
     }
@@ -344,7 +386,7 @@ sd_failed:
     ESP_LOGI(TAG, "WiFi disabled by feature flags");
 #endif
 
-    // ========== 6. Hardware Reset (GT911/ES8311 - AFTER RTC init!) ==========
+    // ========== 7. Hardware Reset (GT911/ES8311 - AFTER RTC init!) ==========
 #if ENABLE_DISPLAY || ENABLE_TOUCH
     ESP_LOGI(TAG, "\nRunning hardware reset for GT911/ES8311...");
     ESP_LOGI(TAG, "(RTC already initialized - safe to reset GT911 now)");
@@ -356,16 +398,16 @@ sd_failed:
     ESP_LOGI(TAG, "Hardware reset skipped (no Display/Touch enabled)");
 #endif
 
-    // ========== 7. Display ==========
+    // ========== 8. Display ==========
 #if ENABLE_DISPLAY
     ESP_LOGI(TAG, "Initializing display...");
     panel_handle = init_jd9165_display();
-    ESP_LOGI(TAG, "✓ Display ready (1024x600)");
+    ESP_LOGI(TAG, "\u2713 Display ready (1024x600)");
 #else
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
 
-    // ========== 8. I2C SCAN ==========
+    // ========== 9. I2C SCAN ==========
 #if ENABLE_I2C && ENABLE_I2C_SCAN
     if (bus_handle) {
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -375,7 +417,7 @@ sd_failed:
     }
 #endif
 
-    // ========== 9. Touch ==========
+    // ========== 10. Touch ==========
 #if ENABLE_TOUCH
     if (bus_handle) {
         LOG_TOUCH(TAG, "Initializing touch...");
