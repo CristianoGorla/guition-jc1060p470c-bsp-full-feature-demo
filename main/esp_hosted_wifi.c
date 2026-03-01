@@ -10,10 +10,12 @@
 #include "feature_flags.h"
 
 static const char *TAG = "wifi_hosted";
-static EventGroupHandle_t wifi_event_group;
+static EventGroupHandle_t wifi_event_group = NULL;
 const int IP_GOT_BIT = BIT0;
 
 static bool transport_initialized = false;
+static bool wifi_started = false;
+static esp_event_handler_instance_t ip_event_handler = NULL;
 
 static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
@@ -59,9 +61,11 @@ esp_err_t wifi_hosted_init_transport(void)
     
     // Step 4: Register IP event handler
     LOG_WIFI(TAG, "Registering IP event handler...");
-    wifi_event_group = xEventGroupCreate();
+    if (!wifi_event_group) {
+        wifi_event_group = xEventGroupCreate();
+    }
     ret = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, 
-                                               &event_handler, NULL, NULL);
+                                               &event_handler, NULL, &ip_event_handler);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Event handler registration failed: %s", esp_err_to_name(ret));
         return ret;
@@ -73,6 +77,57 @@ esp_err_t wifi_hosted_init_transport(void)
     // NOTE: At this point, ESP-Hosted SDIO transport is active.
     // The SDMMC controller is configured for Slot 1 (C6 communication).
     // SD card (Slot 0) can now safely initialize without conflicts.
+    
+    return ESP_OK;
+}
+
+esp_err_t wifi_hosted_deinit_transport(void)
+{
+    LOG_WIFI(TAG, "=== WiFi Hosted Transport Deinit ===");
+    
+    if (!transport_initialized) {
+        LOG_WIFI(TAG, "Transport not initialized, nothing to deinit");
+        return ESP_OK;
+    }
+    
+    esp_err_t ret = ESP_OK;
+    
+    // Stop WiFi if started
+    if (wifi_started) {
+        LOG_WIFI(TAG, "Stopping WiFi...");
+        ret = esp_wifi_stop();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "WiFi stop failed: %s", esp_err_to_name(ret));
+        }
+        
+        LOG_WIFI(TAG, "Deinitializing WiFi driver...");
+        ret = esp_wifi_deinit();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "WiFi deinit failed: %s", esp_err_to_name(ret));
+        }
+        wifi_started = false;
+    }
+    
+    // Unregister event handler
+    if (ip_event_handler) {
+        LOG_WIFI(TAG, "Unregistering event handler...");
+        ret = esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ip_event_handler);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "Event handler unregister failed: %s", esp_err_to_name(ret));
+        }
+        ip_event_handler = NULL;
+    }
+    
+    // Destroy event group
+    if (wifi_event_group) {
+        vEventGroupDelete(wifi_event_group);
+        wifi_event_group = NULL;
+    }
+    
+    // Note: We don't destroy netif or event loop as they may be used by other components
+    
+    transport_initialized = false;
+    LOG_WIFI(TAG, "✓ WiFi Hosted transport deinitialized\n");
     
     return ESP_OK;
 }
@@ -113,6 +168,7 @@ void init_wifi(void)
         return;
     }
     
+    wifi_started = true;
     LOG_WIFI(TAG, "✓ WiFi stack initialized\n");
 }
 
