@@ -15,17 +15,17 @@
 #define DEBUG_WIFI 1  // Log dettagliati WiFi
 
 // ========== I2C BUS ==========
-#define ENABLE_I2C 1      // I2C bus initialization
-#define DEBUG_I2C 1       // Log dettagliati I2C
-#define ENABLE_I2C_SCAN 1 // Scan bus I2C
+#define ENABLE_I2C 0      // I2C bus initialization (DISABILITATO per test)
+#define DEBUG_I2C 0       // Log dettagliati I2C
+#define ENABLE_I2C_SCAN 0 // Scan bus I2C (DISABILITATO)
 
 // ========== DISPLAY ==========
-#define ENABLE_DISPLAY 1      // JD9165 MIPI DSI display
+#define ENABLE_DISPLAY 0      // JD9165 MIPI DSI display (DISABILITATO per test)
 #define DEBUG_DISPLAY 0       // Log dettagliati display
 #define ENABLE_DISPLAY_TEST 0 // Test pattern RGB
 
 // ========== TOUCH ==========
-#define ENABLE_TOUCH 0      // GT911 touch (disabilitato per test WiFi)
+#define ENABLE_TOUCH 0      // GT911 touch (DISABILITATO per test)
 #define DEBUG_TOUCH 0       // Log dettagliati touch
 #define ENABLE_TOUCH_TEST 0 // Test touch input
 
