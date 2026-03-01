@@ -17,17 +17,17 @@
 // ========== I2C BUS ==========
 #define ENABLE_I2C                  1  // I2C bus initialization
 #define DEBUG_I2C                   1  // Log dettagliati I2C
-#define ENABLE_I2C_SCAN             1  // Scan bus I2C per trovare devices
+#define ENABLE_I2C_SCAN             0  // Scan bus I2C (DISABILITATO - già testato)
 
 // ========== DISPLAY ==========
 #define ENABLE_DISPLAY              1  // JD9165 MIPI DSI display
-#define DEBUG_DISPLAY               0  // Log dettagliati display (DISABILITATO)
-#define ENABLE_DISPLAY_TEST         0  // Test pattern RGB (DISABILITATO)
+#define DEBUG_DISPLAY               0  // Log dettagliati display
+#define ENABLE_DISPLAY_TEST         1  // Test pattern RGB (ABILITATO per verifica)
 
 // ========== TOUCH ==========
-#define ENABLE_TOUCH                0  // GT911 touch controller (DISABILITATO)
-#define DEBUG_TOUCH                 0  // Log dettagliati touch (DISABILITATO)
-#define ENABLE_TOUCH_TEST           0  // Test touch input (DISABILITATO)
+#define ENABLE_TOUCH                1  // GT911 touch controller (ABILITATO!)
+#define DEBUG_TOUCH                 1  // Log dettagliati touch (ABILITATO)
+#define ENABLE_TOUCH_TEST           1  // Test touch input (ABILITATO!)
 
 // ========== NVS ==========
 #define ENABLE_NVS                  1  // NVS Flash storage
