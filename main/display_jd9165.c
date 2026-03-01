@@ -47,10 +47,11 @@ void init_jd9165_display(void)
     };
 
     esp_lcd_dpi_panel_config_t dpi_config = {
-        .video_timing = video_timing,
-        .pclk_hz = 51200000, // 51.2 MHz - DOTCLK nel dtsi [5]
-        .in_color_format = LCD_COLOR_FMT_RGB888,
+        .virtual_channel = 0,
         .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
+        .dpi_clock_freq_mhz = 51, // 51.2 MHz → 51 MHz (campo è in MHz, non Hz)
+        .video_timing = video_timing,
+        .in_color_format = LCD_COLOR_FMT_RGB565,
     };
 
     // 5. Inizializzazione Pannello con Vendor Config JD9165
