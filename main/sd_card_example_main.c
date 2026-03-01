@@ -66,7 +66,7 @@ static bool check_i2c_gpio_state(const char *context)
     gpio_set_pull_mode(GPIO_NUM_7, GPIO_PULLUP_ONLY);
     gpio_set_pull_mode(GPIO_NUM_8, GPIO_PULLUP_ONLY);
     
-    vTaskDelay(pdMS_TO_TICKS(10));  // Let pullups stabilize
+    vTaskDelay(pdMS_TO_TICKS(10));
     
     int sda_level = gpio_get_level(GPIO_NUM_7);
     int scl_level = gpio_get_level(GPIO_NUM_8);
@@ -98,6 +98,64 @@ static bool check_i2c_gpio_state(const char *context)
 }
 
 /**
+ * @brief Attempt to unstick SDA by pulsing SCL (I2C bus recovery procedure)
+ * This implements the standard I2C bus recovery: pulse SCL until SDA goes HIGH
+ */
+static void i2c_bus_unstick_sda(void)
+{
+    ESP_LOGI(TAG, "=== ATTEMPTING TO UNSTICK SDA (I2C Recovery Procedure) ===");
+    
+    // Configure SCL as output, SDA as input
+    gpio_reset_pin(GPIO_NUM_7);
+    gpio_reset_pin(GPIO_NUM_8);
+    
+    gpio_set_direction(GPIO_NUM_7, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(GPIO_NUM_7, GPIO_PULLUP_ONLY);
+    
+    gpio_set_direction(GPIO_NUM_8, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_8, 1);
+    
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    // Check if SDA is stuck LOW
+    if (gpio_get_level(GPIO_NUM_7) == 0) {
+        ESP_LOGI(TAG, "SDA is LOW - pulsing SCL to release it...");
+        
+        // Pulse SCL up to 9 times (standard I2C recovery)
+        for (int i = 0; i < 9; i++) {
+            gpio_set_level(GPIO_NUM_8, 0);
+            vTaskDelay(pdMS_TO_TICKS(1));
+            gpio_set_level(GPIO_NUM_8, 1);
+            vTaskDelay(pdMS_TO_TICKS(1));
+            
+            if (gpio_get_level(GPIO_NUM_7) == 1) {
+                ESP_LOGI(TAG, "✓ SDA released after %d SCL pulses", i + 1);
+                break;
+            }
+        }
+        
+        // Final check
+        if (gpio_get_level(GPIO_NUM_7) == 0) {
+            ESP_LOGE(TAG, "✗ SDA still LOW after 9 SCL pulses - hardware issue!");
+        }
+    } else {
+        ESP_LOGI(TAG, "SDA already HIGH - no unstick needed");
+    }
+    
+    // Generate I2C STOP condition
+    ESP_LOGI(TAG, "Generating I2C STOP condition...");
+    gpio_set_direction(GPIO_NUM_7, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_7, 0);
+    vTaskDelay(pdMS_TO_TICKS(1));
+    gpio_set_level(GPIO_NUM_8, 1);
+    vTaskDelay(pdMS_TO_TICKS(1));
+    gpio_set_level(GPIO_NUM_7, 1);
+    vTaskDelay(pdMS_TO_TICKS(1));
+    
+    ESP_LOGI(TAG, "========================================\n");
+}
+
+/**
  * @brief Re-initialize I2C bus (recovery from lockup)
  * @param bus_handle Pointer to bus handle (will be updated)
  * @return ESP_OK on success
@@ -113,7 +171,7 @@ static esp_err_t reinit_i2c_bus(i2c_master_bus_handle_t *bus_handle)
             ESP_LOGW(TAG, "Failed to delete I2C bus (0x%x), forcing NULL", ret);
         }
         *bus_handle = NULL;
-        vTaskDelay(pdMS_TO_TICKS(100));  // Wait for hardware to settle
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
     
     // Force GPIO reset before re-init
@@ -142,6 +200,70 @@ static esp_err_t reinit_i2c_bus(i2c_master_bus_handle_t *bus_handle)
     
     ESP_LOGI(TAG, "=================================\n");
     return ret;
+}
+
+/**
+ * @brief Aggressive I2C recovery with multiple attempts
+ * @param bus_handle Pointer to bus handle
+ * @return true if recovery successful
+ */
+static bool aggressive_i2c_recovery(i2c_master_bus_handle_t *bus_handle)
+{
+    ESP_LOGW(TAG, "\n⚠ STARTING AGGRESSIVE I2C RECOVERY ⚠\n");
+    
+    const int max_attempts = 3;
+    
+    for (int attempt = 1; attempt <= max_attempts; attempt++) {
+        ESP_LOGI(TAG, "--- Recovery Attempt %d/%d ---\n", attempt, max_attempts);
+        
+        // Step 1: Try to unstick SDA by pulsing SCL
+        i2c_bus_unstick_sda();
+        vTaskDelay(pdMS_TO_TICKS(50));
+        
+        // Step 2: Check if unstick worked
+        bool gpio_ok = check_i2c_gpio_state("after SDA unstick");
+        
+        if (gpio_ok) {
+            ESP_LOGI(TAG, "✓ GPIO unstuck! Proceeding with bus re-init...\n");
+        } else {
+            ESP_LOGW(TAG, "GPIO still stuck after unstick attempt\n");
+        }
+        
+        // Step 3: Re-initialize bus regardless
+        if (reinit_i2c_bus(bus_handle) != ESP_OK) {
+            ESP_LOGE(TAG, "Bus re-init failed on attempt %d\n", attempt);
+            continue;
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(100));
+        
+        // Step 4: Verify recovery
+        gpio_ok = check_i2c_gpio_state("verification");
+        
+        if (gpio_ok) {
+            ESP_LOGI(TAG, "\n✓✓✓ I2C RECOVERY SUCCESSFUL (attempt %d/%d) ✓✓✓\n", 
+                     attempt, max_attempts);
+            return true;
+        }
+        
+        ESP_LOGW(TAG, "Recovery attempt %d failed - GPIO still stuck\n", attempt);
+        
+        // Exponential backoff between attempts
+        if (attempt < max_attempts) {
+            int delay_ms = 200 * attempt;
+            ESP_LOGI(TAG, "Waiting %dms before next attempt...\n", delay_ms);
+            vTaskDelay(pdMS_TO_TICKS(delay_ms));
+        }
+    }
+    
+    ESP_LOGE(TAG, "\n✗✗✗ I2C RECOVERY FAILED after %d attempts ✗✗✗\n", max_attempts);
+    ESP_LOGE(TAG, "Possible hardware issue:");
+    ESP_LOGE(TAG, "  1. MIPI DSI has permanent GPIO conflict");
+    ESP_LOGE(TAG, "  2. GT911 or ES8311 holding SDA LOW (power/reset issue)");
+    ESP_LOGE(TAG, "  3. External pull-up resistors too weak or missing");
+    ESP_LOGE(TAG, "  4. PCB short circuit on SDA line\n");
+    
+    return false;
 }
 #endif
 
@@ -497,30 +619,20 @@ sd_failed:
     panel_handle = init_jd9165_display();
     ESP_LOGI(TAG, "✓ Display ready (1024x600)");
     
-    // CRITICAL: Check I2C GPIO state after display init
+    // CRITICAL: Check I2C GPIO state after display init and attempt aggressive recovery
 #if ENABLE_I2C
     vTaskDelay(pdMS_TO_TICKS(100));
     bool gpio_healthy = check_i2c_gpio_state("after display init");
     
     if (!gpio_healthy) {
-        ESP_LOGW(TAG, "\n⚠ MIPI DSI display has disrupted I2C GPIO!");
-        ESP_LOGW(TAG, "Attempting I2C bus recovery...\n");
+        bool recovery_ok = aggressive_i2c_recovery(&bus_handle);
         
-        if (reinit_i2c_bus(&bus_handle) == ESP_OK) {
-            ESP_LOGI(TAG, "✓ I2C bus recovery successful");
-            
-            // Verify recovery worked
-            vTaskDelay(pdMS_TO_TICKS(100));
-            if (check_i2c_gpio_state("after I2C recovery")) {
-                ESP_LOGI(TAG, "✓ I2C GPIO confirmed healthy after recovery\n");
-            } else {
-                ESP_LOGE(TAG, "✗ I2C recovery FAILED - GPIO still stuck\n");
-            }
-        } else {
-            ESP_LOGE(TAG, "✗ I2C bus recovery FAILED\n");
+        if (!recovery_ok) {
+            ESP_LOGW(TAG, "\n⚠ WARNING: Continuing with potentially broken I2C bus");
+            ESP_LOGW(TAG, "Touch controller may not work properly\n");
         }
     } else {
-        ESP_LOGI(TAG, "✓ I2C GPIO remains healthy after display init\n");
+        ESP_LOGI(TAG, "✓ I2C GPIO remains healthy after display init (no recovery needed)\n");
     }
 #endif
 #else
