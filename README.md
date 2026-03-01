@@ -118,6 +118,83 @@ I (8503) GUITION_MAIN:    RSSI: -45 dBm
 > [!NOTE]
 > The `wifi_config.h` file is gitignored for security. Never commit your WiFi credentials to the repository.
 
+## RTC NTP Synchronization (Advanced)
+
+### RTC NTP Sync Test
+
+Test RTC synchronization with NTP server (requires WiFi connection):
+
+1. **Enable WiFi connection** (see WiFi Connection Test above)
+
+2. **Enable RTC NTP sync:**
+   ```c
+   // In main/feature_flags.h
+   #define ENABLE_RTC 1            // ✅ Enable RTC
+   #define ENABLE_RTC_NTP_SYNC 1   // ✅ Enable NTP sync test
+   #define ENABLE_WIFI_CONNECT 1   // ✅ Required for NTP
+   ```
+
+3. **Build and flash:**
+   ```bash
+   idf.py build flash monitor
+   ```
+
+**Test Workflow:**
+
+1. **Step 1/4**: Read current RTC time
+2. **Step 2/4**: Reset RTC to default (2000-01-01 00:00:00)
+3. **Step 3/4**: Synchronize with NTP server (pool.ntp.org)
+4. **Step 4/4**: Update RTC with NTP time
+
+**Expected Output:**
+```
+I (7868) GUITION_MAIN: ✓ WiFi connected!
+I (7868) GUITION_MAIN:    IP Address: 192.168.188.88
+
+I (7869) RTC_NTP: ========================================
+I (7870) RTC_NTP:    RTC NTP Sync Test
+I (7871) RTC_NTP: ========================================
+
+I (7872) RTC_NTP: Step 1/4: Read current RTC time
+I (7873) RTC_NTP: Current RTC: 2026-03-01 19:52:55
+
+I (7874) RTC_NTP: Step 2/4: Reset RTC to default time
+I (7875) RTC_NTP: Resetting RTC to default time (2000-01-01 00:00:00)...
+I (7876) RTC_NTP: ✓ RTC reset to: 2000-01-01 00:00:00
+I (7877) RTC_NTP: RTC after reset: 2000-01-01 00:00:00
+
+I (7878) RTC_NTP: Step 3/4: Synchronize with NTP server
+I (7879) RTC_NTP: Starting NTP time synchronization...
+I (7880) RTC_NTP: NTP Server: pool.ntp.org
+I (7881) RTC_NTP: Timezone: CET (UTC+1, DST auto)
+I (7882) RTC_NTP: Waiting for NTP sync (timeout: 10 seconds)...
+I (8456) RTC_NTP: NTP time synchronized!
+I (8456) RTC_NTP: ✓ NTP sync successful!
+I (8457) RTC_NTP: Current time: 2026-03-01 19:52:56 CET
+
+I (8458) RTC_NTP: Step 4/4: Update RTC with NTP time
+I (8459) RTC_NTP: Updating RTC with system time...
+I (8460) RTC_NTP: System time: 2026-03-01 19:52:56 (wday=6)
+I (8461) RTC_NTP: ✓ RTC updated successfully
+I (8462) RTC_NTP: RTC readback: 2026-03-01 19:52:56
+
+I (8463) RTC_NTP: ========================================
+I (8464) RTC_NTP:    RTC NTP Sync Test Complete
+I (8465) RTC_NTP: ========================================
+```
+
+**Features:**
+- **NTP Server**: pool.ntp.org (public NTP server pool)
+- **Timezone**: CET (UTC+1) with automatic DST adjustment
+- **Timeout**: 10 seconds for NTP synchronization
+- **Verification**: Reads back RTC time after update to confirm success
+
+**Use Cases:**
+- Initial RTC setup on first boot
+- Periodic time synchronization when WiFi is available
+- Recovery from RTC power loss (PON/VLF flags set)
+- Development/testing time synchronization
+
 ## How to use example
 
 ### Build and flash
@@ -234,3 +311,12 @@ If WiFi connection times out:
 2. Check WiFi signal strength (RSSI)
 3. Ensure router is 2.4GHz compatible (ESP32-C6 doesn't support 5GHz)
 4. Check `troubleshooting.md` for GPIO6 interrupt configuration
+
+### NTP sync timeout
+
+If NTP synchronization fails:
+1. Verify WiFi is connected (check IP address)
+2. Check internet connectivity
+3. Firewall may block NTP (UDP port 123)
+4. Try alternative NTP server (edit `rtc_ntp_sync.c`)
+5. Increase timeout in `sync_time_from_ntp()` call
