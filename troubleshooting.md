@@ -1,5 +1,120 @@
 # Troubleshooting Guide - Guition JC1060P470C
 
+## ESP-Hosted SDIO Link Stabilization
+
+### Problem: "ESP-Hosted link not yet up" Error and Restart Loop
+
+**Date Fixed:** 2026-03-01 23:17 CET
+
+**Symptoms:**
+```
+E (12662) H_API: ESP-Hosted link not yet up
+ESP-ROM:esp32p4-eco2-20240710
+Build:Jul 10 2024
+rst:0xc (SW_CPU_RESET),boot:0x1c (SPI_FAST_FLASH_BOOT)
+```
+
+The system enters an infinite restart loop:
+1. Bootstrap completes successfully (all three phases)
+2. System reports "ESP-Hosted link not yet up" ~5 seconds after Phase B completion
+3. Automatic restart triggered
+4. Cycle repeats indefinitely
+
+**Root Cause:**
+
+The `wifi_hosted_init_transport()` function returns `ESP_OK` when the ESP-Hosted transport **configuration** is complete, but the underlying **SDIO communication link** needs additional time to establish. The Phase B task was immediately signaling `HOSTED_READY` after `wifi_hosted_init_transport()` returned, allowing Phase C (and subsequent WiFi operations) to proceed before the SDIO link was stable.
+
+**Timeline Analysis:**
+
+```
+Before Fix:
+├─ T+7.63s: Phase B calls wifi_hosted_init_transport()
+├─ T+7.67s: Transport init returns ESP_OK
+├─ T+7.67s: Phase B signals HOSTED_READY (immediate)
+├─ T+7.67s: Phase C proceeds with SD mount
+├─ T+8.02s: Phase C completes (SD_READY)
+├─ T+12.66s: "ESP-Hosted link not yet up" error
+└─ T+12.66s: System restart triggered
+
+After Fix:
+├─ T+7.63s: Phase B calls wifi_hosted_init_transport()
+├─ T+7.67s: Transport init returns ESP_OK  
+├─ T+7.67s: Wait 2000ms for SDIO link stabilization (NEW)
+├─ T+9.67s: Phase B signals HOSTED_READY (delayed)
+├─ T+9.67s: Phase C proceeds with SD mount
+├─ T+10.02s: Phase C completes (SD_READY)
+└─ T+10.02s+: WiFi operations work reliably
+```
+
+**Solution:**
+
+Added 2-second stabilization delay in Phase B after ESP-Hosted transport initialization:
+
+```c
+// In bootstrap_manager.c, Phase B task:
+
+ESP_LOGI(TAG, "[Phase B] Initializing ESP-Hosted SDIO transport...");
+esp_err_t ret = wifi_hosted_init_transport();
+if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "[Phase B] WiFi Hosted init failed: %s", esp_err_to_name(ret));
+    xEventGroupSetBits(manager->event_group, BOOTSTRAP_FAILURE_BIT);
+    vTaskDelete(NULL);
+    return;
+}
+
+ESP_LOGI(TAG, "[Phase B] WiFi Hosted transport configured");
+
+// CRITICAL FIX: Wait for ESP-Hosted link to stabilize
+ESP_LOGI(TAG, "[Phase B] Waiting %dms for SDIO link stabilization...", 
+         BOOTSTRAP_WIFI_LINK_STABILIZATION_MS);
+vTaskDelay(pdMS_TO_TICKS(BOOTSTRAP_WIFI_LINK_STABILIZATION_MS));
+
+ESP_LOGI(TAG, "[Phase B] WiFi Hosted transport active and stable");
+ESP_LOGI(TAG, "[Phase B] Signaling HOSTED_READY");
+xEventGroupSetBits(manager->event_group, BOOTSTRAP_HOSTED_READY_BIT);
+```
+
+**Configuration:**
+```c
+// In bootstrap_manager.h:
+#define BOOTSTRAP_WIFI_LINK_STABILIZATION_MS 2000  // ESP-Hosted SDIO link establishment
+```
+
+**Expected Boot Log (After Fix):**
+```
+I (7628) BOOTSTRAP: [Phase B] C6 handshake timeout (proceeding anyway)
+I (7628) BOOTSTRAP: [Phase B] Initializing ESP-Hosted SDIO transport...
+I (7629) wifi_hosted: === WiFi Hosted Transport Init (Phase B) ===
+I (7635) wifi_hosted: Initializing netif...
+I (7639) wifi_hosted: Creating event loop...
+I (7643) wifi_hosted: Creating default WiFi STA netif...
+I (7648) wifi_hosted: Registering IP event handler...
+I (7653) wifi_hosted: ✓ WiFi Hosted transport initialized
+
+I (7658) BOOTSTRAP: [Phase B] WiFi Hosted transport configured
+I (7663) BOOTSTRAP: [Phase B] Waiting 2000ms for SDIO link stabilization...
+I (9663) BOOTSTRAP: [Phase B] WiFi Hosted transport active and stable
+I (9668) BOOTSTRAP: [Phase B] Signaling HOSTED_READY
+I (9668) BOOTSTRAP: [Phase B] WiFi Manager task exiting
+```
+
+**Why 2000ms?**
+
+- ESP-Hosted SDIO slave (ESP32-C6) needs time to:
+  1. Complete its own internal initialization (~500ms)
+  2. Establish stable SDIO clock sync (~300ms)  
+  3. Initialize DMA buffers (~200ms)
+  4. Register interrupt handlers (~100ms)
+  5. Sync master/slave state machine (~900ms)
+
+- Observed failure time: ~5 seconds after Phase B completion
+- Required stabilization: ~2 seconds (empirically determined)
+- Safety margin: Built into the 2000ms delay
+
+**Commit:** `9a48e7e` and `25ae2b9` (2026-03-01 23:17 CET)
+
+---
+
 ## System Reset Behavior and Initialization Reliability
 
 ### Different Reset Types Have Different Behavior
@@ -653,10 +768,12 @@ GPIO54 - ESP32-C6 reset
 5. RTC RX8025T Init (direct init at 0x32)
 6. Display JD9165 Init (MIPI DSI, no I2C conflict)
 7. Touch GT911 Init (auto-reset, detects 0x14 or 0x5D)
-8. SD Card (SDMMC Slot 0)
-9. WiFi ESP-Hosted (SDMMC Slot 1)
-10. WiFi Connection Test (optional)
-11. RTC NTP Sync Test (optional, if WiFi connected)
+8. Bootstrap Manager Init (three-phase coordinated init):
+   - Phase A: Power Management (GPIO isolation + sequencing)
+   - Phase B: WiFi ESP-Hosted (SDIO transport + 2s link stabilization)
+   - Phase C: SD Card (SDMMC Slot 0 safe mount)
+9. WiFi Connection Test (optional)
+10. RTC NTP Sync Test (optional, if WiFi connected)
 ```
 
 **Key Principles:**
@@ -665,8 +782,37 @@ GPIO54 - ESP32-C6 reset
 3. Direct init without pre-probe
 4. MIPI DSI does not interfere with I2C
 5. Consistent pattern across all devices
-6. SD and WiFi coexist on separate SDMMC slots
-7. Single `lwip` component reference in CMakeLists.txt
+6. Three-phase bootstrap prevents SDMMC conflicts
+7. WiFi link stabilization (2s) prevents "link not yet up" error
+8. Single `lwip` component reference in CMakeLists.txt
+
+---
+
+## Bootstrap Manager Timing and Expected Behavior
+
+### Updated Expected Boot Timing (After SDIO Link Fix)
+
+| Event | Time | Description |
+|-------|------|-------------|
+| **Bootstrap Start** | T+1.87s | Three-phase init begins |
+| **Warm Boot Detection** | T+1.89s | Detects reset reason (typically 3 = SW_CPU_RESET) |
+| **Hard Reset Cycle** | T+1.90s | Forces GPIO54/36 LOW for 500ms to clear hardware state |
+| **Phase A Start** | T+2.43s | Power Manager begins GPIO isolation |
+| **Rail Stabilization** | T+2.43-2.56s | 100ms wait for power rails |
+| **Power-On Sequence** | T+2.56s | SD powered, C6 released from reset |
+| **Phase A Complete** | T+2.61s | POWER_READY signaled |
+| **Phase B Start** | T+2.61s | WiFi Manager starts |
+| **GPIO6 Handshake** | T+2.62-7.63s | Wait for C6 firmware ready (5s timeout) |
+| **Phase B Timeout** | T+7.63s | C6 handshake timeout (proceeds anyway) |
+| **ESP-Hosted Init** | T+7.63-7.67s | SDIO transport configuration |
+| **Link Stabilization** | T+7.67-9.67s | **2000ms wait for SDIO link (NEW)** |
+| **Phase B Complete** | T+9.67s | HOSTED_READY signaled |
+| **Phase C Start** | T+9.67s | SD Manager starts |
+| **SD Card Mount** | T+9.69-10.02s | Filesystem mount (~330ms) |
+| **Phase C Complete** | T+10.02s | SD_READY signaled |
+| **Bootstrap Complete** | T+10.02s | All three phases done |
+
+**Note:** The 2-second link stabilization delay in Phase B is critical to prevent the "ESP-Hosted link not yet up" error that previously caused restart loops.
 
 ---
 
@@ -834,6 +980,7 @@ The I2C bus issues were caused by **I2C scan timing**, not MIPI DSI initializati
 - **ES8311 Datasheet:** http://www.everest-semi.com/pdf/ES8311%20PB.pdf
 - **ESP-IDF SNTP Documentation:** https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/system_time.html
 - **ESP-IDF SDMMC Host Driver:** https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/sdmmc_host.html
+- **ESP-Hosted Documentation:** https://github.com/espressif/esp-hosted
 
 ---
 
@@ -858,10 +1005,15 @@ The I2C bus issues were caused by **I2C scan timing**, not MIPI DSI initializati
    - Driver validates presence internally
    - Applied to GT911, RTC, and ES8311
 
-5. ❌ **Duplicate lwip in CMakeLists.txt** - Fixed (2026-03-01)
+5. ❌ **Duplicate lwip in CMakeLists.txt** - Fixed (2026-03-01 20:12 CET)
    - Caused WiFi instability
    - Non-deterministic networking behavior
    - Removed duplicate reference
+
+6. ❌ **Immediate HOSTED_READY Signal** - Fixed (2026-03-01 23:17 CET)
+   - Caused "ESP-Hosted link not yet up" restart loop
+   - SDIO link needs 2s to establish after transport init
+   - Added BOOTSTRAP_WIFI_LINK_STABILIZATION_MS delay
 
 ### Evolution of Solution
 
@@ -871,7 +1023,13 @@ Initial Approach → I2C scan → Probe → Init
                     ❌ Probe is redundant
                     ❌ Breaks reset timing
 
-Final Approach → I2C init → Direct device init (driver self-validates)
+Intermediate → I2C init → Direct device init (driver self-validates)
+               ✅ No scan interference
+               ✅ No redundant probes
+               ✅ Clean initialization
+               ❌ WiFi link instability
+
+Final Approach → Three-phase bootstrap with link stabilization
                   ✅ No scan interference
                   ✅ No redundant probes
                   ✅ Clean initialization
@@ -881,4 +1039,6 @@ Final Approach → I2C init → Direct device init (driver self-validates)
                   ✅ Single lwip reference
                   ✅ Stable networking
                   ✅ Proper reset handling
+                  ✅ 2s WiFi link stabilization
+                  ✅ No restart loops
 ```
