@@ -7,7 +7,7 @@
 - **Display**: JD9165 MIPI DSI 1024x600
 - **Touch**: GT911 I2C
 - **Audio**: ES8311 I2C
-- **RTC**: PCF8563 I2C
+- **RTC**: RX8025T I2C
 - **Storage**: SD Card (SDMMC Slot 0)
 - **WiFi**: ESP-Hosted (SDMMC Slot 1)
 
@@ -137,6 +137,51 @@ I (8854) GUITION_MAIN: ✓ WiFi scan successful - ESP-Hosted is working!  ← SU
 
 ---
 
+### ❌ Problem 3: RTC Not Found on I2C Bus 0
+
+**Commit**: `50b399a` - "feat: add second I2C bus (I2C_NUM_1) for RTC - GPIO10+12"
+
+**Symptoms**:
+```
+========== I2C BUS 0 SCAN ==========
+[0x14] ✓ GT911 Touch
+[0x18] ✓ ES8311 Audio Codec
+Total devices: 2
+
+? 0x32 = RX8025T RTC (expected but not found)
+```
+
+**Root Cause**:
+- RTC RX8025T uses a **separate I2C bus**
+- Schematic shows RTC on GPIO12 (SDA) + GPIO10 (SCL)
+- Main I2C bus is GPIO7 (SDA) + GPIO8 (SCL)
+- RTC cannot be detected on wrong bus!
+
+**Solution**:
+- Added second I2C controller (I2C_NUM_1)
+- Configured separate bus for RTC
+- Both buses work independently with zero interference
+
+**Code**:
+```c
+// I2C Bus 0: Audio + Touch
+#define I2C0_MASTER_SDA_IO 7
+#define I2C0_MASTER_SCL_IO 8
+
+// I2C Bus 1: RTC  
+#define I2C1_MASTER_SDA_IO 12
+#define I2C1_MASTER_SCL_IO 10
+
+// Initialize both buses
+i2c_master_bus_handle_t bus0_handle;
+ESP_ERROR_CHECK(i2c_new_master_bus(&i2c0_bus_config, &bus0_handle));
+
+i2c_master_bus_handle_t bus1_handle;
+ESP_ERROR_CHECK(i2c_new_master_bus(&i2c1_bus_config, &bus1_handle));
+```
+
+---
+
 ## Working Configuration Summary
 
 ### Init Sequence (CRITICAL ORDER)
@@ -144,24 +189,26 @@ I (8854) GUITION_MAIN: ✓ WiFi scan successful - ESP-Hosted is working!  ← SU
 ```
 1. NVS Flash Init
 2. SD Card Init:
-   - Power ON via GPIO45 (250ms delay)
+   - Power ON via GPIO36/45 (250ms delay)
    - sdmmc_host_init_slot(SLOT_0) - NO DEINIT!
    - esp_vfs_fat_sdmmc_mount() with dummy init/deinit
 3. WiFi/ESP-Hosted Init:
    - init_wifi() via ESP-Hosted
    - WiFi scan test
 4. Hardware Reset (GPIO toggles for I2C devices)
-5. I2C Bus Init (GPIO 7+8)
+5. I2C Bus Init:
+   - Bus 0: GPIO7+8 (Audio + Touch)
+   - Bus 1: GPIO12+10 (RTC)
 6. Display Init (MIPI DSI)
-7. Touch Init (GT911 via I2C)
+7. Touch Init (GT911 via I2C Bus 0)
 ```
 
 ### Feature Flags (feature_flags.h)
 
 ```c
 #define ENABLE_SD_CARD 1  // ✅ Working
-#define ENABLE_WIFI 1     // ✅ Working
-#define ENABLE_I2C 1      // ✅ Working
+#define ENABLE_WIFI 1     // ✅ Working  
+#define ENABLE_I2C 1      // ✅ Working (2 buses)
 #define ENABLE_DISPLAY 0  // Not tested yet
 #define ENABLE_TOUCH 0    // Not tested yet
 ```
@@ -248,47 +295,95 @@ sdmmc_slot_config_t slot_config = {
 
 ---
 
-## Hardware Pin Mapping
+## Complete Hardware Pin Mapping
 
-### SDMMC Slot 0 (SD Card)
-```
-CLK  = GPIO43
-CMD  = GPIO44
-D0   = GPIO39
-D1   = GPIO40
-D2   = GPIO41
-D3   = GPIO42
-PWR  = GPIO45 (power enable)
-```
+### Controllo Sistema
 
-### SDMMC Slot 1 (ESP-Hosted - C6)
-```
-CLK  = GPIO18
-CMD  = GPIO19
-D0   = GPIO14
-D1   = GPIO15
-D2   = GPIO16
-D3   = GPIO17
-RST  = GPIO54 (C6 reset)
-```
+| Funzione | Pin ESP32-P4 | Note Hardware |
+|----------|--------------|---------------|
+| Reset ESP32-C6 | GPIO 54 | Collegato a C6_CHIP_PU; attivo LOW |
+| Power SD Card | GPIO 36/45 | Controlla il MOSFET Q1 per alimentare TF_VCC |
 
-### I2C Bus (I2C_NUM_0)
-```
-SDA = GPIO7
-SCL = GPIO8
+### Display (MIPI DSI)
 
-Devices:
-- 0x18: ES8311 (audio codec)
-- 0x51: PCF8563 (RTC)
-- 0x5D: GT911 (touch controller)
-```
+| Funzione | Pin ESP32-P4 | Note Hardware |
+|----------|--------------|---------------|
+| Backlight PWM | GPIO 23 | Segnale LCD_PWM per la retroilluminazione |
+| Reset Display | GPIO 27 | Segnale LCD_RST mappato sul connettore FPC |
+| DSI Clock | GPIO 34, 35 | D-PHY Clock pair (differential) |
+| DSI Data Lane 0 | GPIO 36, 37 | D-PHY Data pair 0 (differential) |
+| DSI Data Lane 1 | GPIO 38, 39 | D-PHY Data pair 1 (differential) |
 
-### MIPI DSI Display
-```
-Panel: JD9165
-Resolution: 1024x600
-Interface: MIPI DSI 4-lane
-```
+### Bus I2C (Due controller separati)
+
+#### I2C Bus 0 (Audio + Touch)
+
+| Funzione | Pin ESP32-P4 | Note Hardware |
+|----------|--------------|---------------|
+| SDA (Dati) | GPIO 7 | Condiviso tra GT911 e ES8311 |
+| SCL (Clock) | GPIO 8 | Richiede resistenze di pull-up esterne (2.2kΩ tipiche) |
+
+**Devices su Bus 0:**
+- `0x14`: GT911 Touch Controller
+- `0x18`: ES8311 Audio Codec
+
+#### I2C Bus 1 (RTC)
+
+| Funzione | Pin ESP32-P4 | Note Hardware |
+|----------|--------------|---------------|
+| SDA (Dati) | GPIO 12 | Bus dedicato per RTC |
+| SCL (Clock) | GPIO 10 | Separato dal bus principale |
+
+**Devices su Bus 1:**
+- `0x32`: RX8025T RTC (U9)
+
+### Touch Screen (GT911)
+
+| Funzione | Pin ESP32-P4 | Note Hardware |
+|----------|--------------|---------------|
+| Interrupt (INT) | GPIO 21 | Pin TOUCH_INT per gestire gli eventi di tocco |
+| Reset (RST) | GPIO 22 | Pin TOUCH_RST usato per definire l'indirizzo I2C |
+
+**Indirizzo I2C:**
+- INT=HIGH durante reset → Indirizzo 0x14
+- INT=LOW durante reset → Indirizzo 0x5D (default)
+
+### SD Card (Slot 0)
+
+| Funzione | Pin ESP32-P4 | Note Hardware |
+|----------|--------------|---------------|
+| CLK | GPIO 43 | Clock SDMMC |
+| CMD | GPIO 44 | Command line |
+| Data D0 | GPIO 39 | Data bit 0 |
+| Data D1 | GPIO 40 | Data bit 1 |
+| Data D2 | GPIO 41 | Data bit 2 |
+| Data D3 | GPIO 42 | Data bit 3 |
+| Power Enable | GPIO 36/45 | Alimentazione controllata |
+
+**Note**: Bus dati a 4-bit per alta velocità
+
+### ESP-Hosted WiFi (Slot 1 - SDIO)
+
+| Funzione | Pin ESP32-P4 | Note Hardware |
+|----------|--------------|---------------|
+| CLK | GPIO 18 | Clock SDIO |
+| CMD | GPIO 19 | Command line |
+| Data D0 | GPIO 14 | Data bit 0 |
+| Data D1 | GPIO 15 | Data bit 1 |
+| Data D2 | GPIO 16 | Data bit 2 |
+| Data D3 | GPIO 17 | Data bit 3 |
+| C6 Reset | GPIO 54 | Reset ESP32-C6 coprocessor |
+
+**Note**: Collegamento interno SDIO tra P4 e C6
+
+### Debug & Flash
+
+| Funzione | Pin ESP32-P4 | Note Hardware |
+|----------|--------------|---------------|
+| Console UART TX | GPIO 37 | UART0 TX per monitor seriale |
+| Console UART RX | GPIO 38 | UART0 RX per monitor seriale |
+| Flash SPI | GPIO 27-33 | Pin dedicati per la memoria Flash esterna |
+| Boot Mode | GPIO 0 | Modalità boot (HIGH=normal, LOW=download) |
 
 ---
 
@@ -297,20 +392,26 @@ Interface: MIPI DSI 4-lane
 - [x] SD Card Mount (7580 MB SanDisk)
 - [x] WiFi/ESP-Hosted Init
 - [x] WiFi Scan (networks detected)
-- [x] I2C Bus Init
-- [ ] I2C Device Scan (GT911/ES8311/RTC)
+- [x] I2C Bus 0 Init (Audio + Touch)
+- [x] I2C Bus 1 Init (RTC)
+- [x] I2C Bus 0 Scan (GT911 + ES8311 found)
+- [ ] I2C Bus 1 Scan (RX8025T RTC)
 - [ ] Display Init (JD9165)
 - [ ] Display Test Pattern (RGB)
 - [ ] Touch Init (GT911)
 - [ ] Touch Input Test
+- [ ] RTC Read/Write
 
 ---
 
 ## References
 
 - [ESP-IDF SDMMC Host Driver](https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/sdmmc_host.html)
+- [ESP-IDF I2C Master Driver](https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/i2c.html)
 - [ESP-Hosted Documentation](https://github.com/espressif/esp-hosted)
 - [ESP32-P4 Datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-p4_datasheet_en.pdf)
+- [GT911 Touch Controller Datasheet](https://www.displayfuture.com/Display/datasheet/controller/GT911.pdf)
+- [RX8025T RTC Datasheet](https://www.uugear.com/doc/datasheet/RX8025T.pdf)
 
 ---
 
@@ -326,6 +427,8 @@ git log --oneline --graph --all
 1dd8fcb - fix: remove deinit_slot - only reinit slot 0 (preserve ESP-Hosted state) ✅ WORKING
 7162db3 - test: enable I2C + scan (no halt) with SD+WiFi working
 b5e40f6 - fix: remove halt after I2C scan - system continues after scan
+50b399a - feat: add second I2C bus (I2C_NUM_1) for RTC - GPIO10+12 ✅ WORKING
+4007bfa - docs: update RTC info - RX8025T on separate I2C bus (GPIO10+12)
 ```
 
 ---
