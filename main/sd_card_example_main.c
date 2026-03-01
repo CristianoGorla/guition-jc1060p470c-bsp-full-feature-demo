@@ -74,7 +74,7 @@ void test_display_fill_color(uint16_t color)
     ESP_LOGI(TAG, "Display fill complete");
 }
 
-// Test RAW Display: pattern RGB
+// Test RAW Display: pattern RGB (versione più lenta con più linee per batch)
 void test_display_rgb_pattern(void)
 {
     if (!panel_handle) {
@@ -92,30 +92,32 @@ void test_display_rgb_pattern(void)
     const int width = 1024;
     const int height = 600;
     const int stripe_width = width / 3;
+    const int lines_per_batch = 10;  // Disegna 10 linee alla volta
     
-    uint16_t *line_buffer = heap_caps_malloc(width * sizeof(uint16_t), MALLOC_CAP_DMA);
+    uint16_t *line_buffer = heap_caps_malloc(width * lines_per_batch * sizeof(uint16_t), MALLOC_CAP_DMA);
     if (!line_buffer) {
         ESP_LOGE(TAG, "Failed to allocate line buffer");
         return;
     }
 
-    // Prepara linea con pattern RGB
-    for (int x = 0; x < width; x++) {
-        if (x < stripe_width) {
-            line_buffer[x] = RED;
-        } else if (x < stripe_width * 2) {
-            line_buffer[x] = GREEN;
-        } else {
-            line_buffer[x] = BLUE;
+    // Prepara buffer con pattern RGB (tutte le linee uguali)
+    for (int i = 0; i < lines_per_batch; i++) {
+        for (int x = 0; x < width; x++) {
+            int idx = i * width + x;
+            if (x < stripe_width) {
+                line_buffer[idx] = RED;
+            } else if (x < stripe_width * 2) {
+                line_buffer[idx] = GREEN;
+            } else {
+                line_buffer[idx] = BLUE;
+            }
         }
     }
 
-    // Disegna tutte le linee con delay per DMA
-    for (int y = 0; y < height; y++) {
-        esp_lcd_panel_draw_bitmap(panel_handle, 0, y, width, y + 1, line_buffer);
-        if (y % 10 == 0) {  // Delay ogni 10 linee
-            vTaskDelay(pdMS_TO_TICKS(1));
-        }
+    // Disegna tutte le linee a batch
+    for (int y = 0; y < height; y += lines_per_batch) {
+        esp_lcd_panel_draw_bitmap(panel_handle, 0, y, width, y + lines_per_batch, line_buffer);
+        vTaskDelay(pdMS_TO_TICKS(5));  // Stesso delay del fill
     }
 
     free(line_buffer);
