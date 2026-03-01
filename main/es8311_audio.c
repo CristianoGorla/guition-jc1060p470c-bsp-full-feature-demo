@@ -5,6 +5,9 @@
 
 static const char *TAG = "ES8311";
 
+// Power Amplifier control pin (from GUITION board BSP)
+#define ES8311_PA_POWER_PIN GPIO_NUM_20
+
 static esp_err_t es8311_write_reg(i2c_master_bus_handle_t bus_handle, uint8_t reg_addr, uint8_t data)
 {
     i2c_device_config_t dev_cfg = {
@@ -63,25 +66,24 @@ esp_err_t es8311_init(i2c_master_bus_handle_t bus_handle)
         return ESP_ERR_INVALID_ARG;
     }
 
-    ESP_LOGI(TAG, "Initializing ES8311 audio codec at 0x%02X...", ES8311_I2C_ADDR);
+    ESP_LOGI(TAG, "Initializing ES8311 audio codec...");
+    ESP_LOGI(TAG, "I2C Address: 0x%02X (direct init, no pre-probe)", ES8311_I2C_ADDR);
 
-    // Test if codec responds
-    esp_err_t ret = i2c_master_probe(bus_handle, ES8311_I2C_ADDR, 500);
+    // Direct init - validate presence by reading chip ID
+    uint8_t chip_id = 0;
+    esp_err_t ret = es8311_read_chip_id(bus_handle, &chip_id);
+    
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "ES8311 does not respond to probe (0x%x)", ret);
-        ESP_LOGW(TAG, "This is OK if codec is not powered or not populated");
+        ESP_LOGE(TAG, "Failed to read chip ID (0x%x)", ret);
+        ESP_LOGW(TAG, "ES8311 not responding (may not be powered or populated)");
         return ret;
     }
 
-    ESP_LOGI(TAG, "\u2713 ES8311 responds to I2C probe!");
+    ESP_LOGI(TAG, "✓ ES8311 responding on I2C!");
+    ESP_LOGI(TAG, "ES8311 Chip ID: 0x%02X (expected: 0x83)", chip_id);
 
-    // Read chip ID
-    uint8_t chip_id = 0;
-    ret = es8311_read_chip_id(bus_handle, &chip_id);
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "ES8311 Chip ID: 0x%02X", chip_id);
-    } else {
-        ESP_LOGW(TAG, "Failed to read chip ID (0x%x)", ret);
+    if (chip_id != 0x83) {
+        ESP_LOGW(TAG, "Unexpected chip ID (expected 0x83, got 0x%02X)", chip_id);
     }
 
     // Soft reset codec to clear any stuck state
@@ -102,14 +104,15 @@ esp_err_t es8311_init(i2c_master_bus_handle_t bus_handle)
 
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    // Set codec to power-down mode to avoid interfering with I2C bus
+    // Set codec to power-down mode (safe state, releases I2C bus)
     ESP_LOGI(TAG, "Setting codec to power-down mode...");
     ret = es8311_write_reg(bus_handle, ES8311_SYSTEM_REG, 0x00);  // Power down
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to write system register (0x%x)", ret);
     }
 
-    ESP_LOGI(TAG, "\u2713 ES8311 initialized successfully (powered down, I2C released)");
+    ESP_LOGI(TAG, "✓ ES8311 initialized successfully (powered down, safe state)");
+    ESP_LOGI(TAG, "Note: PA power pin GPIO%d not configured (needs I2S setup)", ES8311_PA_POWER_PIN);
     
     return ESP_OK;
 }

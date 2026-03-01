@@ -20,8 +20,8 @@
 #define ENABLE_I2C_SCAN 0 // Scan I2C bus (DISABLED - interferes with device reset)
 
 // ========== AUDIO CODEC ==========
-#define ENABLE_AUDIO 0 // ES8311 audio codec
-#define DEBUG_AUDIO 0  // Detailed audio logs
+#define ENABLE_AUDIO 1 // ES8311 audio codec (I2C init only)
+#define DEBUG_AUDIO 1  // Detailed audio logs
 
 // ========== RTC ==========
 #define ENABLE_RTC 1         // RX8025T RTC (direct init at 0x32)
