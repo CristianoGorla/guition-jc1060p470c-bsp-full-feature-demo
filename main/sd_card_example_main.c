@@ -64,9 +64,10 @@ void test_display_fill_color(uint16_t color)
 
     ESP_LOGI(TAG, "Filling display with color 0x%04X...", color);
 
-    // Scrivi tutte le linee
+    // Scrivi tutte le linee con delay per DMA
     for (int y = 0; y < height; y += buffer_lines) {
         esp_lcd_panel_draw_bitmap(panel_handle, 0, y, width, y + buffer_lines, line_buffer);
+        vTaskDelay(pdMS_TO_TICKS(5)); // Aspetta DMA
     }
 
     free(line_buffer);
@@ -109,9 +110,12 @@ void test_display_rgb_pattern(void)
         }
     }
 
-    // Disegna tutte le linee
+    // Disegna tutte le linee con delay per DMA
     for (int y = 0; y < height; y++) {
         esp_lcd_panel_draw_bitmap(panel_handle, 0, y, width, y + 1, line_buffer);
+        if (y % 10 == 0) {  // Delay ogni 10 linee
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
     }
 
     free(line_buffer);
