@@ -16,9 +16,21 @@ esp_lcd_touch_handle_t init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
 {
     ESP_LOGI(TAG, "Initializing GT911 touch controller");
 
-    // Usa la macro ESP-IDF standard per GT911 (gestisce automaticamente address)
+    // Configurazione I2C manuale con frequenza valida (400kHz)
     esp_lcd_panel_io_handle_t tp_io_handle = NULL;
-    esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG();
+    esp_lcd_panel_io_i2c_config_t tp_io_config = {
+        .dev_addr = ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS,
+        .on_color_trans_done = NULL,
+        .user_ctx = NULL,
+        .control_phase_bytes = 1,
+        .lcd_cmd_bits = 16,  // GT911 usa 16-bit register address
+        .lcd_param_bits = 8,
+        .dc_bit_offset = 0,
+        .flags = {
+            .disable_control_phase = 0,
+        },
+        .scl_speed_hz = 400000,  // 400kHz - frequenza valida per I2C
+    };
     
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c_v2(i2c_bus, &tp_io_config, &tp_io_handle));
 
