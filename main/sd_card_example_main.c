@@ -21,6 +21,11 @@
 #include "i2c_utils.h"
 #include "esp_hosted_wifi.h"
 
+#if ENABLE_WIFI && ENABLE_WIFI_CONNECT
+// Load WiFi credentials from wifi_config.h (gitignored)
+#include "wifi_config.h"
+#endif
+
 static const char *TAG = "GUITION_MAIN";
 
 // I2C Bus (shared: ES8311 + GT911 + RTC)
@@ -379,11 +384,43 @@ sd_failed:
     
     vTaskDelay(pdMS_TO_TICKS(2000));
     
+#if ENABLE_WIFI_CONNECT
+    // Test WiFi connection (requires wifi_config.h with SSID/password)
+    LOG_WIFI(TAG, "=== WiFi Connection Test ===");
+    LOG_WIFI(TAG, "Connecting to: %s", WIFI_SSID);
+    
+    wifi_connect(WIFI_SSID, WIFI_PASSWORD);
+    LOG_WIFI(TAG, "Waiting for IP address (15s timeout)...");
+    
+    wait_for_ip();
+    
+    if (check_if_already_has_ip()) {
+        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        esp_netif_ip_info_t ip;
+        
+        if (netif && esp_netif_get_ip_info(netif, &ip) == ESP_OK) {
+            LOG_WIFI(TAG, "✓ WiFi connected!");
+            LOG_WIFI(TAG, "   IP Address: " IPSTR, IP2STR(&ip.ip));
+            LOG_WIFI(TAG, "   Netmask:    " IPSTR, IP2STR(&ip.netmask));
+            LOG_WIFI(TAG, "   Gateway:    " IPSTR "\n", IP2STR(&ip.gw));
+            
+            // Get signal strength (RSSI)
+            wifi_ap_record_t ap_info;
+            if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+                LOG_WIFI(TAG, "   RSSI: %d dBm\n", ap_info.rssi);
+            }
+        }
+    } else {
+        ESP_LOGW(TAG, "WiFi connection timeout\n");
+    }
+#else
+    // Simple scan test (default)
     if (do_wifi_scan_and_check(NULL)) {
         LOG_WIFI(TAG, "✓ WiFi scan successful\n");
     } else {
         ESP_LOGW(TAG, "WiFi scan returned no networks\n");
     }
+#endif
 #else
     ESP_LOGI(TAG, "WiFi disabled by feature flags\n");
 #endif
