@@ -10,7 +10,7 @@
 
 static const char *TAG = "JD9165_GUITION";
 
-// Init sequence completa dal BSP vendor
+// Init sequence completa dal BSP vendor - SPOSTATA FUORI DALLA FUNZIONE
 static const jd9165_lcd_init_cmd_t lcd_init_cmds[] = {
     {0x30, (uint8_t[]){0x00}, 1, 0},
     {0xF7, (uint8_t[]){0x49, 0x61, 0x02, 0x00}, 4, 0},
