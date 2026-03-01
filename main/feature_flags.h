@@ -2,49 +2,49 @@
 #define FEATURE_FLAGS_H
 
 /*
- * Feature Flags - Abilita/Disabilita periferiche e debug
- * Imposta a 1 per abilitare, 0 per disabilitare
+ * Feature Flags - Enable/Disable peripherals and debug
+ * Set to 1 to enable, 0 to disable
  */
 
 // ========== SD CARD ==========
-#define ENABLE_SD_CARD 0 // SD card mount (DISABILITATO)
-#define DEBUG_SD_CARD 0  // Log dettagliati SD card
+#define ENABLE_SD_CARD 0 // SD card mount
+#define DEBUG_SD_CARD 0  // Detailed SD logs
 
 // ========== WIFI/ESP-HOSTED ==========
-#define ENABLE_WIFI 0 // ESP-Hosted WiFi (DISABILITATO)
-#define DEBUG_WIFI 0  // Log dettagliati WiFi
+#define ENABLE_WIFI 0 // ESP-Hosted WiFi via C6
+#define DEBUG_WIFI 0  // Detailed WiFi logs
 
 // ========== I2C BUS ==========
-#define ENABLE_I2C 1      // I2C bus initialization (ATTIVO per touch)
-#define DEBUG_I2C 1       // Log dettagliati I2C
-#define ENABLE_I2C_SCAN 1 // Scan bus I2C
+#define ENABLE_I2C 1      // I2C bus (required for Touch/Audio/RTC)
+#define DEBUG_I2C 1       // Detailed I2C logs
+#define ENABLE_I2C_SCAN 1 // Scan I2C bus for devices
 
 // ========== AUDIO CODEC ==========
-#define ENABLE_AUDIO 0 // ES8311 audio codec (DISABILITATO)
-#define DEBUG_AUDIO 0  // Log dettagliati audio
+#define ENABLE_AUDIO 0 // ES8311 audio codec
+#define DEBUG_AUDIO 0  // Detailed audio logs
 
 // ========== RTC ==========
-#define ENABLE_RTC 0         // RX8025T RTC (DISABILITATO - corrompe il bus)
-#define DEBUG_RTC 0          // Log dettagliati RTC
-#define ENABLE_RTC_TEST 0    // Test lettura/scrittura RTC
+#define ENABLE_RTC 0         // RX8025T RTC
+#define DEBUG_RTC 0          // Detailed RTC logs
+#define ENABLE_RTC_TEST 0    // Test RTC read/write
 #define ENABLE_RTC_HW_TEST 0 // Hardware diagnostic
 
 // ========== DISPLAY ==========
-#define ENABLE_DISPLAY 1      // JD9165 MIPI DSI display (ATTIVO!)
-#define DEBUG_DISPLAY 1       // Log dettagliati display
-#define ENABLE_DISPLAY_TEST 1 // Test pattern RGB (ATTIVO!)
+#define ENABLE_DISPLAY 1      // JD9165 MIPI DSI display (1024x600)
+#define DEBUG_DISPLAY 1       // Detailed display logs
+#define ENABLE_DISPLAY_TEST 1 // RGB test pattern
 
 // ========== TOUCH ==========
-#define ENABLE_TOUCH 1      // GT911 touch (ATTIVO!)
-#define DEBUG_TOUCH 1       // Log dettagliati touch
-#define ENABLE_TOUCH_TEST 1 // Test touch input (ATTIVO!)
+#define ENABLE_TOUCH 1      // GT911 capacitive touch
+#define DEBUG_TOUCH 1       // Detailed touch logs
+#define ENABLE_TOUCH_TEST 1 // Touch input test (continuous)
 
 // ========== NVS ==========
-#define ENABLE_NVS 1 // NVS Flash storage (serve per LVGL)
-#define DEBUG_NVS 0  // Log dettagliati NVS
+#define ENABLE_NVS 1 // NVS Flash (required for some peripherals)
+#define DEBUG_NVS 0  // Detailed NVS logs
 
 /*
- * Helper macros per log condizionali
+ * Helper macros for conditional logging
  */
 #if DEBUG_SD_CARD
 #define LOG_SD(tag, format, ...) ESP_LOGI(tag, format, ##__VA_ARGS__)
