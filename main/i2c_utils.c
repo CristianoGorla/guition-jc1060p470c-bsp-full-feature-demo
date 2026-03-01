@@ -5,21 +5,7 @@
 
 static const char *TAG = "I2C_SCAN";
 
-// Known I2C device addresses to scan
-// ESP32-P4 ha problemi con full scan, scansiona solo range sicuri
-static const uint8_t scan_addresses[] = {
-    // Touch controllers
-    0x14, 0x5D, 0x38,
-    // Audio
-    0x18,
-    // RTC range
-    0x32, 0x51, 0x68,
-    // Sensors
-    0x48, 0x6F, 0x76, 0x77,
-    // Display
-    0x3C,
-};
-
+// Known I2C device addresses
 static const struct {
     uint8_t addr;
     const char *name;
@@ -45,18 +31,20 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
         return;
     }
 
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "   I2C BUS SCANNER");
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "Scanning known I2C addresses...");
-    ESP_LOGI(TAG, "Note: ESP32-P4 I2C has issues with full scan");
-    ESP_LOGI(TAG, "");
+    printf("\n");
+    printf("\033[36m========================================\033[0m\n");
+    printf("\033[36m   I2C BUS SCANNER (Full Range)\033[0m\n");
+    printf("\033[36m========================================\033[0m\n");
+    ESP_LOGI(TAG, "Scanning 0x08 to 0x77...");
+    printf("\n");
 
     int devices_found = 0;
-    int num_addresses = sizeof(scan_addresses) / sizeof(scan_addresses[0]);
+    int critical_errors = 0;
+    uint8_t critical_addresses[128];
+    int critical_count = 0;
 
-    for (int idx = 0; idx < num_addresses; idx++) {
-        uint8_t addr = scan_addresses[idx];
+    // Scan completo di tutti gli indirizzi validi
+    for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
         
         i2c_device_config_t dev_cfg = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -74,10 +62,10 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
             i2c_master_bus_rm_device(dev_handle);
             
             if (ret == ESP_OK || ret == ESP_ERR_TIMEOUT) {
+                // Device found!
                 devices_found++;
                 
-                // Cerca nome
-                const char *device_name = "Unknown device";
+                const char *device_name = NULL;
                 for (int i = 0; i < sizeof(known_devices) / sizeof(known_devices[0]); i++) {
                     if (known_devices[i].addr == addr) {
                         device_name = known_devices[i].name;
@@ -85,22 +73,48 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
                     }
                 }
                 
-                printf("\033[32m[0x%02X] ✓ %s\033[0m\n", addr, device_name);
+                if (device_name) {
+                    printf("\033[32m[0x%02X] ✓ %s\033[0m\n", addr, device_name);
+                } else {
+                    printf("\033[32m[0x%02X] ✓ Unknown device\033[0m\n", addr);
+                }
+                
+            } else if (ret == ESP_ERR_INVALID_STATE) {
+                // INVALID_STATE - possibile problema critico
+                critical_errors++;
+                if (critical_count < 128) {
+                    critical_addresses[critical_count++] = addr;
+                }
             }
+            // ESP_ERR_NOT_FOUND = silenzioso (nessun device)
         }
         
-        vTaskDelay(pdMS_TO_TICKS(50)); // Delay più lungo per sicurezza
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "========================================");
-    printf("\033[32mDevices found: %d / %d addresses scanned\033[0m\n", devices_found, num_addresses);
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "");
+    printf("\n");
+    printf("\033[36m========================================\033[0m\n");
+    printf("\033[32mDevices found: %d\033[0m\n", devices_found);
     
-    ESP_LOGI(TAG, "Board devices:");
-    ESP_LOGI(TAG, "  0x14 = GT911 Touch (this board config)");
-    ESP_LOGI(TAG, "  0x18 = ES8311 Audio Codec");
+    if (critical_errors > 0) {
+        printf("\033[33mINVALID_STATE errors: %d\033[0m\n", critical_errors);
+        printf("\033[33mCritical addresses: \033[0m");
+        for (int i = 0; i < critical_count && i < 20; i++) {
+            printf("0x%02X ", critical_addresses[i]);
+            if (i == 19 && critical_count > 20) {
+                printf("... (+%d more)", critical_count - 20);
+                break;
+            }
+        }
+        printf("\n");
+    }
+    
+    printf("\033[36m========================================\033[0m\n");
+    printf("\n");
+    
+    ESP_LOGI(TAG, "Expected devices on this board:");
+    ESP_LOGI(TAG, "  0x14 = GT911 Touch");
+    ESP_LOGI(TAG, "  0x18 = ES8311 Audio");
     ESP_LOGI(TAG, "  0x32 = RX8025T RTC");
-    ESP_LOGI(TAG, "");
+    printf("\n");
 }
