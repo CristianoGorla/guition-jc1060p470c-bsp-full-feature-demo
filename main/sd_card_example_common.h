@@ -6,6 +6,8 @@
 #ifndef __SD_CARD_EXAMPLE_COMMON_H__
 #define __SD_CARD_EXAMPLE_COMMON_H__
 
+#define APP_VERSION "1.0.0-beta"
+
 #define EXAMPLE_MAX_CHAR_SIZE    64
 
 // enable this to perform Wi-Fi functions in example
