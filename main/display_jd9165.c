@@ -110,7 +110,7 @@ static esp_err_t enable_dsi_phy_power(void)
     return ESP_OK;
 }
 
-void init_jd9165_display(void)
+esp_lcd_panel_handle_t init_jd9165_display(void)
 {
     ESP_LOGI(TAG, "Initializing JD9165 display");
 
@@ -185,4 +185,6 @@ void init_jd9165_display(void)
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LCD_LEDC_CHANNEL);
 
     ESP_LOGI(TAG, "Display initialized (1024x600 @ 52MHz, 2-lane DSI)");
+    
+    return disp_panel;
 }
