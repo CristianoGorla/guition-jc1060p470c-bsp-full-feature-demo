@@ -33,18 +33,18 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
 
     printf("\n");
     printf("\033[36m========================================\033[0m\n");
-    printf("\033[36m   I2C BUS SCANNER (Full Range)\033[0m\n");
+    printf("\033[36m   I2C BUS SCANNER (Probe Mode)\033[0m\n");
     printf("\033[36m========================================\033[0m\n");
     ESP_LOGI(TAG, "Scanning 0x08 to 0x77...");
+    ESP_LOGI(TAG, "Using lightweight probe (add_device only)");
     printf("\n");
 
     int devices_found = 0;
-    int critical_errors = 0;
-    uint8_t critical_addresses[128];
-    int critical_count = 0;
+    int probe_attempts = 0;
 
-    // Scan completo di tutti gli indirizzi validi
+    // Scan completo con approccio ultra-leggero
     for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+        probe_attempts++;
         
         i2c_device_config_t dev_cfg = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -53,16 +53,21 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
         };
 
         i2c_master_dev_handle_t dev_handle;
+        
+        // Prova SOLO ad aggiungere il device (no receive!)
+        // Se add_device funziona, il device potrebbe essere presente
         esp_err_t ret = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
         
         if (ret == ESP_OK) {
-            uint8_t dummy_data;
-            ret = i2c_master_receive(dev_handle, &dummy_data, 1, 100);
+            // Device handle creato - prova una singola transazione velocissima
+            uint8_t dummy;
+            esp_err_t read_ret = i2c_master_receive(dev_handle, &dummy, 1, 10); // 10ms timeout cortissimo
             
+            // Rimuovi IMMEDIATAMENTE
             i2c_master_bus_rm_device(dev_handle);
             
-            if (ret == ESP_OK || ret == ESP_ERR_TIMEOUT) {
-                // Device found!
+            // Considera trovato solo se riceve ACK o TIMEOUT (= ACK + no data)
+            if (read_ret == ESP_OK || read_ret == ESP_ERR_TIMEOUT) {
                 devices_found++;
                 
                 const char *device_name = NULL;
@@ -76,45 +81,30 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
                 if (device_name) {
                     printf("\033[32m[0x%02X] ✓ %s\033[0m\n", addr, device_name);
                 } else {
-                    printf("\033[32m[0x%02X] ✓ Unknown device\033[0m\n", addr);
-                }
-                
-            } else if (ret == ESP_ERR_INVALID_STATE) {
-                // INVALID_STATE - possibile problema critico
-                critical_errors++;
-                if (critical_count < 128) {
-                    critical_addresses[critical_count++] = addr;
+                    printf("\033[32m[0x%02X] ✓ Unknown\033[0m\n", addr);
                 }
             }
-            // ESP_ERR_NOT_FOUND = silenzioso (nessun device)
+            // Altri errori = silenzioso
         }
         
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // Delay ridotto ma non zero
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     printf("\n");
     printf("\033[36m========================================\033[0m\n");
     printf("\033[32mDevices found: %d\033[0m\n", devices_found);
-    
-    if (critical_errors > 0) {
-        printf("\033[33mINVALID_STATE errors: %d\033[0m\n", critical_errors);
-        printf("\033[33mCritical addresses: \033[0m");
-        for (int i = 0; i < critical_count && i < 20; i++) {
-            printf("0x%02X ", critical_addresses[i]);
-            if (i == 19 && critical_count > 20) {
-                printf("... (+%d more)", critical_count - 20);
-                break;
-            }
-        }
-        printf("\n");
-    }
-    
+    printf("Addresses probed: %d\n", probe_attempts);
     printf("\033[36m========================================\033[0m\n");
     printf("\n");
     
-    ESP_LOGI(TAG, "Expected devices on this board:");
+    ESP_LOGI(TAG, "Board devices:");
     ESP_LOGI(TAG, "  0x14 = GT911 Touch");
     ESP_LOGI(TAG, "  0x18 = ES8311 Audio");
     ESP_LOGI(TAG, "  0x32 = RX8025T RTC");
+    
+    if (devices_found < 2) {
+        ESP_LOGW(TAG, "Warning: Expected at least 2 devices (GT911 + ES8311)");
+    }
     printf("\n");
 }
