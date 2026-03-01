@@ -1,10 +1,10 @@
 /*
  * SD Card + ESP-Hosted Example with Bootstrap Manager
  * 
- * v1.1.0-dev: Deterministic three-phase initialization
+ * v1.2.0-arbiter: Two-phase initialization with SDMMC arbiter
  * - Phase A: Power management (GPIO isolation)
- * - Phase B: WiFi Hosted (SDIO transport)
- * - Phase C: SD card (safe mount)
+ * - Phase B: WiFi Hosted (SDIO transport via arbiter)
+ * - SD Card: On-demand via sdmmc_arbiter_request_sd_card()
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -37,7 +37,7 @@
 #include "feature_flags.h"
 #include "i2c_utils.h"
 #include "esp_hosted_wifi.h"
-#include "bootstrap_manager.h"  // NEW: Coordinated initialization
+#include "bootstrap_manager.h"  // Coordinated initialization with arbiter
 
 #if ENABLE_WIFI && ENABLE_WIFI_CONNECT
 // Load WiFi credentials from wifi_config.h (gitignored)
@@ -169,7 +169,7 @@ void app_main(void)
     ESP_LOGI(TAG, "\n");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "   Guition JC1060P470C Initialization");
-    ESP_LOGI(TAG, "   v1.1.0-dev (Bootstrap Manager)");
+    ESP_LOGI(TAG, "   v1.2.0-arbiter (SDMMC Arbiter)");
     ESP_LOGI(TAG, "========================================\n");
 
     // ========== 1. NVS ==========
@@ -306,11 +306,11 @@ void app_main(void)
     ESP_LOGI(TAG, "Touch disabled by feature flags\n");
 #endif
 
-    // ========== 7. Bootstrap Manager (SD + WiFi Coordinated Init) ==========
-    // NEW: Three-phase coordinated initialization
+    // ========== 7. Bootstrap Manager (WiFi with SDMMC Arbiter) ==========
+    // Two-phase coordinated initialization:
     //   Phase A: Power management (GPIO isolation, strapping)
-    //   Phase B: WiFi Hosted (SDIO transport)
-    //   Phase C: SD card (safe mount)
+    //   Phase B: WiFi Hosted (SDIO transport via arbiter)
+    //   SD Card: Available on-demand via sdmmc_arbiter_request_sd_card()
     
     ESP_LOGI(TAG, "\n");
     ESP_LOGI(TAG, "========================================");
@@ -320,7 +320,7 @@ void app_main(void)
     bootstrap_manager_t bootstrap_mgr = {0};
     
 #if ENABLE_SD_CARD || ENABLE_WIFI
-    // Initialize bootstrap manager (spawns three tasks)
+    // Initialize bootstrap manager (spawns two tasks + arbiter)
     ret = bootstrap_manager_init(&bootstrap_mgr);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Bootstrap manager init failed: %s", esp_err_to_name(ret));
@@ -329,7 +329,7 @@ void app_main(void)
         esp_restart();
     }
     
-    // Wait for all phases to complete (30 second timeout)
+    // Wait for both phases to complete (30 second timeout)
     ret = bootstrap_manager_wait(&bootstrap_mgr, 30000);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "\n");
@@ -337,16 +337,20 @@ void app_main(void)
         ESP_LOGI(TAG, "   Bootstrap Complete - System Ready");
         ESP_LOGI(TAG, "========================================\n");
         
-        // Get SD card handle from bootstrap manager
+        // NOTE: SD card test temporarily disabled to isolate WiFi testing
+        // TODO: Re-enable after WiFi validation
+        /*
+        // Get SD card handle from bootstrap manager (switches to SD mode)
         sdmmc_card_t *card = bootstrap_manager_get_sd_card(&bootstrap_mgr);
         if (card) {
             ESP_LOGI(TAG, "SD Card: %s, Capacity: %llu MB",
                     card->cid.name,
                     ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
         }
+        */
         
 #if ENABLE_WIFI_CONNECT
-        // WiFi connection test (if enabled)
+        // WiFi connection test (arbiter keeps WiFi mode active)
         ESP_LOGI(TAG, "\n=== WiFi Connection Test ===");
         ESP_LOGI(TAG, "Connecting to: %s", WIFI_SSID);
         
