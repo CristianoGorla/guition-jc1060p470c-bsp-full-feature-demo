@@ -418,12 +418,14 @@ esp_err_t bootstrap_manager_wait(bootstrap_manager_t *manager, uint32_t timeout_
                                        BOOTSTRAP_HOSTED_READY_BIT | 
                                        BOOTSTRAP_SD_READY_BIT;
     
-    // Wait for ALL three phases to complete OR failure
+    // CRITICAL FIX: Wait for ALL three phases to complete (not ANY)
+    // Fourth parameter pdTRUE = wait for ALL bits (AND logic)
+    // Fourth parameter pdFALSE = wait for ANY bit (OR logic)
     EventBits_t bits = xEventGroupWaitBits(
         manager->event_group,
         ALL_READY_BITS | BOOTSTRAP_FAILURE_BIT,
         pdFALSE,  // Don't clear bits
-        pdFALSE,  // Wait for ANY bit (check logic below)
+        pdTRUE,   // *** FIXED: Wait for ALL bits (was pdFALSE = ANY bit) ***
         pdMS_TO_TICKS(timeout_ms)
     );
     
