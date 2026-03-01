@@ -371,9 +371,37 @@ I (1722) GT911:   Touch ready for reading
 I (1726) GUITION_MAIN: ✓ Touch controller ready
 I (1830) GUITION_MAIN: GT911 active at 0x14 (INT=HIGH during reset)
 
-I (1835) GUITION_MAIN: ========================================
-I (1841) GUITION_MAIN:    System Initialization Complete
-I (1846) GUITION_MAIN: ========================================
+I (1846) GUITION_MAIN: === SD Card Initialization ===
+I (2096) GUITION_MAIN: SD Card power enabled (GPIO45)
+I (2096) GUITION_MAIN: ESP-Hosted detected - init slot only
+I (2096) GUITION_MAIN: Skipping sdmmc_host_init (controller already initialized by ESP-Hosted)
+I (2269) GUITION_MAIN: ✓ SD card mounted
+I (2269) GUITION_MAIN: Card: SU08G, Capacity: 7580 MB
+
+I (2269) GUITION_MAIN: === WiFi Initialization ===
+I (2271) wifi_hosted: Inizializzazione interfaccia Wi-Fi Hosted...
+I (2278) transport: Attempt connection with slave: retry[0]
+W (2283) H_SDIO_DRV: Reset slave using GPIO[54]
+I (2287) os_wrapper_esp: GPIO [54] configured
+I (3811) sdio_wrapper: SDIO master: Slot 1, Data-Lines: 4-bit Freq(KHz)[40000 KHz]
+I (4148) H_SDIO_DRV: Write thread started
+I (4428) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
+
+I (6428) GUITION_MAIN: === WiFi Connection Test ===
+I (6428) GUITION_MAIN: Connecting to: FRITZ!Box 7530 WL
+I (6447) H_API: esp_wifi_remote_connect
+I (6468) GUITION_MAIN: Waiting for IP address (15s timeout)...
+I (6819) RPC_WRAP: ESP Event: Station mode: Connected
+I (7851) esp_netif_handlers: sta ip: 192.168.188.88, mask: 255.255.255.0, gw: 192.168.188.1
+I (7851) GUITION_MAIN: ✓ WiFi connected!
+I (7851) GUITION_MAIN:    IP Address: 192.168.188.88
+I (7856) GUITION_MAIN:    Netmask:    255.255.255.0
+I (7861) GUITION_MAIN:    Gateway:    192.168.188.1
+I (7868) GUITION_MAIN:    RSSI: -80 dBm
+
+I (7869) GUITION_MAIN: ========================================
+I (7875) GUITION_MAIN:    System Initialization Complete
+I (7880) GUITION_MAIN: ========================================
 ```
 
 **Summary:**
@@ -382,8 +410,11 @@ I (1846) GUITION_MAIN: ========================================
 - ✅ RTC RX8025T: 0x32 (time valid)
 - ✅ Display: 1024x600 MIPI DSI
 - ✅ Touch GT911: 0x14 (TouchPad ID: 911)
+- ✅ SD Card: SU08G 7580 MB (SDMMC Slot 0)
+- ✅ WiFi: ESP-Hosted via ESP32-C6 (SDMMC Slot 1)
+- ✅ WiFi Connected: IP 192.168.188.88, RSSI -80 dBm
 
-**All I2C devices initialized successfully using direct init pattern!**
+**All peripherals initialized successfully with stable WiFi connection!**
 
 ---
 
@@ -400,6 +431,7 @@ I (1846) GUITION_MAIN: ========================================
 #define ENABLE_RTC 1           // ✅ RX8025T RTC
 #define DEBUG_RTC 1            // Show detailed logs
 #define ENABLE_RTC_TEST 1      // Show time on boot
+#define ENABLE_RTC_NTP_SYNC 0  // Enable NTP sync test (requires WiFi connection)
 
 #define ENABLE_DISPLAY 1       // ✅ MIPI DSI display
 #define ENABLE_DISPLAY_TEST 0  // Disable RGB patterns
@@ -407,6 +439,9 @@ I (1846) GUITION_MAIN: ========================================
 #define ENABLE_TOUCH 1         // ✅ GT911 touch
 #define DEBUG_TOUCH 1          // Show detailed logs
 #define ENABLE_TOUCH_TEST 0    // Disable continuous read
+
+#define ENABLE_WIFI 1          // ✅ ESP-Hosted WiFi
+#define ENABLE_WIFI_CONNECT 1  // Enable WiFi connection test
 ```
 
 ---
@@ -438,6 +473,7 @@ The I2C bus issues were caused by **I2C scan timing**, not MIPI DSI initializati
 - **Board BSP:** `esp32_p4_function_ev_board.h`
 - **RTC Datasheet:** Epson RX8025T Real-Time Clock Module
 - **ES8311 Datasheet:** http://www.everest-semi.com/pdf/ES8311%20PB.pdf
+- **ESP-IDF SNTP Documentation:** https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/system_time.html
 
 ---
 
@@ -462,6 +498,11 @@ The I2C bus issues were caused by **I2C scan timing**, not MIPI DSI initializati
    - Driver validates presence internally
    - Applied to GT911, RTC, and ES8311
 
+5. ❌ **Duplicate lwip in CMakeLists.txt** - Fixed (2026-03-01)
+   - Caused WiFi instability
+   - Non-deterministic networking behavior
+   - Removed duplicate reference
+
 ### Evolution of Solution
 
 ```
@@ -477,4 +518,6 @@ Final Approach → I2C init → Direct device init (driver self-validates)
                   ✅ Consistent pattern
                   ✅ All devices working
                   ✅ SD + WiFi coexisting
+                  ✅ Single lwip reference
+                  ✅ Stable networking
 ```
