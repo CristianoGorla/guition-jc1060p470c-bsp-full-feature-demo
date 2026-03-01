@@ -17,6 +17,7 @@
 #include "feature_flags.h"
 #include "i2c_utils.h"
 #include "hw_init.h"
+#include "esp_hosted_wifi.h"
 
 static const char *TAG = "GUITION_MAIN";
 
@@ -248,7 +249,25 @@ sd_failed:
     ESP_LOGI(TAG, "SD card disabled by feature flags");
 #endif
 
-    // ========== 3. Hardware Reset (DOPO SD, PRIMA I2C) ==========
+    // ========== 3. WiFi (ESP-Hosted) ==========
+#if ENABLE_WIFI
+    LOG_WIFI(TAG, "Initializing WiFi (ESP-Hosted via C6)...");
+    init_wifi();
+    LOG_WIFI(TAG, "✓ WiFi initialized - scanning networks...");
+    
+    // Test WiFi scan
+    vTaskDelay(pdMS_TO_TICKS(2000)); // Attendi stabilizzazione
+    
+    if (do_wifi_scan_and_check(NULL)) {
+        LOG_WIFI(TAG, "✓ WiFi scan successful - ESP-Hosted is working!");
+    } else {
+        ESP_LOGW(TAG, "WiFi scan returned 0 networks (check C6 firmware)");
+    }
+#else
+    ESP_LOGI(TAG, "WiFi disabled by feature flags");
+#endif
+
+    // ========== 4. Hardware Reset (DOPO SD, PRIMA I2C) ==========
 #if ENABLE_I2C || ENABLE_DISPLAY || ENABLE_TOUCH
     ESP_LOGI(TAG, "Running hardware reset for peripherals (GT911/ES8311/RTC)...");
     hw_reset_all_peripherals();
@@ -256,7 +275,7 @@ sd_failed:
     ESP_LOGI(TAG, "Hardware reset skipped (no I2C/Display/Touch enabled)");
 #endif
 
-    // ========== 4. I2C Bus ==========
+    // ========== 5. I2C Bus ==========
 #if ENABLE_I2C
     i2c_master_bus_config_t i2c_bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -274,7 +293,7 @@ sd_failed:
     i2c_master_bus_handle_t bus_handle = NULL;
 #endif
 
-    // ========== 5. Display ==========
+    // ========== 6. Display ==========
 #if ENABLE_DISPLAY
     ESP_LOGI(TAG, "Initializing display...");
     panel_handle = init_jd9165_display();
@@ -283,7 +302,7 @@ sd_failed:
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
 
-    // ========== 6. I2C SCAN ==========
+    // ========== 7. I2C SCAN ==========
 #if ENABLE_I2C && ENABLE_I2C_SCAN
     if (bus_handle) {
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -298,7 +317,7 @@ sd_failed:
     }
 #endif
 
-    // ========== 7. Touch ==========
+    // ========== 8. Touch ==========
 #if ENABLE_TOUCH
     if (bus_handle) {
         LOG_TOUCH(TAG, "Initializing touch...");
