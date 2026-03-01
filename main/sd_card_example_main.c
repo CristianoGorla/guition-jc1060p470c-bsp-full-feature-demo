@@ -16,6 +16,7 @@
 #include "touch_gt911.h"
 #include "rtc_rx8025t.h"
 #include "rtc_test.h"
+#include "es8311_audio.h"
 #include "feature_flags.h"
 #include "i2c_utils.h"
 #include "hw_init.h"
@@ -235,11 +236,32 @@ void app_main(void)
     i2c_master_bus_handle_t bus_handle = NULL;
 #endif
 
-    // ========== 4. RTC Init (BEFORE GT911 reset!) ==========
+    // ========== 4. AUDIO CODEC (ES8311 - before RTC!) ==========
+#if ENABLE_AUDIO
+    if (bus_handle) {
+        LOG_AUDIO(TAG, "\n========== ES8311 AUDIO CODEC INIT ==========");
+        LOG_AUDIO(TAG, "Initializing ES8311 FIRST to release I2C bus if stuck...");
+        
+        ret = es8311_init(bus_handle);
+        if (ret == ESP_OK) {
+            LOG_AUDIO(TAG, "\u2713 ES8311 initialized and powered down");
+            LOG_AUDIO(TAG, "I2C bus should be free now");
+        } else {
+            ESP_LOGW(TAG, "ES8311 init failed or not responding (0x%x)", ret);
+            ESP_LOGW(TAG, "This is OK if codec is not populated on this board");
+        }
+        
+        LOG_AUDIO(TAG, "========== ES8311 INIT COMPLETE ==========\n");
+    }
+#else
+    ESP_LOGI(TAG, "Audio codec disabled by feature flags");
+#endif
+
+    // ========== 5. RTC Init (AFTER audio codec!) ==========
 #if ENABLE_RTC
     if (bus_handle) {
         LOG_RTC(TAG, "\n========== RTC EARLY INITIALIZATION ==========");
-        LOG_RTC(TAG, "Initializing RTC BEFORE GT911 reset to prevent I2C issues...");
+        LOG_RTC(TAG, "Initializing RTC AFTER ES8311 (bus should be clear now)...");
         
 #if ENABLE_RTC_HW_TEST
         // Run comprehensive hardware test
@@ -290,7 +312,7 @@ void app_main(void)
     ESP_LOGI(TAG, "RTC disabled by feature flags");
 #endif
 
-    // ========== 5. SD Card ==========
+    // ========== 6. SD Card ==========
 #if ENABLE_SD_CARD
     LOG_SD(TAG, "Initializing SD card (Slot 0 - forced)...");
 
@@ -369,7 +391,7 @@ sd_failed:
     ESP_LOGI(TAG, "SD card disabled by feature flags");
 #endif
 
-    // ========== 6. WiFi (ESP-Hosted) ==========
+    // ========== 7. WiFi (ESP-Hosted) ==========
 #if ENABLE_WIFI
     LOG_WIFI(TAG, "Initializing WiFi (ESP-Hosted via C6)...");
     init_wifi();
@@ -386,10 +408,10 @@ sd_failed:
     ESP_LOGI(TAG, "WiFi disabled by feature flags");
 #endif
 
-    // ========== 7. Hardware Reset (GT911/ES8311 - AFTER RTC init!) ==========
+    // ========== 8. Hardware Reset (GT911/ES8311 - AFTER audio/RTC init!) ==========
 #if ENABLE_DISPLAY || ENABLE_TOUCH
-    ESP_LOGI(TAG, "\nRunning hardware reset for GT911/ES8311...");
-    ESP_LOGI(TAG, "(RTC already initialized - safe to reset GT911 now)");
+    ESP_LOGI(TAG, "\nRunning hardware reset for GT911...");
+    ESP_LOGI(TAG, "(Audio and RTC already initialized)");
     hw_reset_all_peripherals();
     
     ESP_LOGI(TAG, "Waiting 500ms for I2C bus stabilization after GT911 reset...");
@@ -398,7 +420,7 @@ sd_failed:
     ESP_LOGI(TAG, "Hardware reset skipped (no Display/Touch enabled)");
 #endif
 
-    // ========== 8. Display ==========
+    // ========== 9. Display ==========
 #if ENABLE_DISPLAY
     ESP_LOGI(TAG, "Initializing display...");
     panel_handle = init_jd9165_display();
@@ -407,7 +429,7 @@ sd_failed:
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
 
-    // ========== 9. I2C SCAN ==========
+    // ========== 10. I2C SCAN ==========
 #if ENABLE_I2C && ENABLE_I2C_SCAN
     if (bus_handle) {
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -417,7 +439,7 @@ sd_failed:
     }
 #endif
 
-    // ========== 10. Touch ==========
+    // ========== 11. Touch ==========
 #if ENABLE_TOUCH
     if (bus_handle) {
         LOG_TOUCH(TAG, "Initializing touch...");
