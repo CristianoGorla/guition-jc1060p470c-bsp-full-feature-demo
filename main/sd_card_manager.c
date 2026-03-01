@@ -194,6 +194,12 @@ esp_err_t sd_card_unmount(void)
     return ret;
 }
 
+esp_err_t sd_card_unmount_safe(void)
+{
+    // Wrapper for arbiter integration (same as sd_card_unmount)
+    return sd_card_unmount();
+}
+
 bool sd_card_is_mounted(void)
 {
     return g_is_mounted;
