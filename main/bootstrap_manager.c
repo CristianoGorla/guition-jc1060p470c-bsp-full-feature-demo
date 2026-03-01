@@ -110,7 +110,7 @@ static void bootstrap_power_manager_task(void *arg)
  * 1. Wait for POWER_READY event
  * 2. Monitor C6 handshake (GPIO6 toggle)
  * 3. Initialize ESP-Hosted transport (SDIO)
- * 4. Wait for "Transport active" confirmation
+ * 4. Wait for "Transport active" confirmation + link stabilization
  * 5. Signal HOSTED_READY
  */
 static void bootstrap_wifi_manager_task(void *arg)
@@ -176,7 +176,17 @@ static void bootstrap_wifi_manager_task(void *arg)
         return;
     }
     
-    ESP_LOGI(TAG, "[Phase B] WiFi Hosted transport active");
+    ESP_LOGI(TAG, "[Phase B] WiFi Hosted transport configured");
+    
+    // CRITICAL FIX: Wait for ESP-Hosted link to stabilize
+    // The transport init returns ESP_OK when configuration is done,
+    // but SDIO link needs time to establish proper communication.
+    // Without this delay, "ESP-Hosted link not yet up" error occurs.
+    ESP_LOGI(TAG, "[Phase B] Waiting %dms for SDIO link stabilization...", 
+             BOOTSTRAP_WIFI_LINK_STABILIZATION_MS);
+    vTaskDelay(pdMS_TO_TICKS(BOOTSTRAP_WIFI_LINK_STABILIZATION_MS));
+    
+    ESP_LOGI(TAG, "[Phase B] WiFi Hosted transport active and stable");
     
     // Signal completion
     ESP_LOGI(TAG, "[Phase B] Signaling HOSTED_READY");
