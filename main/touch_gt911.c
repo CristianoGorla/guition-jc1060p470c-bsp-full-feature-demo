@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "touch_gt911.h"
 
 static const char *TAG = "GT911";
 
@@ -12,7 +13,7 @@ static const char *TAG = "GT911";
 #define GT911_RST_GPIO         GPIO_NUM_22
 #define GT911_INT_GPIO         GPIO_NUM_21
 
-void init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
+esp_lcd_touch_handle_t init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
 {
     ESP_LOGI(TAG, "Initializing GT911 touch controller");
 
@@ -82,4 +83,6 @@ void init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
     ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &touch_handle));
     
     ESP_LOGI(TAG, "GT911 touch initialized successfully");
+    
+    return touch_handle;
 }
