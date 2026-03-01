@@ -15,6 +15,7 @@
 #include "display_jd9165.h"
 #include "touch_gt911.h"
 #include "rtc_rx8025t.h"
+#include "rtc_test.h"
 #include "feature_flags.h"
 #include "i2c_utils.h"
 #include "hw_init.h"
@@ -322,20 +323,22 @@ sd_failed:
     if (bus_handle) {
         LOG_RTC(TAG, "\n========== RTC INITIALIZATION ==========");
         
-        // STEP 1: Check if RTC responds with simple probe
+#if ENABLE_RTC_HW_TEST
+        // Run comprehensive hardware test
+        rtc_hardware_test(bus_handle);
+#else
+        // Standard init
         ESP_LOGI(TAG, "Probing RTC at address 0x32...");
         ret = i2c_master_probe(bus_handle, 0x32, 500);
         
         if (ret == ESP_OK) {
             ESP_LOGI(TAG, "✓ RTC responds to probe!");
             
-            // STEP 2: Try to initialize
             ret = rtc_rx8025t_init(bus_handle);
             if (ret == ESP_OK) {
                 LOG_RTC(TAG, "✓ RTC initialized successfully");
                 
 #if ENABLE_RTC_TEST
-                // Read current time
                 rtc_time_t current_time;
                 ret = rtc_rx8025t_get_time(&current_time);
                 if (ret == ESP_OK) {
@@ -343,11 +346,8 @@ sd_failed:
                             current_time.year, current_time.month, current_time.day,
                             current_time.wday,
                             current_time.hour, current_time.minute, current_time.second);
-                } else {
-                    ESP_LOGE(TAG, "Failed to read RTC time (0x%x)", ret);
                 }
                 
-                // Check flags
                 bool pon_flag, vlf_flag;
                 if (rtc_rx8025t_check_power_on_flag(&pon_flag) == ESP_OK) {
                     LOG_RTC(TAG, "PON Flag (Power-On): %s", pon_flag ? "SET" : "CLEAR");
@@ -363,6 +363,7 @@ sd_failed:
             ESP_LOGE(TAG, "RTC does NOT respond to probe (0x%x)", ret);
             ESP_LOGW(TAG, "RTC might not be populated or needs different timing");
         }
+#endif // ENABLE_RTC_HW_TEST
         
         LOG_RTC(TAG, "========== RTC INIT COMPLETE ==========");
     } else {
