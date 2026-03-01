@@ -9,4 +9,4 @@ idf_component_register(SRCS "sd_card_example_main.c"
                             "rtc_ntp_sync.c"
                             "es8311_audio.c"
                     INCLUDE_DIRS "."
-                    REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs esp_wifi esp_event esp_netif lwip esp_hosted esp_lcd nvs_flash lwip)
+                    REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs esp_wifi esp_event esp_netif lwip esp_hosted esp_lcd nvs_flash)
