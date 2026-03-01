@@ -32,14 +32,6 @@ CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
 CONFIG_SPI_FLASH_BROWNOUT_RESET=y
 
 # ===========================
-# RTC con batteria backup
-# ===========================
-CONFIG_RTC_CLK_SRC_EXT_CRYS=y
-CONFIG_RTC_CLK_CAL_CYCLES=1024
-CONFIG_ESP_SYSTEM_RTC_EXT_XTAL=y
-CONFIG_ESP_SYSTEM_RTC_EXT_XTAL_BOOTSTRAP_CYCLES=5
-
-# ===========================
 # SD Card slot 0 - NO LDO
 # ===========================
 CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO=n
