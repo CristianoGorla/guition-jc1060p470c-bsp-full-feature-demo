@@ -7,40 +7,40 @@
  */
 
 // ========== SD CARD ==========
-#define ENABLE_SD_CARD 0 // SD card mount (DISABILITATO per test I2C)
+#define ENABLE_SD_CARD 0 // SD card mount (DISABILITATO)
 #define DEBUG_SD_CARD 0  // Log dettagliati SD card
 
 // ========== WIFI/ESP-HOSTED ==========
-#define ENABLE_WIFI 0 // ESP-Hosted WiFi (DISABILITATO per test I2C)
+#define ENABLE_WIFI 0 // ESP-Hosted WiFi (DISABILITATO)
 #define DEBUG_WIFI 0  // Log dettagliati WiFi
 
 // ========== I2C BUS ==========
-#define ENABLE_I2C 1      // I2C bus initialization (SOLO QUESTO ATTIVO!)
+#define ENABLE_I2C 1      // I2C bus initialization (ATTIVO per touch)
 #define DEBUG_I2C 1       // Log dettagliati I2C
 #define ENABLE_I2C_SCAN 1 // Scan bus I2C
 
 // ========== AUDIO CODEC ==========
-#define ENABLE_AUDIO 1 // ES8311 audio codec (test)
-#define DEBUG_AUDIO 1  // Log dettagliati audio
+#define ENABLE_AUDIO 0 // ES8311 audio codec (DISABILITATO)
+#define DEBUG_AUDIO 0  // Log dettagliati audio
 
 // ========== RTC ==========
-#define ENABLE_RTC 0         // RX8025T RTC (test)
+#define ENABLE_RTC 0         // RX8025T RTC (DISABILITATO - corrompe il bus)
 #define DEBUG_RTC 0          // Log dettagliati RTC
 #define ENABLE_RTC_TEST 0    // Test lettura/scrittura RTC
-#define ENABLE_RTC_HW_TEST 0 // Hardware diagnostic (DISABILITATO)
+#define ENABLE_RTC_HW_TEST 0 // Hardware diagnostic
 
 // ========== DISPLAY ==========
-#define ENABLE_DISPLAY 0      // JD9165 MIPI DSI display (disabilitato)
-#define DEBUG_DISPLAY 0       // Log dettagliati display
-#define ENABLE_DISPLAY_TEST 0 // Test pattern RGB
+#define ENABLE_DISPLAY 1      // JD9165 MIPI DSI display (ATTIVO!)
+#define DEBUG_DISPLAY 1       // Log dettagliati display
+#define ENABLE_DISPLAY_TEST 1 // Test pattern RGB (ATTIVO!)
 
 // ========== TOUCH ==========
-#define ENABLE_TOUCH 0      // GT911 touch (disabilitato)
-#define DEBUG_TOUCH 0       // Log dettagliati touch
-#define ENABLE_TOUCH_TEST 0 // Test touch input
+#define ENABLE_TOUCH 1      // GT911 touch (ATTIVO!)
+#define DEBUG_TOUCH 1       // Log dettagliati touch
+#define ENABLE_TOUCH_TEST 1 // Test touch input (ATTIVO!)
 
 // ========== NVS ==========
-#define ENABLE_NVS 0 // NVS Flash storage (DISABILITATO per test I2C)
+#define ENABLE_NVS 1 // NVS Flash storage (serve per LVGL)
 #define DEBUG_NVS 0  // Log dettagliati NVS
 
 /*
