@@ -59,6 +59,8 @@ static void bootstrap_power_manager_task(void *arg)
         gpio_config(&io_conf);
         gpio_set_level(GPIO_C6_IO9_STRAPPING, 1);
         ESP_LOGI(TAG, "[Phase A]   GPIO%d (C6_IO9) → HIGH (SPI boot mode)", GPIO_C6_IO9_STRAPPING);
+    } else {
+        ESP_LOGW(TAG, "[Phase A]   C6_IO9 strapping pin not mapped");
     }
     
     // Step 2: Wait for power rail stabilization
