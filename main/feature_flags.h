@@ -7,40 +7,40 @@
  */
 
 // ========== SD CARD ==========
-#define ENABLE_SD_CARD 1 // SD card mount (FUNZIONA!)
-#define DEBUG_SD_CARD 1  // Log dettagliati SD card
+#define ENABLE_SD_CARD 0 // SD card mount (DISABILITATO per test I2C)
+#define DEBUG_SD_CARD 0  // Log dettagliati SD card
 
 // ========== WIFI/ESP-HOSTED ==========
-#define ENABLE_WIFI 1 // ESP-Hosted WiFi (FUNZIONA!)
-#define DEBUG_WIFI 1  // Log dettagliati WiFi
+#define ENABLE_WIFI 0 // ESP-Hosted WiFi (DISABILITATO per test I2C)
+#define DEBUG_WIFI 0  // Log dettagliati WiFi
 
 // ========== I2C BUS ==========
-#define ENABLE_I2C 1      // I2C bus initialization (FUNZIONA!)
+#define ENABLE_I2C 1      // I2C bus initialization (SOLO QUESTO ATTIVO!)
 #define DEBUG_I2C 1       // Log dettagliati I2C
 #define ENABLE_I2C_SCAN 1 // Scan bus I2C
 
 // ========== AUDIO CODEC ==========
-#define ENABLE_AUDIO 1       // ES8311 audio codec (FUNZIONA!)
+#define ENABLE_AUDIO 1       // ES8311 audio codec (test)
 #define DEBUG_AUDIO 1        // Log dettagliati audio
 
 // ========== RTC ==========
 #define ENABLE_RTC 1         // RX8025T RTC (test)
 #define DEBUG_RTC 1          // Log dettagliati RTC
 #define ENABLE_RTC_TEST 1    // Test lettura/scrittura RTC
-#define ENABLE_RTC_HW_TEST 0 // Hardware diagnostic (DISABILITATO - corrompe il bus!)
+#define ENABLE_RTC_HW_TEST 0 // Hardware diagnostic (DISABILITATO)
 
 // ========== DISPLAY ==========
-#define ENABLE_DISPLAY 0      // JD9165 MIPI DSI display (disabilitato per ora)
+#define ENABLE_DISPLAY 0      // JD9165 MIPI DSI display (disabilitato)
 #define DEBUG_DISPLAY 0       // Log dettagliati display
 #define ENABLE_DISPLAY_TEST 0 // Test pattern RGB
 
 // ========== TOUCH ==========
-#define ENABLE_TOUCH 0      // GT911 touch (disabilitato per ora)
+#define ENABLE_TOUCH 0      // GT911 touch (disabilitato)
 #define DEBUG_TOUCH 0       // Log dettagliati touch
 #define ENABLE_TOUCH_TEST 0 // Test touch input
 
 // ========== NVS ==========
-#define ENABLE_NVS 1 // NVS Flash storage
+#define ENABLE_NVS 0 // NVS Flash storage (DISABILITATO per test I2C)
 #define DEBUG_NVS 0  // Log dettagliati NVS
 
 /*
