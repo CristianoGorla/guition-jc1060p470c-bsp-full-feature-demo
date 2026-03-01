@@ -12,6 +12,7 @@
 #include "esp_hosted_wifi.h"
 #include "display_jd9165.h"
 #include "wifi_config.h"
+#include "touch_gt911.h"
 
 static i2c_master_bus_handle_t i2c_bus_handle;
 
@@ -42,7 +43,7 @@ void app_main(void)
 
     // Video e Touch
     init_jd9165_display();
-    extern void init_gt911_touch(i2c_master_bus_handle_t bus);
+
     init_gt911_touch(i2c_bus_handle);
 
     init_wifi();
