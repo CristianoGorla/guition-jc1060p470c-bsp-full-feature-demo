@@ -403,21 +403,27 @@ esp_err_t bootstrap_manager_wait(bootstrap_manager_t *manager, uint32_t timeout_
     
     ESP_LOGI(TAG, "Waiting for bootstrap completion (timeout: %ums)...", timeout_ms);
     
+    const EventBits_t ALL_READY_BITS = BOOTSTRAP_POWER_READY_BIT | 
+                                       BOOTSTRAP_HOSTED_READY_BIT | 
+                                       BOOTSTRAP_SD_READY_BIT;
+    
+    // Wait for ALL three phases to complete OR failure
     EventBits_t bits = xEventGroupWaitBits(
         manager->event_group,
-        BOOTSTRAP_POWER_READY_BIT | BOOTSTRAP_HOSTED_READY_BIT | BOOTSTRAP_SD_READY_BIT | BOOTSTRAP_FAILURE_BIT,
-        pdFALSE,  // Don't clear
-        pdFALSE,  // Wait for any
+        ALL_READY_BITS | BOOTSTRAP_FAILURE_BIT,
+        pdFALSE,  // Don't clear bits
+        pdFALSE,  // Wait for ANY bit (check logic below)
         pdMS_TO_TICKS(timeout_ms)
     );
     
+    // Check for failure first
     if (bits & BOOTSTRAP_FAILURE_BIT) {
         ESP_LOGE(TAG, "Bootstrap FAILED!");
         return ESP_FAIL;
     }
     
-    if ((bits & (BOOTSTRAP_POWER_READY_BIT | BOOTSTRAP_HOSTED_READY_BIT | BOOTSTRAP_SD_READY_BIT)) == 
-        (BOOTSTRAP_POWER_READY_BIT | BOOTSTRAP_HOSTED_READY_BIT | BOOTSTRAP_SD_READY_BIT)) {
+    // Check if all three phases completed
+    if ((bits & ALL_READY_BITS) == ALL_READY_BITS) {
         uint32_t elapsed_ms = (esp_timer_get_time() / 1000) - manager->boot_timestamp_ms;
         ESP_LOGI(TAG, "========================================");
         ESP_LOGI(TAG, "  Bootstrap COMPLETE (%u ms)", elapsed_ms);
@@ -425,7 +431,19 @@ esp_err_t bootstrap_manager_wait(bootstrap_manager_t *manager, uint32_t timeout_
         return ESP_OK;
     }
     
-    ESP_LOGE(TAG, "Bootstrap timeout (bits: 0x%x)", bits);
+    // Timeout - report which phases didn't complete
+    ESP_LOGE(TAG, "Bootstrap timeout!");
+    if (!(bits & BOOTSTRAP_POWER_READY_BIT)) {
+        ESP_LOGE(TAG, "  Phase A (Power) did not complete");
+    }
+    if (!(bits & BOOTSTRAP_HOSTED_READY_BIT)) {
+        ESP_LOGE(TAG, "  Phase B (WiFi Hosted) did not complete");
+    }
+    if (!(bits & BOOTSTRAP_SD_READY_BIT)) {
+        ESP_LOGE(TAG, "  Phase C (SD Card) did not complete");
+    }
+    ESP_LOGE(TAG, "  Event bits: 0x%x (expected: 0x%x)", bits, ALL_READY_BITS);
+    
     return ESP_ERR_TIMEOUT;
 }
 
