@@ -24,6 +24,18 @@ static const struct {
     {0x3C, "SSD1306 OLED"},
 };
 
+// Nomi degli errori per debug
+static const char* get_error_name(esp_err_t err) {
+    switch(err) {
+        case ESP_OK: return "ESP_OK";
+        case ESP_ERR_TIMEOUT: return "TIMEOUT";
+        case ESP_ERR_INVALID_STATE: return "INVALID_STATE";
+        case ESP_ERR_NOT_FOUND: return "NOT_FOUND";
+        case ESP_FAIL: return "FAIL";
+        default: return "UNKNOWN";
+    }
+}
+
 void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
 {
     if (!bus_handle) {
@@ -39,6 +51,7 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
     ESP_LOGI(TAG, "");
 
     int devices_found = 0;
+    int errors_found = 0;
 
     // Scansiona solo indirizzi validi (0x08-0x77)
     for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
@@ -61,6 +74,7 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
             i2c_master_bus_rm_device(dev_handle);
             
             if (ret == ESP_OK || ret == ESP_ERR_TIMEOUT) {
+                // Device risponde (anche timeout = ACK ricevuto)
                 devices_found++;
                 
                 // Cerca nome conosciuto
@@ -72,12 +86,19 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
                     }
                 }
                 
-                ESP_LOGI(TAG, "[0x%02X] FOUND: %s", addr, device_name);
+                ESP_LOGI(TAG, "[0x%02X] FOUND: %s (ret=%s)", addr, device_name, get_error_name(ret));
+                
             } else if (ret != ESP_ERR_NOT_FOUND) {
-                // Errore diverso da "device not found" - possibile problema bus
-                ESP_LOGW(TAG, "[0x%02X] Error 0x%x (skipping remaining addresses)", addr, ret);
-                break; // Ferma scan se il bus ha problemi
+                // Errore diverso da "device not found"
+                errors_found++;
+                ESP_LOGW(TAG, "[0x%02X] ERROR: %s (0x%x)", addr, get_error_name(ret), ret);
+                // CONTINUA invece di fare break!
             }
+            // Se ESP_ERR_NOT_FOUND, silenzio (nessun device a questo indirizzo)
+        } else {
+            // Errore nell'aggiunta del device al bus
+            errors_found++;
+            ESP_LOGW(TAG, "[0x%02X] ADD_DEVICE ERROR: %s (0x%x)", addr, get_error_name(ret), ret);
         }
         
         // Delay per dare tempo al bus di recuperare
@@ -86,7 +107,9 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
 
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "Scan complete: %d device(s) found", devices_found);
+    ESP_LOGI(TAG, "Scan complete:");
+    ESP_LOGI(TAG, "  Devices found: %d", devices_found);
+    ESP_LOGI(TAG, "  Errors encountered: %d", errors_found);
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "");
     
