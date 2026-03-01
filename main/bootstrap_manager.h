@@ -1,10 +1,12 @@
 /*
  * Bootstrap Manager for Guition JC1060P470C
  * 
- * Three-phase initialization (v1.0.0-beta CORRECT order):
+ * Sequential initialization (v1.0.0-beta proven approach):
  * - Phase A: Power management (C6 + SD isolation)
  * - Phase B: SD card mount (BEFORE WiFi)
  * - Phase C: WiFi Hosted initialization (AFTER SD)
+ * 
+ * No FreeRTOS tasks - simple blocking sequential execution.
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -13,23 +15,14 @@
 #ifndef __BOOTSTRAP_MANAGER_H__
 #define __BOOTSTRAP_MANAGER_H__
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
 #include "esp_err.h"
 #include "sdmmc_cmd.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/**
- * Event Group Bits for Bootstrap Coordination
- */
-#define BOOTSTRAP_POWER_READY_BIT    (1 << 0)  // Phase A complete: Power rails stable
-#define BOOTSTRAP_SD_READY_BIT       (1 << 1)  // Phase B complete: SD card mounted
-#define BOOTSTRAP_HOSTED_READY_BIT   (1 << 2)  // Phase C complete: WiFi transport active
-#define BOOTSTRAP_FAILURE_BIT        (1 << 3)  // Critical failure detected
 
 /**
  * GPIO Pin Definitions (Board-Specific)
@@ -48,50 +41,43 @@ extern "C" {
 #define BOOTSTRAP_HARD_RESET_DELAY_MS       500   // Capacitor discharge time
 
 /**
- * Task Priorities
- */
-#define BOOTSTRAP_POWER_TASK_PRIORITY       (configMAX_PRIORITIES - 1)  // Highest
-#define BOOTSTRAP_SD_TASK_PRIORITY          (configMAX_PRIORITIES - 2)  // SD before WiFi
-#define BOOTSTRAP_WIFI_TASK_PRIORITY        (configMAX_PRIORITIES - 3)  // WiFi after SD
-
-/**
  * Bootstrap Manager State
  */
 typedef struct {
-    EventGroupHandle_t event_group;        // Coordination event group
-    TaskHandle_t power_task_handle;        // Phase A task
-    TaskHandle_t sd_task_handle;           // Phase B task (SD before WiFi)
-    TaskHandle_t wifi_task_handle;         // Phase C task (WiFi after SD)
     sdmmc_card_t *sd_card;                 // SD card handle (Phase B)
     bool warm_boot_detected;               // True if software reset
     uint32_t boot_timestamp_ms;            // Boot start time
 } bootstrap_manager_t;
 
 /**
- * Initialize bootstrap manager and start three-phase boot sequence
+ * Initialize bootstrap manager and execute three-phase boot sequence
  * 
- * This function:
+ * This function executes sequentially (blocking):
  * 1. Initializes SDMMC arbiter
  * 2. Detects warm boot vs cold boot
  * 3. Performs hard reset if needed (warm boot)
- * 4. Spawns three coordinated tasks:
+ * 4. Executes three phases in order:
  *    - Phase A: Power Management (GPIO isolation + power sequencing)
  *    - Phase B: SD Manager (mounts SD card BEFORE WiFi)
  *    - Phase C: WiFi Hosted (starts after SD ready)
  * 
+ * Returns when all three phases complete or on first error.
+ * 
  * @param[out] manager  Pointer to bootstrap manager structure
- * @return ESP_OK on success, error code otherwise
+ * @return ESP_OK if all phases completed successfully
+ *         Error code on first failure
  */
 esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager);
 
 /**
- * Wait for bootstrap completion with timeout
+ * Wait for bootstrap completion (dummy for sequential init)
+ * 
+ * Sequential init completes in bootstrap_manager_init(), so this
+ * function always returns immediately.
  * 
  * @param manager     Bootstrap manager instance
- * @param timeout_ms  Maximum wait time in milliseconds
- * @return ESP_OK if all three phases completed successfully
- *         ESP_ERR_TIMEOUT if timeout occurred
- *         ESP_FAIL if critical failure detected
+ * @param timeout_ms  Ignored (kept for API compatibility)
+ * @return ESP_OK (always succeeds)
  */
 esp_err_t bootstrap_manager_wait(bootstrap_manager_t *manager, uint32_t timeout_ms);
 
