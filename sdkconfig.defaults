@@ -1,37 +1,114 @@
-# This file was generated using idf.py save-defconfig. It can be edited manually.
-# Espressif IoT Development Framework (ESP-IDF) 5.5.3 Project Minimal Configuration
 #
+# ESP32-P4 Guition JC1060 - IDF 5.5.3
+# Chip: ESP32-P4 v1.3 | Flash: Boya 16MB | PSRAM: 32MB
+# Bootstrap: Power → ESP-Hosted → SD → WiFi
+#
+
+# ===========================
+# Target & Chip Revision
+# ===========================
 CONFIG_IDF_TARGET="esp32p4"
-CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-CONFIG_ESPTOOLPY_HEADER_FLASHSIZE_UPDATE=y
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+
+# ===========================
+# Partition Table
+# ===========================
 CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# ===========================
+# Flash Configuration (Boya 16MB)
+# ===========================
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_HEADER_FLASHSIZE_UPDATE=y
+
+# Flash Boya support
+CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
+
+# ===========================
+# SD Card Slot 0 - Hardware Pins
+# ===========================
+# SDMMC Slot 0 (4-bit mode)
+# CLK: GPIO43, CMD: GPIO44
+# D0: GPIO39, D1: GPIO40, D2: GPIO41, D3: GPIO42
+# Power control: GPIO36 (external, no internal LDO)
 CONFIG_EXAMPLE_PIN_CMD=44
 CONFIG_EXAMPLE_PIN_CLK=43
 CONFIG_EXAMPLE_PIN_D0=39
 CONFIG_EXAMPLE_PIN_D1=40
 CONFIG_EXAMPLE_PIN_D2=41
 CONFIG_EXAMPLE_PIN_D3=42
+CONFIG_EXAMPLE_PIN_CARD_POWER_RESET=36
+
+# SD Card: NO internal LDO (external power control via GPIO36)
 CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO=n
-CONFIG_COMPILER_OPTIMIZATION_PERF=y
-CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
-CONFIG_ESP_VBAT_INIT_AUTO=y
+
+# ===========================
+# ESP-Hosted WiFi/BLE via C6 (SDIO Slot 1)
+# ===========================
+# SDMMC Slot 1 (4-bit mode) for ESP-Hosted transport
+# CLK: GPIO18, CMD: GPIO19
+# D0: GPIO14, D1: GPIO15, D2: GPIO16, D3: GPIO17
+#
+# Control signals:
+# - C6 GPIO2 → P4 GPIO6 (data ready interrupt)
+# - C6 CHIP_PU → P4 GPIO54 (reset line)
+#
+# Power: Internal LDO for SDIO signaling
+CONFIG_ESP_HOSTED_SD_PWR_CTRL_LDO_INTERNAL_IO=y
+
+# Disable WiFi remote NVS (managed by C6)
+CONFIG_WIFI_RMT_NVS_ENABLED=n
+
+# ===========================
+# PSRAM (32MB Octal 200MHz)
+# ===========================
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+
+# ===========================
+# Cache Configuration
+# ===========================
 CONFIG_CACHE_L2_CACHE_256KB=y
 CONFIG_CACHE_L2_CACHE_LINE_128B=y
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
-CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+
+# ===========================
+# FreeRTOS
+# ===========================
 CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
 CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID=y
 CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+
+# ===========================
+# Task Watchdog
+# ===========================
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+
+# ===========================
+# Compiler Optimization
+# ===========================
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# ===========================
+# LWIP Networking (ESP-Hosted)
+# ===========================
+# Optimized buffers for WiFi throughput via SDIO
 CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64
 CONFIG_LWIP_TCP_SND_BUF_DEFAULT=65534
 CONFIG_LWIP_TCP_WND_DEFAULT=65534
 CONFIG_LWIP_TCP_RECVMBOX_SIZE=64
 CONFIG_LWIP_TCP_SACK_OUT=y
 CONFIG_LWIP_UDP_RECVMBOX_SIZE=64
-CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
-CONFIG_ESP_HOSTED_SD_PWR_CTRL_LDO_INTERNAL_IO=y
-CONFIG_WIFI_RMT_NVS_ENABLED=n
+
+# ===========================
+# Power Management
+# ===========================
+# Auto-initialize VBAT (required for P4 v1.3)
+CONFIG_ESP_VBAT_INIT_AUTO=y
+
+# ===========================
+# Experimental Features
+# ===========================
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
