@@ -183,6 +183,7 @@ static void bootstrap_wifi_manager_task(void *arg)
     // The transport init returns ESP_OK when configuration is done,
     // but SDIO link needs time to establish proper communication.
     // Without this delay, "ESP-Hosted link not yet up" error occurs.
+    // Increased from 2s to 5s based on observed "link not yet up" at +22s.
     ESP_LOGI(TAG, "[Phase B] Waiting %dms for SDIO link stabilization...", 
              BOOTSTRAP_WIFI_LINK_STABILIZATION_MS);
     vTaskDelay(pdMS_TO_TICKS(BOOTSTRAP_WIFI_LINK_STABILIZATION_MS));
@@ -418,18 +419,20 @@ esp_err_t bootstrap_manager_wait(bootstrap_manager_t *manager, uint32_t timeout_
                                        BOOTSTRAP_HOSTED_READY_BIT | 
                                        BOOTSTRAP_SD_READY_BIT;
     
-    // CRITICAL FIX: Wait for ALL three phases to complete (not ANY)
-    // Fourth parameter pdTRUE = wait for ALL bits (AND logic)
-    // Fourth parameter pdFALSE = wait for ANY bit (OR logic)
+    // CRITICAL FIX: Wait for ALL_READY_BITS only (not including FAILURE_BIT)
+    // If FAILURE_BIT was included with pdTRUE, it would wait for:
+    // POWER_READY AND HOSTED_READY AND SD_READY AND FAILURE (impossible!)
+    // causing 30s timeout every time.
     EventBits_t bits = xEventGroupWaitBits(
         manager->event_group,
-        ALL_READY_BITS | BOOTSTRAP_FAILURE_BIT,
-        pdFALSE,  // Don't clear bits
-        pdTRUE,   // *** FIXED: Wait for ALL bits (was pdFALSE = ANY bit) ***
+        ALL_READY_BITS,  // *** FIXED: Only wait for success bits ***
+        pdFALSE,         // Don't clear bits
+        pdTRUE,          // Wait for ALL bits (AND logic)
         pdMS_TO_TICKS(timeout_ms)
     );
     
-    // Check for failure first
+    // Check for failure after wait completes
+    bits = xEventGroupGetBits(manager->event_group);
     if (bits & BOOTSTRAP_FAILURE_BIT) {
         ESP_LOGE(TAG, "Bootstrap FAILED!");
         return ESP_FAIL;
