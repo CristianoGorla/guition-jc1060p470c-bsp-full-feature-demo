@@ -33,6 +33,6 @@ __pycache__/
 *.sublime-project
 *.sublime-workspace
 
-managed_components/q
+managed_components/
 main/wifi_config.h
 
