@@ -173,7 +173,82 @@ void app_main(void)
     ESP_LOGI(TAG, "NVS disabled by feature flags");
 #endif
 
-    // ========== 2. SD Card ==========
+    // ========== 2. I2C Bus (EARLY INIT - before peripherals!) ==========
+#if ENABLE_I2C
+    ESP_LOGI(TAG, "\n=== EARLY I2C INIT (before peripheral resets) ===");
+    i2c_master_bus_config_t i2c_bus_config = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_NUM_0,
+        .scl_io_num = I2C_MASTER_SCL_IO,
+        .sda_io_num = I2C_MASTER_SDA_IO,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+    i2c_master_bus_handle_t bus_handle;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &bus_handle));
+    LOG_I2C(TAG, "✓ I2C bus initialized EARLY (SDA=%d, SCL=%d)", I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
+    LOG_I2C(TAG, "This prevents bus lockup from GT911 reset\n");
+#else
+    ESP_LOGI(TAG, "I2C disabled by feature flags");
+    i2c_master_bus_handle_t bus_handle = NULL;
+#endif
+
+    // ========== 3. RTC Init (BEFORE GT911 reset!) ==========
+#if ENABLE_RTC
+    if (bus_handle) {
+        LOG_RTC(TAG, "\n========== RTC EARLY INITIALIZATION ==========");
+        LOG_RTC(TAG, "Initializing RTC BEFORE GT911 reset to prevent I2C issues...");
+        
+#if ENABLE_RTC_HW_TEST
+        // Run comprehensive hardware test
+        rtc_hardware_test(bus_handle);
+#else
+        // Standard init
+        ESP_LOGI(TAG, "Probing RTC at address 0x32...");
+        ret = i2c_master_probe(bus_handle, 0x32, 500);
+        
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "✓ RTC responds to probe!");
+            
+            ret = rtc_rx8025t_init(bus_handle);
+            if (ret == ESP_OK) {
+                LOG_RTC(TAG, "✓ RTC initialized successfully");
+                
+#if ENABLE_RTC_TEST
+                rtc_time_t current_time;
+                ret = rtc_rx8025t_get_time(&current_time);
+                if (ret == ESP_OK) {
+                    LOG_RTC(TAG, "Current RTC time: 20%02d-%02d-%02d (wday=%d) %02d:%02d:%02d",
+                            current_time.year, current_time.month, current_time.day,
+                            current_time.wday,
+                            current_time.hour, current_time.minute, current_time.second);
+                }
+                
+                bool pon_flag, vlf_flag;
+                if (rtc_rx8025t_check_power_on_flag(&pon_flag) == ESP_OK) {
+                    LOG_RTC(TAG, "PON Flag (Power-On): %s", pon_flag ? "SET" : "CLEAR");
+                }
+                if (rtc_rx8025t_check_voltage_low_flag(&vlf_flag) == ESP_OK) {
+                    LOG_RTC(TAG, "VLF Flag (Voltage Low): %s", vlf_flag ? "SET" : "CLEAR");
+                }
+#endif
+            } else {
+                ESP_LOGE(TAG, "Failed to initialize RTC (0x%x)", ret);
+            }
+        } else {
+            ESP_LOGE(TAG, "RTC does NOT respond to probe (0x%x)", ret);
+        }
+#endif // ENABLE_RTC_HW_TEST
+        
+        LOG_RTC(TAG, "========== RTC EARLY INIT COMPLETE ==========\n");
+    } else {
+        ESP_LOGW(TAG, "RTC init skipped (I2C not initialized)");
+    }
+#else
+    ESP_LOGI(TAG, "RTC disabled by feature flags");
+#endif
+
+    // ========== 4. SD Card ==========
 #if ENABLE_SD_CARD
     LOG_SD(TAG, "Initializing SD card (Slot 0 - forced)...");
 
@@ -252,7 +327,7 @@ sd_failed:
     ESP_LOGI(TAG, "SD card disabled by feature flags");
 #endif
 
-    // ========== 3. WiFi (ESP-Hosted) ==========
+    // ========== 5. WiFi (ESP-Hosted) ==========
 #if ENABLE_WIFI
     LOG_WIFI(TAG, "Initializing WiFi (ESP-Hosted via C6)...");
     init_wifi();
@@ -269,37 +344,19 @@ sd_failed:
     ESP_LOGI(TAG, "WiFi disabled by feature flags");
 #endif
 
-    // ========== 4. Hardware Reset (DOPO SD+WiFi, PRIMA I2C) ==========
-#if ENABLE_I2C || ENABLE_DISPLAY || ENABLE_TOUCH
-    ESP_LOGI(TAG, "Running hardware reset for peripherals (GT911/ES8311/RTC)...");
+    // ========== 6. Hardware Reset (GT911/ES8311 - AFTER RTC init!) ==========
+#if ENABLE_DISPLAY || ENABLE_TOUCH
+    ESP_LOGI(TAG, "\nRunning hardware reset for GT911/ES8311...");
+    ESP_LOGI(TAG, "(RTC already initialized - safe to reset GT911 now)");
     hw_reset_all_peripherals();
     
-    // CRITICAL: Wait for I2C bus to stabilize after resets
-    ESP_LOGI(TAG, "Waiting 500ms for I2C bus stabilization...");
+    ESP_LOGI(TAG, "Waiting 500ms for I2C bus stabilization after GT911 reset...");
     vTaskDelay(pdMS_TO_TICKS(500));
 #else
-    ESP_LOGI(TAG, "Hardware reset skipped (no I2C/Display/Touch enabled)");
+    ESP_LOGI(TAG, "Hardware reset skipped (no Display/Touch enabled)");
 #endif
 
-    // ========== 5. I2C Bus (Audio + Touch + RTC on same bus!) ==========
-#if ENABLE_I2C
-    i2c_master_bus_config_t i2c_bus_config = {
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .i2c_port = I2C_NUM_0,
-        .scl_io_num = I2C_MASTER_SCL_IO,
-        .sda_io_num = I2C_MASTER_SDA_IO,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
-    };
-    i2c_master_bus_handle_t bus_handle;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &bus_handle));
-    LOG_I2C(TAG, "I2C bus initialized (SDA=%d, SCL=%d)", I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
-#else
-    ESP_LOGI(TAG, "I2C disabled by feature flags");
-    i2c_master_bus_handle_t bus_handle = NULL;
-#endif
-
-    // ========== 6. Display ==========
+    // ========== 7. Display ==========
 #if ENABLE_DISPLAY
     ESP_LOGI(TAG, "Initializing display...");
     panel_handle = init_jd9165_display();
@@ -308,69 +365,14 @@ sd_failed:
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
 
-    // ========== 7. I2C SCAN ==========
+    // ========== 8. I2C SCAN ==========
 #if ENABLE_I2C && ENABLE_I2C_SCAN
     if (bus_handle) {
         vTaskDelay(pdMS_TO_TICKS(500));
-        ESP_LOGI(TAG, "\n========== I2C BUS SCAN (Audio + Touch + RTC) ==========");
+        ESP_LOGI(TAG, "\n========== I2C BUS SCAN (after all resets) ==========");
         i2c_scan_bus(bus_handle);
-        ESP_LOGI(TAG, "========== I2C BUS SCAN COMPLETE ==========");
+        ESP_LOGI(TAG, "========== I2C BUS SCAN COMPLETE ==========\n");
     }
-#endif
-
-    // ========== 8. RTC Init & Test ==========
-#if ENABLE_RTC
-    if (bus_handle) {
-        LOG_RTC(TAG, "\n========== RTC INITIALIZATION ==========");
-        
-#if ENABLE_RTC_HW_TEST
-        // Run comprehensive hardware test
-        rtc_hardware_test(bus_handle);
-#else
-        // Standard init
-        ESP_LOGI(TAG, "Probing RTC at address 0x32...");
-        ret = i2c_master_probe(bus_handle, 0x32, 500);
-        
-        if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "✓ RTC responds to probe!");
-            
-            ret = rtc_rx8025t_init(bus_handle);
-            if (ret == ESP_OK) {
-                LOG_RTC(TAG, "✓ RTC initialized successfully");
-                
-#if ENABLE_RTC_TEST
-                rtc_time_t current_time;
-                ret = rtc_rx8025t_get_time(&current_time);
-                if (ret == ESP_OK) {
-                    LOG_RTC(TAG, "Current RTC time: 20%02d-%02d-%02d (wday=%d) %02d:%02d:%02d",
-                            current_time.year, current_time.month, current_time.day,
-                            current_time.wday,
-                            current_time.hour, current_time.minute, current_time.second);
-                }
-                
-                bool pon_flag, vlf_flag;
-                if (rtc_rx8025t_check_power_on_flag(&pon_flag) == ESP_OK) {
-                    LOG_RTC(TAG, "PON Flag (Power-On): %s", pon_flag ? "SET" : "CLEAR");
-                }
-                if (rtc_rx8025t_check_voltage_low_flag(&vlf_flag) == ESP_OK) {
-                    LOG_RTC(TAG, "VLF Flag (Voltage Low): %s", vlf_flag ? "SET" : "CLEAR");
-                }
-#endif
-            } else {
-                ESP_LOGE(TAG, "Failed to initialize RTC (0x%x)", ret);
-            }
-        } else {
-            ESP_LOGE(TAG, "RTC does NOT respond to probe (0x%x)", ret);
-            ESP_LOGW(TAG, "RTC might not be populated or needs different timing");
-        }
-#endif // ENABLE_RTC_HW_TEST
-        
-        LOG_RTC(TAG, "========== RTC INIT COMPLETE ==========");
-    } else {
-        ESP_LOGW(TAG, "RTC init skipped (I2C not initialized)");
-    }
-#else
-    ESP_LOGI(TAG, "RTC disabled by feature flags");
 #endif
 
     // ========== 9. Touch ==========
@@ -386,7 +388,7 @@ sd_failed:
     ESP_LOGI(TAG, "Touch disabled by feature flags");
 #endif
 
-    ESP_LOGI(TAG, "=== System ready ===");
+    ESP_LOGI(TAG, "\n=== System ready ===");
 
     vTaskDelay(pdMS_TO_TICKS(500));
 
