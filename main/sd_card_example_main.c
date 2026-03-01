@@ -15,14 +15,34 @@
 
 static const char *TAG = "GUITION_MAIN";
 
-#define I2C_MASTER_SDA_IO 7
-#define I2C_MASTER_SCL_IO 8
+#define I2C_MASTER_SDA_IO    7
+#define I2C_MASTER_SCL_IO    8
+#define SD_CARD_POWER_GPIO   GPIO_NUM_36  // MOSFET Q1 controlla TF_VCC
 
 // Dummy functions per workaround ESP-Hosted + SD Card Slot 0
 #if CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
 static esp_err_t sdmmc_host_init_dummy(void) { return ESP_OK; }
 static esp_err_t sdmmc_host_deinit_dummy(void) { return ESP_OK; }
 #endif
+
+static void sd_card_power_on(void)
+{
+    // Attiva alimentazione SD Card via MOSFET P-Channel Q1
+    // GPIO36: LOW = MOSFET ON (alimentazione attiva)
+    //         HIGH = MOSFET OFF (alimentazione spenta)
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << SD_CARD_POWER_GPIO),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+    
+    gpio_set_level(SD_CARD_POWER_GPIO, 0);  // LOW = Power ON
+    vTaskDelay(pdMS_TO_TICKS(100));  // Stabilizzazione alimentazione
+    ESP_LOGI(TAG, "SD Card power enabled via GPIO36");
+}
 
 void app_main(void)
 {
@@ -61,7 +81,11 @@ void app_main(void)
     init_touch_gt911(bus_handle);
     ESP_LOGI(TAG, "Touch ready");
 
-    // 5. Montaggio SD Card (Slot 0)
+    // 5. Attiva alimentazione SD Card
+    sd_card_power_on();
+    vTaskDelay(pdMS_TO_TICKS(50));  // Attesa stabilizzazione card
+
+    // 6. Montaggio SD Card (Slot 0)
     ESP_LOGI(TAG, "Initializing SD card (Slot 0)...");
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
@@ -82,6 +106,7 @@ void app_main(void)
 
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
     slot_config.width = 4; // 4-line mode
+    // Pin Slot 0: CLK=43, CMD=44, D0=39, D1=40, D2=41, D3=42 (hardware fissi)
 
     ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
 
@@ -91,7 +116,10 @@ void app_main(void)
     }
     else
     {
-        ESP_LOGI(TAG, "SD card mounted. Capacity: %llu MB", 
+        ESP_LOGI(TAG, "SD card mounted successfully");
+        ESP_LOGI(TAG, "Card name: %s", card->cid.name);
+        ESP_LOGI(TAG, "Card type: %s", (card->ocr & SD_OCR_SDHC_CAP) ? "SDHC/SDXC" : "SDSC");
+        ESP_LOGI(TAG, "Capacity: %llu MB", 
                  ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
     }
 
