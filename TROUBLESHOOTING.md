@@ -82,6 +82,57 @@ I (xxxx) os_wrapper_esp: GPIO [6] configured   // Interrupt pin (with fix)
 
 ---
 
+## WiFi Connection Success (ESP-Hosted)
+
+### Successful WiFi Connection Test
+
+**Configuration:**
+```c
+// feature_flags.h
+#define ENABLE_WIFI 1
+#define ENABLE_WIFI_CONNECT 1  // Enable connection test
+
+// wifi_config.h (gitignored)
+#define WIFI_SSID "YourSSID"
+#define WIFI_PASSWORD "YourPassword"
+```
+
+**Successful Connection Log:**
+```
+I (4430) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
+
+I (6430) GUITION_MAIN: === WiFi Connection Test ===
+I (6430) GUITION_MAIN: Connecting to: FRITZ!Box 7530 WL
+I (6449) H_API: esp_wifi_remote_connect
+I (6470) GUITION_MAIN: Waiting for IP address (15s timeout)...
+I (6836) RPC_WRAP: ESP Event: Station mode: Connected
+I (7868) esp_netif_handlers: sta ip: 192.168.188.88, mask: 255.255.255.0, gw: 192.168.188.1
+I (7868) GUITION_MAIN: ✓ WiFi connected!
+I (7868) GUITION_MAIN:    IP Address: 192.168.188.88
+I (7873) GUITION_MAIN:    Netmask:    255.255.255.0
+I (7878) GUITION_MAIN:    Gateway:    192.168.188.1
+I (7885) GUITION_MAIN:    RSSI: -81 dBm
+```
+
+**Key Timestamps:**
+- **T+6430ms**: Connection initiated
+- **T+6836ms**: Connected event (406ms connection time)
+- **T+7868ms**: IP address assigned via DHCP (1032ms DHCP negotiation)
+- **Total**: ~1.4 seconds from connect to IP ready
+
+**Signal Strength (RSSI):**
+```
+-30 to -50 dBm: Excellent
+-50 to -70 dBm: Good
+-70 to -85 dBm: Fair (usable)
+-85 to -90 dBm: Poor
+< -90 dBm: No connection expected
+```
+
+**Note:** ESP32-C6 supports **2.4GHz only**. Ensure your router broadcasts a 2.4GHz SSID.
+
+---
+
 ## RTC RX8025T Initialization
 
 ### Best Practice: Direct Initialization (No Pre-Probe)
