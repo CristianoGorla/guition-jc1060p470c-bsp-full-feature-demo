@@ -60,6 +60,7 @@ static void bootstrap_power_manager_task(void *arg)
     ESP_LOGI(TAG, "[Phase A]   GPIO%d (SD_POWER_EN) → LOW (SD unpowered)", GPIO_SD_POWER_EN);
     
     // C6_IO9 strapping protection (force high for SPI boot)
+    // Only configure if GPIO is valid (not -1)
     if (GPIO_C6_IO9_STRAPPING >= 0) {
         io_conf.pin_bit_mask = (1ULL << GPIO_C6_IO9_STRAPPING);
         gpio_config(&io_conf);
@@ -150,13 +151,13 @@ static void bootstrap_wifi_manager_task(void *arg)
     ESP_LOGI(TAG, "[Phase B] Waiting for C6 firmware ready signal (GPIO%d)...", GPIO_C6_IO2_HANDSHAKE);
     int timeout_count = 0;
     while (timeout_count < (BOOTSTRAP_C6_BOOT_TIMEOUT_MS / 100)) {
-        int level = gpio_get_level(GPIO_C6_IO2_HANDSHAKE);
         // C6 firmware typically toggles or holds this pin high when ready
         // For now, just wait for timeout (proper handshake TBD)
         vTaskDelay(pdMS_TO_TICKS(100));
         timeout_count++;
         
         // Early exit if C6 signals ready (implementation-specific)
+        // int level = gpio_get_level(GPIO_C6_IO2_HANDSHAKE);
         // if (level == 1) break;
     }
     
