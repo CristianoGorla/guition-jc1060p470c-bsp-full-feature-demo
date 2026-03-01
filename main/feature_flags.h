@@ -7,17 +7,17 @@
  */
 
 // ========== SD CARD ==========
-#define ENABLE_SD_CARD 0 // SD card mount
-#define DEBUG_SD_CARD 0  // Detailed SD logs
+#define ENABLE_SD_CARD 1 // ✅ SD card mount
+#define DEBUG_SD_CARD 1  // Detailed SD logs
 
 // ========== WIFI/ESP-HOSTED ==========
-#define ENABLE_WIFI 0 // ESP-Hosted WiFi via C6
-#define DEBUG_WIFI 0  // Detailed WiFi logs
+#define ENABLE_WIFI 1 // ✅ ESP-Hosted WiFi via C6
+#define DEBUG_WIFI 1  // Detailed WiFi logs
 
 // ========== I2C BUS ==========
 #define ENABLE_I2C 1      // I2C bus (required for Touch/Audio/RTC)
 #define DEBUG_I2C 1       // Detailed I2C logs
-#define ENABLE_I2C_SCAN 0 // Scan I2C bus (DISABLED - interferes with device reset)
+#define ENABLE_I2C_SCAN 0 // ❌ Scan I2C bus (DISABLED - interferes with device reset)
 
 // ========== AUDIO CODEC ==========
 #define ENABLE_AUDIO 1 // ES8311 audio codec (I2C init only)
