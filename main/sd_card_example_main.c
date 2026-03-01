@@ -18,6 +18,12 @@ static const char *TAG = "GUITION_MAIN";
 #define I2C_MASTER_SDA_IO 7
 #define I2C_MASTER_SCL_IO 8
 
+// Dummy functions per workaround ESP-Hosted + SD Card Slot 0
+#if CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
+static esp_err_t sdmmc_host_init_dummy(void) { return ESP_OK; }
+static esp_err_t sdmmc_host_deinit_dummy(void) { return ESP_OK; }
+#endif
+
 void app_main(void)
 {
     esp_err_t ret;
@@ -68,8 +74,10 @@ void app_main(void)
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 
     // WORKAROUND per IDF 5.5.3: ESP-Hosted (Slot 1) è già attivo, non resettare host
-#if CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE && (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0))
-    host.init = NULL; // Impedisce reset del controller SDMMC condiviso
+#if CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
+    host.init = &sdmmc_host_init_dummy;
+    host.deinit = &sdmmc_host_deinit_dummy;
+    ESP_LOGI(TAG, "Using dummy SDMMC host init/deinit for ESP-Hosted workaround");
 #endif
 
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
