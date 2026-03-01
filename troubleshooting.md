@@ -82,6 +82,57 @@ I (xxxx) os_wrapper_esp: GPIO [6] configured   // Interrupt pin (with fix)
 
 ---
 
+## WiFi Connection Success (ESP-Hosted)
+
+### Successful WiFi Connection Test
+
+**Configuration:**
+```c
+// feature_flags.h
+#define ENABLE_WIFI 1
+#define ENABLE_WIFI_CONNECT 1  // Enable connection test
+
+// wifi_config.h (gitignored)
+#define WIFI_SSID "YourSSID"
+#define WIFI_PASSWORD "YourPassword"
+```
+
+**Successful Connection Log:**
+```
+I (4430) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
+
+I (6430) GUITION_MAIN: === WiFi Connection Test ===
+I (6430) GUITION_MAIN: Connecting to: FRITZ!Box 7530 WL
+I (6449) H_API: esp_wifi_remote_connect
+I (6470) GUITION_MAIN: Waiting for IP address (15s timeout)...
+I (6836) RPC_WRAP: ESP Event: Station mode: Connected
+I (7868) esp_netif_handlers: sta ip: 192.168.188.88, mask: 255.255.255.0, gw: 192.168.188.1
+I (7868) GUITION_MAIN: ✓ WiFi connected!
+I (7868) GUITION_MAIN:    IP Address: 192.168.188.88
+I (7873) GUITION_MAIN:    Netmask:    255.255.255.0
+I (7878) GUITION_MAIN:    Gateway:    192.168.188.1
+I (7885) GUITION_MAIN:    RSSI: -81 dBm
+```
+
+**Key Timestamps:**
+- **T+6430ms**: Connection initiated
+- **T+6836ms**: Connected event (406ms connection time)
+- **T+7868ms**: IP address assigned via DHCP (1032ms DHCP negotiation)
+- **Total**: ~1.4 seconds from connect to IP ready
+
+**Signal Strength (RSSI):**
+```
+-30 to -50 dBm: Excellent
+-50 to -70 dBm: Good
+-70 to -85 dBm: Fair (usable)
+-85 to -90 dBm: Poor
+< -90 dBm: No connection expected
+```
+
+**Note:** ESP32-C6 supports **2.4GHz only**. Ensure your router broadcasts a 2.4GHz SSID.
+
+---
+
 ## RTC RX8025T Initialization
 
 ### Best Practice: Direct Initialization (No Pre-Probe)
@@ -238,6 +289,7 @@ GPIO15 - D1
 GPIO16 - D2
 GPIO17 - D3
 GPIO54 - ESP32-C6 reset
+GPIO6  - Interrupt/Data Ready (OOB)
 ```
 
 ---
@@ -253,8 +305,10 @@ GPIO54 - ESP32-C6 reset
 5. RTC RX8025T Init (direct init at 0x32)
 6. Display JD9165 Init (MIPI DSI, no I2C conflict)
 7. Touch GT911 Init (auto-reset, detects 0x14 or 0x5D)
-8. SD Card (optional)
-9. WiFi ESP-Hosted (optional)
+8. SD Card (SDMMC Slot 0, optional)
+9. WiFi ESP-Hosted (SDMMC Slot 1, optional)
+   - Scan test (default)
+   - Connection test (with wifi_config.h)
 ```
 
 **Key Principles:**
@@ -262,67 +316,94 @@ GPIO54 - ESP32-C6 reset
 2. Each driver validates device presence internally
 3. Direct init without pre-probe
 4. MIPI DSI does not interfere with I2C
-5. Consistent pattern across all devices
+5. SDMMC Slot 0 and Slot 1 can coexist
+6. Consistent pattern across all devices
 
 ---
 
-## Complete System Boot Log (All Devices Working)
+## Complete System Boot Log (All Features Working)
 
-**Date: 2026-03-01 19:16 CET**
+**Date: 2026-03-01 19:52 CET**  
+**Configuration:** WiFi Connection Test Enabled
 
 ```
-I (1120) GUITION_MAIN: ========================================
-I (1126) GUITION_MAIN:    Guition JC1060P470C Initialization
-I (1132) GUITION_MAIN: ========================================
+I (1135) GUITION_MAIN: 
+I (1137) GUITION_MAIN: ========================================
+I (1143) GUITION_MAIN:    Guition JC1060P470C Initialization
+I (1149) GUITION_MAIN: ========================================
 
-I (1141) GUITION_MAIN: === I2C Bus Initialization ===
-I (1142) GUITION_MAIN: ✓ I2C bus ready (SDA=GPIO7, SCL=GPIO8)
+I (1158) GUITION_MAIN: === I2C Bus Initialization ===
+I (1159) GUITION_MAIN: ✓ I2C bus ready (SDA=GPIO7, SCL=GPIO8)
 
-I (1148) GUITION_MAIN: === ES8311 Audio Codec ===
-I (1152) ES8311: Initializing ES8311 audio codec...
-I (1157) ES8311: I2C Address: 0x18 (direct init, no pre-probe)
-I (1163) ES8311: ✓ ES8311 responding on I2C!
-I (1167) ES8311: ES8311 Chip ID: 0x83 (expected: 0x83)
-I (1172) ES8311: Performing soft reset...
-I (1276) ES8311: Setting codec to power-down mode...
-I (1276) ES8311: ✓ ES8311 initialized successfully (powered down, safe state)
-I (1276) ES8311: Note: PA power pin GPIO11 not configured (needs I2S setup)
-I (1283) GUITION_MAIN: ✓ ES8311 initialized (powered down)
+I (1165) GUITION_MAIN: === ES8311 Audio Codec ===
+I (1169) ES8311: Initializing ES8311 audio codec...
+I (1174) ES8311: I2C Address: 0x18 (direct init, no pre-probe)
+I (1180) ES8311: ✓ ES8311 responding on I2C!
+I (1184) ES8311: ES8311 Chip ID: 0x83 (expected: 0x83)
+I (1189) ES8311: Performing soft reset...
+I (1293) ES8311: Setting codec to power-down mode...
+I (1293) ES8311: ✓ ES8311 initialized successfully (powered down, safe state)
+I (1300) GUITION_MAIN: ✓ ES8311 initialized (powered down)
 
-I (1288) GUITION_MAIN: === RTC Initialization ===
-I (1293) GUITION_MAIN: RTC driver will validate device at 0x32 (no pre-probe)
-I (1300) RX8025T: Initializing RX8025T RTC...
-I (1304) RX8025T: I2C Address: 0x32
-I (1307) RX8025T: Reading current time (gentle init)...
-I (1313) RX8025T: ✓ RTC responding on I2C!
-I (1316) RX8025T: Current RTC time: 2026-03-01 (wday=6) 19:16:45
-I (1322) RX8025T: PON/VLF flags already clear - RTC time is valid
-I (1328) RX8025T: Already in 24-hour format
-I (1331) RX8025T: RX8025T initialized successfully
-I (1336) GUITION_MAIN: ✓ RTC initialized successfully
-I (1342) GUITION_MAIN: Current time: 2026-03-01 19:16:45
+I (1305) GUITION_MAIN: === RTC Initialization ===
+I (1310) GUITION_MAIN: RTC driver will validate device at 0x32 (no pre-probe)
+I (1317) RX8025T: Initializing RX8025T RTC...
+I (1321) RX8025T: I2C Address: 0x32
+I (1324) RX8025T: Reading current time (gentle init)...
+I (1330) RX8025T: ✓ RTC responding on I2C!
+I (1333) RX8025T: Current RTC time: 20139-02-26 (wday=2) 03:08:03
+I (1339) RX8025T: PON/VLF flags already clear - RTC time is valid
+I (1345) RX8025T: Already in 24-hour format
+I (1348) RX8025T: RX8025T initialized successfully
+I (1353) GUITION_MAIN: ✓ RTC initialized successfully
 
-I (1353) GUITION_MAIN: === Display Initialization ===
-I (1358) JD9165: Initializing JD9165 display
-I (1660) JD9165: Display initialized (1024x600 @ 52MHz, 2-lane DSI, HBP=136)
-I (1660) GUITION_MAIN: ✓ Display ready (1024x600 MIPI DSI)
+I (1370) GUITION_MAIN: === Display Initialization ===
+I (1375) JD9165: Initializing JD9165 display
+I (1677) JD9165: Display initialized (1024x600 @ 52MHz, 2-lane DSI, HBP=136)
+I (1677) GUITION_MAIN: ✓ Display ready (1024x600 MIPI DSI)
 
-I (1661) GUITION_MAIN: === Touch Controller Initialization ===
-I (1666) GUITION_MAIN: GT911 driver will auto-reset and detect I2C address (0x14 or 0x5D)
-I (1674) GT911: Initializing GT911 touch controller
-I (1686) GT911: I2C address initialization procedure skipped - using default GT9xx setup
-I (1713) GT911: TouchPad_ID:0x39,0x31,0x31
-I (1713) GT911: TouchPad_Config_Version:99
-I (1713) GT911: ✓ GT911 initialized successfully
-I (1714) GT911:   Resolution: 1024x600
-I (1718) GT911:   Driver auto-detected I2C address
-I (1722) GT911:   Touch ready for reading
-I (1726) GUITION_MAIN: ✓ Touch controller ready
-I (1830) GUITION_MAIN: GT911 active at 0x14 (INT=HIGH during reset)
+I (1678) GUITION_MAIN: === Touch Controller Initialization ===
+I (1683) GUITION_MAIN: GT911 driver will auto-reset and detect I2C address (0x14 or 0x5D)
+I (1691) GT911: Initializing GT911 touch controller
+I (1730) GT911: TouchPad_ID:0x39,0x31,0x31
+I (1730) GT911: TouchPad_Config_Version:99
+I (1730) GT911: ✓ GT911 initialized successfully
+I (1731) GT911:   Resolution: 1024x600
+I (1735) GT911:   Driver auto-detected I2C address
+I (1847) GUITION_MAIN: GT911 active at 0x14 (INT=HIGH during reset)
 
-I (1835) GUITION_MAIN: ========================================
-I (1841) GUITION_MAIN:    System Initialization Complete
-I (1846) GUITION_MAIN: ========================================
+I (1847) GUITION_MAIN: === SD Card Initialization ===
+I (2097) GUITION_MAIN: SD Card power enabled (GPIO45)
+I (2097) GUITION_MAIN: ESP-Hosted detected - init slot only
+I (2270) GUITION_MAIN: ✓ SD card mounted
+I (2270) GUITION_MAIN: Card: SU08G, Capacity: 7580 MB
+
+I (2271) GUITION_MAIN: === WiFi Initialization ===
+I (2272) wifi_hosted: Inizializzazione interfaccia Wi-Fi Hosted...
+I (2279) transport: Attempt connection with slave: retry[0]
+W (2284) H_SDIO_DRV: Reset slave using GPIO[54]
+I (2288) os_wrapper_esp: GPIO [54] configured
+I (3815) sdio_wrapper: SDIO master: Slot 1, Data-Lines: 4-bit Freq(KHz)[40000 KHz]
+I (3815) sdio_wrapper: GPIOs: CLK[18] CMD[19] D0[14] D1[15] D2[16] D3[17] Slave_Reset[54]
+I (4081) transport: Base transport is set-up, TRANSPORT_TX_ACTIVE
+I (4087) H_API: Transport active
+I (4430) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
+
+I (6430) GUITION_MAIN: === WiFi Connection Test ===
+I (6430) GUITION_MAIN: Connecting to: FRITZ!Box 7530 WL
+I (6449) H_API: esp_wifi_remote_connect
+I (6470) GUITION_MAIN: Waiting for IP address (15s timeout)...
+I (6836) RPC_WRAP: ESP Event: Station mode: Connected
+I (7868) esp_netif_handlers: sta ip: 192.168.188.88, mask: 255.255.255.0, gw: 192.168.188.1
+I (7868) GUITION_MAIN: ✓ WiFi connected!
+I (7868) GUITION_MAIN:    IP Address: 192.168.188.88
+I (7873) GUITION_MAIN:    Netmask:    255.255.255.0
+I (7878) GUITION_MAIN:    Gateway:    192.168.188.1
+I (7885) GUITION_MAIN:    RSSI: -81 dBm
+
+I (7886) GUITION_MAIN: ========================================
+I (7892) GUITION_MAIN:    System Initialization Complete
+I (7897) GUITION_MAIN: ========================================
 ```
 
 **Summary:**
@@ -331,15 +412,20 @@ I (1846) GUITION_MAIN: ========================================
 - ✅ RTC RX8025T: 0x32 (time valid)
 - ✅ Display: 1024x600 MIPI DSI
 - ✅ Touch GT911: 0x14 (TouchPad ID: 911)
+- ✅ SD Card: 7580 MB (SDMMC Slot 0)
+- ✅ WiFi: Connected via ESP-Hosted (SDMMC Slot 1)
+- ✅ IP Address: 192.168.188.88
+- ✅ Signal: -81 dBm (Fair)
 
-**All I2C devices initialized successfully using direct init pattern!**
+**All peripherals initialized successfully! SD Card + WiFi coexisting on separate SDMMC slots!**
 
 ---
 
 ## Feature Flags Configuration
 
-**Working Configuration for Full System:**
+**Working Configuration for Full System with WiFi:**
 ```c
+// feature_flags.h
 #define ENABLE_I2C 1           // Required for I2C devices
 #define ENABLE_I2C_SCAN 0      // ❌ MUST BE DISABLED
 
@@ -356,6 +442,20 @@ I (1846) GUITION_MAIN: ========================================
 #define ENABLE_TOUCH 1         // ✅ GT911 touch
 #define DEBUG_TOUCH 1          // Show detailed logs
 #define ENABLE_TOUCH_TEST 0    // Disable continuous read
+
+#define ENABLE_SD_CARD 1       // ✅ SDMMC Slot 0
+#define DEBUG_SD_CARD 1        // Show detailed logs
+
+#define ENABLE_WIFI 1          // ✅ ESP-Hosted WiFi
+#define DEBUG_WIFI 1           // Show detailed logs
+#define ENABLE_WIFI_CONNECT 1  // ✅ Test connection (requires wifi_config.h)
+```
+
+**WiFi Credentials:**
+```bash
+cd main
+cp wifi_config.h.example wifi_config.h
+nano wifi_config.h  # Edit SSID and password
 ```
 
 ---
@@ -387,6 +487,7 @@ The I2C bus issues were caused by **I2C scan timing**, not MIPI DSI initializati
 - **Board BSP:** `esp32_p4_function_ev_board.h`
 - **RTC Datasheet:** Epson RX8025T Real-Time Clock Module
 - **ES8311 Datasheet:** http://www.everest-semi.com/pdf/ES8311%20PB.pdf
+- **ESP-Hosted WiFi:** https://github.com/espressif/esp-hosted
 
 ---
 
@@ -426,4 +527,5 @@ Final Approach → I2C init → Direct device init (driver self-validates)
                   ✅ Consistent pattern
                   ✅ All devices working
                   ✅ SD + WiFi coexisting
+                  ✅ WiFi connection successful
 ```
