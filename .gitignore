@@ -36,3 +36,28 @@ __pycache__/
 managed_components/
 main/wifi_config.h
 
+# --- Confidential & Sensitive Documents ---
+# PDF datasheets and confidential documentation
+*.pdf
+PDF/
+docs/confidential/
+datasheets/
+
+# Backup and temporary files
+*.bak
+*.tmp
+*.swp
+*~
+.~*
+
+# Local configuration and secrets
+*.local
+*.secret
+.env.local
+config.local.*
+
+# System-specific paths and logs
+*.log
+logs/
+.cache/
+.history/
