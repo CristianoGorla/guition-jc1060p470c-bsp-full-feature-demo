@@ -53,8 +53,11 @@ bool do_wifi_scan_and_check(const char *target)
 void wifi_connect(const char *ssid, const char *pass)
 {
     wifi_config_t cfg = {0};
-    strncpy((char *)cfg.sta.ssid, ssid, 32);
-    strncpy((char *)cfg.sta.password, pass, 64);
+    strncpy((char *)cfg.sta.ssid, ssid, sizeof(cfg.sta.ssid) - 1);
+    cfg.sta.ssid[sizeof(cfg.sta.ssid) - 1] = '\0';
+
+    strncpy((char *)cfg.sta.password, pass, sizeof(cfg.sta.password) - 1);
+    cfg.sta.password[sizeof(cfg.sta.password) - 1] = '\0';
     esp_wifi_set_config(WIFI_IF_STA, &cfg);
     esp_wifi_connect();
 }

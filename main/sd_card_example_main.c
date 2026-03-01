@@ -14,6 +14,7 @@
 #include "wifi_config.h"
 #include "touch_gt911.h"
 #include "driver/i2c_types.h"
+#include "sd_pwr_ctrl_by_on_chip_ldo.h"
 
 // static const char *TAG = "GUITION_MAIN";
 
