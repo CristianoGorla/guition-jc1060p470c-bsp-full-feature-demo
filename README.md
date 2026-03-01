@@ -8,21 +8,92 @@
 
 This example demonstrates how to use an SD card on an ESP32-P4 dev board when ESP-Hosted is using SDIO to communicate with the on-board ESP32-C6. It has been modified from the standard [ESP-IDF SD Card example](https://github.com/espressif/esp-idf/tree/master/examples/storage/sd_card/sdmmc).
 
-This example does the following steps:
+This example uses a **deterministic three-phase bootstrap manager** to ensure reliable initialization of:
+- ESP32-C6 (WiFi/BLE via ESP-Hosted on SDMMC Slot 1)
+- SD Card (on SDMMC Slot 0)
 
-1. Initialise ESP-Hosted and Wi-Fi
-1. Use an "all-in-one" `esp_vfs_fat_sdmmc_mount` function to:
-   - initialize SDMMC peripheral,
-   - probe and initialize an SD card,
-   - mount FAT filesystem using FATFS library
-   - register FAT filesystem in VFS, enabling C standard library and POSIX functions to be used.
-1. Print information about the card, such as name, type, capacity, and maximum supported frequency.
-1. Perform a Wi-Fi Scan (or Connect if enabled)
-1. Create a file using `fopen` and write to it using `fprintf`.
-1. Rename the file. Before renaming, check if destination file already exists using `stat` function, and remove it using `unlink` function.
-1. Open renamed file for reading, read back the line, and print it to the terminal.
+The bootstrap manager enforces strict power sequencing and prevents SDMMC bus conflicts.
 
-This example supports SD (SDSC, SDHC, SDXC) cards and eMMC chips.
+---
+
+## 🔄 Bootstrap Manager Architecture
+
+### Three-Phase Initialization System
+
+The Bootstrap Manager implements a deterministic three-phase initialization to prevent SDMMC bus conflicts:
+
+```
+Phase A: Power Manager (Priority 24)
+  ├── 1. Force GPIO isolation (C6 in reset, SD powered down)
+  ├── 2. Wait 100ms for rail stabilization
+  ├── 3. Power up SD card (GPIO36 HIGH)
+  ├── 4. Release C6 from reset (GPIO54 HIGH)
+  └── 5. Signal POWER_READY → Phase B
+
+Phase B: WiFi Manager (Priority 23)
+  ├── Wait for POWER_READY
+  ├── 1. Wait for C6 firmware ready signal (GPIO6, 5s timeout)
+  ├── 2. Initialize ESP-Hosted SDIO transport (SDMMC Slot 1)
+  └── 3. Signal HOSTED_READY → Phase C
+
+Phase C: SD Manager (Priority 22)
+  ├── Wait for HOSTED_READY
+  ├── 1. Enable pull-ups on SDMMC pins (GPIO39-44)
+  ├── 2. Mount SD card filesystem (SDMMC Slot 0)
+  └── 3. Signal SD_READY
+```
+
+### Why Three Phases?
+
+**Problem:** SD Card (Slot 0) and ESP-Hosted (Slot 1) share the same SDMMC controller. If both try to initialize simultaneously, bus conflicts occur.
+
+**Solution:** Sequential initialization with event synchronization:
+
+1. **Phase A** ensures power domains are stable before any communication
+2. **Phase B** initializes ESP-Hosted and claims SDMMC controller
+3. **Phase C** safely mounts SD card after ESP-Hosted is established
+
+### Expected Boot Timing
+
+| Event | Time | Description |
+|-------|------|-------------|
+| **Bootstrap Start** | T+1.87s | Three-phase init begins |
+| **Warm Boot Detection** | T+1.89s | Detects reset reason (typically 3 = SW_CPU_RESET) |
+| **Hard Reset Cycle** | T+1.90s | Forces GPIO54/36 LOW for 500ms to clear hardware state |
+| **Phase A Start** | T+2.43s | Power Manager begins GPIO isolation |
+| **Rail Stabilization** | T+2.43-2.56s | 100ms wait for power rails |
+| **Power-On Sequence** | T+2.56s | SD powered, C6 released from reset |
+| **Phase A Complete** | T+2.61s | POWER_READY signaled |
+| **Phase B Start** | T+2.61s | WiFi Manager starts |
+| **GPIO6 Handshake** | T+2.62-7.63s | Wait for C6 firmware ready (5s timeout) |
+| **Phase B Timeout** | T+7.63s | C6 handshake timeout (proceeds anyway) |
+| **ESP-Hosted Init** | T+7.63-7.67s | SDIO transport initialization |
+| **Phase B Complete** | T+7.67s | HOSTED_READY signaled |
+| **Phase C Start** | T+7.67s | SD Manager starts |
+| **SD Card Mount** | T+7.69-8.02s | Filesystem mount (~330ms) |
+| **Phase C Complete** | T+8.03s | SD_READY signaled |
+| **Bootstrap Complete** | T+8.03s | All three phases done |
+
+**Note:** The GPIO6 handshake currently times out at 5 seconds, but ESP-Hosted initialization proceeds successfully anyway. This is expected behavior and does not affect system operation.
+
+### Warm Boot Detection and Hard Reset
+
+On warm boot (software reset, hardware button, or unknown reset reason), the Bootstrap Manager performs an automatic **hard reset cycle**:
+
+```
+W (1891) BOOTSTRAP: Warm boot detected (reset reason: 3)
+W (1896) BOOTSTRAP: Warm boot detected, performing hard reset...
+W (1902) BOOTSTRAP: === HARD RESET CYCLE ===
+W (1906) BOOTSTRAP: Forcing complete power-down to clear hardware state...
+W (1913) BOOTSTRAP:   GPIO54 (C6_CHIP_PU) → LOW
+W (1917) BOOTSTRAP:   GPIO36 (SD_POWER_EN) → LOW
+W (1922) BOOTSTRAP:   Waiting 500ms for capacitor discharge...
+W (2427) BOOTSTRAP: Hard reset complete, ready for clean init
+```
+
+**Purpose:** Ensures ESP32-C6 and SD card are in a known clean state before initialization, preventing issues from residual hardware state after warm boots.
+
+**See [troubleshooting.md](troubleshooting.md#bootstrap-manager-timing-and-behavior) for complete bootstrap behavior analysis.**
 
 ---
 
@@ -39,6 +110,7 @@ This example supports SD (SDSC, SDHC, SDXC) cards and eMMC chips.
 | **GT911 Touch** | ✅ Active | 0x14 | RST=21, INT=22 | `ENABLE_TOUCH=1` | `DEBUG_TOUCH=1` |
 | **SD Card** | ✅ Active | - | Slot 0 (39-44), PWR=45 | `ENABLE_SD_CARD=1` | `DEBUG_SD_CARD=1` |
 | **WiFi ESP-Hosted** | ✅ Active | - | Slot 1 (14-19), RST=54 | `ENABLE_WIFI=1` | `DEBUG_WIFI=1` |
+| **Bootstrap Manager** | ✅ Active | - | C6_RST=54, SD_PWR=36, C6_READY=6 | - | - |
 | **NVS Flash** | ✅ Active | - | - | `ENABLE_NVS=1` | `DEBUG_NVS=0` |
 
 ### 🧪 Advanced Features and Tests
@@ -63,9 +135,14 @@ This example supports SD (SDSC, SDHC, SDXC) cards and eMMC chips.
 | **RTC** | `RX8025T` | ✓ RTC initialized, Current time | ~1.4s |
 | **Display** | `JD9165` | Display initialized (1024x600) | ~1.7s |
 | **Touch** | `GT911` | ✓ GT911 initialized (1024x600) | ~1.7s |
-| **SD Card** | `GUITION_MAIN` | ✓ SD card mounted, Capacity | ~2.3s |
+| **Bootstrap Start** | `BOOTSTRAP` | Three-phase init begins | ~1.9s |
+| **Hard Reset** | `BOOTSTRAP` | 500ms power-down cycle (warm boot) | ~1.9-2.4s |
+| **Phase A** | `BOOTSTRAP` | Power Manager (GPIO isolation + power-on) | ~2.4-2.6s |
+| **Phase B** | `BOOTSTRAP` | WiFi Manager (ESP-Hosted init) | ~2.6-7.7s |
+| **Phase C** | `BOOTSTRAP` | SD Manager (SD card mount) | ~7.7-8.0s |
+| **SD Card Ready** | `GUITION_MAIN` | ✓ SD card mounted, Capacity | ~8.0s |
 | **WiFi Init** | `wifi_hosted` | ✓ WiFi initialized (ESP-Hosted) | ~4.4s |
-| **WiFi Connect** | `GUITION_MAIN` | ✓ WiFi connected! IP, RSSI | ~7.9s |
+| **WiFi Connect** | `GUITION_MAIN` | ✓ WiFi connected! IP, RSSI | ~10.9s |
 
 ### ⚙️ Build Configuration
 
@@ -82,13 +159,15 @@ This example supports SD (SDSC, SDHC, SDXC) cards and eMMC chips.
 
 ### 🔄 Reset Behavior Comparison
 
-| Reset Method | Reliability | SD Card | WiFi | Recommended For |
-|--------------|-------------|---------|------|----------------|
-| **IDF Terminal Restart** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ **Development** |
-| **`idf.py monitor`** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ **Development** |
-| **Power Cycle (5s)** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ **Production** |
-| **Hardware Button** | ⭐⭐ | ⚠️ May fail | ✅ OK | ❌ Inconsistent |
-| **USB Disconnect** | ⭐ | ❌ Fails | ⚠️ May fail | ❌ Unreliable |
+| Reset Method | Reliability | SD Card | WiFi | Bootstrap | Recommended For |
+|--------------|-------------|---------|------|-----------|----------------|
+| **IDF Terminal Restart** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ Clean | ✅ **Development** |
+| **`idf.py monitor`** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ Clean | ✅ **Development** |
+| **Power Cycle (5s)** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ Clean | ✅ **Production** |
+| **Hardware Button** | ⭐⭐⭐ | ✅ OK | ✅ OK | ⚙️ Hard reset cycle | ⚠️ Works (warm boot) |
+| **USB Disconnect** | ⭐⭐ | ⚠️ May fail | ⚠️ May timeout | ⚙️ Hard reset cycle | ❌ Less reliable |
+
+**Note:** Hardware button and USB disconnect trigger automatic hard reset cycle, which clears hardware state before initialization.
 
 **See [troubleshooting.md](troubleshooting.md) for detailed analysis of reset behavior and SD card `0x107` errors.**
 
@@ -123,9 +202,15 @@ This example supports SD (SDSC, SDHC, SDXC) cards and eMMC chips.
    - Duplicate causes WiFi instability and SD card errors
    - Fixed in commit `bb2168c` (2026-03-01)
 
-5. **Reset Reliability**
+5. **Bootstrap Manager Timing**
+   - GPIO6 handshake timeout (5s) is expected behavior
+   - ESP-Hosted proceeds successfully after timeout
+   - Hard reset cycle (500ms) occurs on warm boots
+   - See [troubleshooting.md](troubleshooting.md#bootstrap-manager-timing-and-behavior) for details
+
+6. **Reset Reliability**
    - Use **IDF monitor** (`Ctrl+T, Ctrl+R`) for development
-   - Hardware button reset may cause SD card `0x107` errors
+   - Hardware button triggers automatic hard reset cycle
    - This is **normal behavior** for embedded systems
    - See [troubleshooting.md](troubleshooting.md) for complete explanation
 
@@ -154,6 +239,14 @@ The table below lists the default pin assignments.
 | GPIO41       | D2          | not used in 1-line SD mode; 10k pullup in 4-line mode                |
 | GPIO42       | D3          | not used in 1-line SD mode, but card's D3 pin must have a 10k pullup |
 
+### Bootstrap Manager Control Pins
+
+| Function          | Source      | Target  | Description               |
+| ----------------- | ----------- | ------- | ------------------------- |
+| C6 Reset          | ESP32-P4    | GPIO 54 | ESP32-C6 CHIP_PU (active HIGH) |
+| SD Power Enable   | ESP32-P4    | GPIO 36 | SD card power (active HIGH) |
+| C6 Ready Signal   | ESP32-C6    | GPIO 6  | Firmware ready handshake (currently times out) |
+
 ### ESP-Hosted Control Pins (ESP32-C6 ↔ ESP32-P4)
 
 | Function          | C6 Pin      | P4 Pin  | Description               |
@@ -162,7 +255,7 @@ The table below lists the default pin assignments.
 | Reset             | CHIP_PU     | GPIO 54 | Hardware reset            |
 | Debug (unused)    | GPIO 9      | JP1-18  | External header only      |
 
-**Note:** GPIO6 interrupt is configured in `sdkconfig.defaults` for efficient ESP-Hosted communication.
+**Note:** GPIO6 is configured for both ESP-Hosted interrupt and C6 ready signal handshake.
 
 ### 4-line and 1-line SD modes
 
@@ -333,9 +426,9 @@ For most reliable development experience:
    - **Recommended over hardware button reset**
 
 3. **If using hardware button:**
-   - SD card may fail with `0x107` error (this is normal)
-   - Disconnect power for 5+ seconds
-   - Reconnect and use IDF monitor
+   - Bootstrap performs automatic hard reset cycle (500ms power-down)
+   - SD card and WiFi should initialize correctly
+   - If issues persist, use IDF monitor restart
 
 **See [troubleshooting.md](troubleshooting.md#system-reset-behavior-and-initialization-reliability) for complete reset behavior documentation.**
 
@@ -439,6 +532,19 @@ example: Failed to mount filesystem.
 
 The example will be able to mount only cards formatted using FAT32 filesystem.
 
+### Bootstrap timeout or phase failure
+
+If you see bootstrap timeout errors:
+```
+E (2617) BOOTSTRAP: Bootstrap timeout!
+E (2635) BOOTSTRAP:   Phase B (WiFi Hosted) did not complete
+E (2640) BOOTSTRAP:   Phase C (SD Card) did not complete
+```
+
+**Note:** This timeout is expected behavior. The GPIO6 handshake times out after 5 seconds, but ESP-Hosted initialization proceeds successfully. Both WiFi and SD card will work correctly despite the timeout message.
+
+**See [troubleshooting.md](troubleshooting.md#bootstrap-manager-timing-and-behavior) for detailed timing analysis.**
+
 ### WiFi connection timeout
 
 If WiFi connection times out:
@@ -476,6 +582,7 @@ I2C scanning interferes with GT911's hardware reset sequence.
 ### For Detailed Diagnostics
 
 For comprehensive troubleshooting information, including:
+- Bootstrap Manager timing analysis and expected behavior
 - Reset behavior analysis and comparison
 - SD card `0x107` error root causes
 - I2C device initialization best practices
