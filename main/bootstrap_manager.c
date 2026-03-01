@@ -1,8 +1,8 @@
 /*
  * Bootstrap Manager Implementation - Three-Phase Init
  * 
- * Proven working sequence from v1.0.0-beta
- * Phase A → Phase B → Phase C with SDMMC arbiter for runtime switching
+ * CORRECT v1.0.0-beta sequence restored:
+ * Phase A: Power → Phase B: SD Card → Phase C: WiFi
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -75,18 +75,7 @@ static void bootstrap_power_manager_task(void *arg)
     ESP_LOGI(TAG, "[Phase A]   GPIO%d (SD_POWER_EN) → HIGH (SD powered)", GPIO_SD_POWER_EN);
     vTaskDelay(pdMS_TO_TICKS(50));
     
-    // C6 release from reset
-    if (GPIO_C6_IO9_STRAPPING >= 0) {
-        if (gpio_get_level(GPIO_C6_IO9_STRAPPING) != 1) {
-            ESP_LOGE(TAG, "[Phase A] CRITICAL: C6_IO9 not high!");
-            xEventGroupSetBits(manager->event_group, BOOTSTRAP_FAILURE_BIT);
-            vTaskDelete(NULL);
-            return;
-        }
-    }
-    
-    gpio_set_level(GPIO_C6_CHIP_PU, 1);
-    ESP_LOGI(TAG, "[Phase A]   GPIO%d (C6_CHIP_PU) → HIGH (C6 released)", GPIO_C6_CHIP_PU);
+    // C6 stays in reset for now (WiFi will release it in Phase C)
     
     // Step 4: Signal completion
     ESP_LOGI(TAG, "[Phase A] ✓ POWER_READY");
@@ -96,13 +85,13 @@ static void bootstrap_power_manager_task(void *arg)
 }
 
 /**
- * Phase B: WiFi Hosted Manager Task
+ * Phase B: SD Manager Task (v1.0.0-beta order: SD BEFORE WiFi)
  */
-static void bootstrap_wifi_manager_task(void *arg)
+static void bootstrap_sd_manager_task(void *arg)
 {
     bootstrap_manager_t *manager = (bootstrap_manager_t *)arg;
     
-    ESP_LOGI(TAG, "[Phase B] WiFi Manager waiting for POWER_READY...");
+    ESP_LOGI(TAG, "[Phase B] SD Manager waiting for POWER_READY...");
     
     // Wait for Phase A
     EventBits_t bits = xEventGroupWaitBits(
@@ -117,7 +106,59 @@ static void bootstrap_wifi_manager_task(void *arg)
         return;
     }
     
-    ESP_LOGI(TAG, "[Phase B] Starting WiFi Hosted init...");
+    ESP_LOGI(TAG, "[Phase B] Starting SD card mount...");
+    
+    // Mount SD card (controller not yet initialized by WiFi)
+    esp_err_t ret = sd_card_mount_safe(&manager->sd_card);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "[Phase B] SD mount failed: %s", esp_err_to_name(ret));
+        xEventGroupSetBits(manager->event_group, BOOTSTRAP_FAILURE_BIT);
+        vTaskDelete(NULL);
+        return;
+    }
+    
+    ESP_LOGI(TAG, "[Phase B] ✓ SD_READY");
+    xEventGroupSetBits(manager->event_group, BOOTSTRAP_SD_READY_BIT);
+    
+    vTaskDelete(NULL);
+}
+
+/**
+ * Phase C: WiFi Hosted Manager Task (v1.0.0-beta order: WiFi AFTER SD)
+ */
+static void bootstrap_wifi_manager_task(void *arg)
+{
+    bootstrap_manager_t *manager = (bootstrap_manager_t *)arg;
+    
+    ESP_LOGI(TAG, "[Phase C] WiFi Manager waiting for SD_READY...");
+    
+    // Wait for Phase B (SD mount complete)
+    EventBits_t bits = xEventGroupWaitBits(
+        manager->event_group,
+        BOOTSTRAP_SD_READY_BIT | BOOTSTRAP_FAILURE_BIT,
+        pdFALSE, pdFALSE, portMAX_DELAY
+    );
+    
+    if (bits & BOOTSTRAP_FAILURE_BIT) {
+        ESP_LOGE(TAG, "[Phase C] Phase B failed, aborting");
+        vTaskDelete(NULL);
+        return;
+    }
+    
+    ESP_LOGI(TAG, "[Phase C] Starting WiFi Hosted init...");
+    
+    // Now release C6 from reset
+    if (GPIO_C6_IO9_STRAPPING >= 0) {
+        if (gpio_get_level(GPIO_C6_IO9_STRAPPING) != 1) {
+            ESP_LOGE(TAG, "[Phase C] CRITICAL: C6_IO9 not high!");
+            xEventGroupSetBits(manager->event_group, BOOTSTRAP_FAILURE_BIT);
+            vTaskDelete(NULL);
+            return;
+        }
+    }
+    
+    gpio_set_level(GPIO_C6_CHIP_PU, 1);
+    ESP_LOGI(TAG, "[Phase C]   GPIO%d (C6_CHIP_PU) → HIGH (C6 released)", GPIO_C6_CHIP_PU);
     
     // Configure GPIO6 for handshake
     gpio_config_t io_conf = {
@@ -130,7 +171,7 @@ static void bootstrap_wifi_manager_task(void *arg)
     gpio_config(&io_conf);
     
     // Wait for C6 firmware boot
-    ESP_LOGI(TAG, "[Phase B] Waiting for C6 firmware ready (GPIO%d)...", GPIO_C6_IO2_HANDSHAKE);
+    ESP_LOGI(TAG, "[Phase C] Waiting for C6 firmware ready (GPIO%d)...", GPIO_C6_IO2_HANDSHAKE);
     int timeout_count = 0;
     while (timeout_count < (BOOTSTRAP_C6_BOOT_TIMEOUT_MS / 100)) {
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -138,60 +179,21 @@ static void bootstrap_wifi_manager_task(void *arg)
     }
     
     if (timeout_count >= (BOOTSTRAP_C6_BOOT_TIMEOUT_MS / 100)) {
-        ESP_LOGW(TAG, "[Phase B] C6 handshake timeout (proceeding anyway)");
+        ESP_LOGW(TAG, "[Phase C] C6 handshake timeout (proceeding anyway)");
     }
     
     // Request WiFi mode from arbiter
-    ESP_LOGI(TAG, "[Phase B] Requesting WiFi mode from arbiter...");
+    ESP_LOGI(TAG, "[Phase C] Requesting WiFi mode from arbiter...");
     esp_err_t ret = sdmmc_arbiter_request_wifi(10000);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "[Phase B] WiFi mode request failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "[Phase C] WiFi mode request failed: %s", esp_err_to_name(ret));
         xEventGroupSetBits(manager->event_group, BOOTSTRAP_FAILURE_BIT);
         vTaskDelete(NULL);
         return;
     }
     
-    ESP_LOGI(TAG, "[Phase B] ✓ HOSTED_READY");
+    ESP_LOGI(TAG, "[Phase C] ✓ HOSTED_READY");
     xEventGroupSetBits(manager->event_group, BOOTSTRAP_HOSTED_READY_BIT);
-    
-    vTaskDelete(NULL);
-}
-
-/**
- * Phase C: SD Manager Task (RESTORED FROM v1.0.0-beta)
- */
-static void bootstrap_sd_manager_task(void *arg)
-{
-    bootstrap_manager_t *manager = (bootstrap_manager_t *)arg;
-    
-    ESP_LOGI(TAG, "[Phase C] SD Manager waiting for HOSTED_READY...");
-    
-    // Wait for Phase B
-    EventBits_t bits = xEventGroupWaitBits(
-        manager->event_group,
-        BOOTSTRAP_HOSTED_READY_BIT | BOOTSTRAP_FAILURE_BIT,
-        pdFALSE, pdFALSE, portMAX_DELAY
-    );
-    
-    if (bits & BOOTSTRAP_FAILURE_BIT) {
-        ESP_LOGE(TAG, "[Phase C] Phase B failed, aborting");
-        vTaskDelete(NULL);
-        return;
-    }
-    
-    ESP_LOGI(TAG, "[Phase C] Starting SD card mount...");
-    
-    // Mount SD card (uses dummy host init since WiFi already initialized it)
-    esp_err_t ret = sd_card_mount_safe(&manager->sd_card);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "[Phase C] SD mount failed: %s", esp_err_to_name(ret));
-        xEventGroupSetBits(manager->event_group, BOOTSTRAP_FAILURE_BIT);
-        vTaskDelete(NULL);
-        return;
-    }
-    
-    ESP_LOGI(TAG, "[Phase C] ✓ SD_READY");
-    xEventGroupSetBits(manager->event_group, BOOTSTRAP_SD_READY_BIT);
     
     vTaskDelete(NULL);
 }
@@ -265,8 +267,8 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
     }
     
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Bootstrap Manager v1.1.0-restored");
-    ESP_LOGI(TAG, "  Three-Phase Init (v1.0.0-beta sequence)");
+    ESP_LOGI(TAG, "  Bootstrap Manager v1.1.0-fixed");
+    ESP_LOGI(TAG, "  Three-Phase: Power → SD → WiFi");
     ESP_LOGI(TAG, "========================================");
     
     manager->boot_timestamp_ms = esp_timer_get_time() / 1000;
@@ -293,7 +295,7 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
         return ESP_ERR_NO_MEM;
     }
     
-    // Spawn Phase A task
+    // Spawn Phase A task (Power)
     BaseType_t task_ret = xTaskCreate(
         bootstrap_power_manager_task,
         "bootstrap_power",
@@ -307,21 +309,7 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
         return ESP_ERR_NO_MEM;
     }
     
-    // Spawn Phase B task
-    task_ret = xTaskCreate(
-        bootstrap_wifi_manager_task,
-        "bootstrap_wifi",
-        4096, manager,
-        BOOTSTRAP_WIFI_TASK_PRIORITY,
-        &manager->wifi_task_handle
-    );
-    if (task_ret != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create WiFi task");
-        vEventGroupDelete(manager->event_group);
-        return ESP_ERR_NO_MEM;
-    }
-    
-    // Spawn Phase C task (RESTORED)
+    // Spawn Phase B task (SD - before WiFi!)
     task_ret = xTaskCreate(
         bootstrap_sd_manager_task,
         "bootstrap_sd",
@@ -335,10 +323,24 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
         return ESP_ERR_NO_MEM;
     }
     
+    // Spawn Phase C task (WiFi - after SD!)
+    task_ret = xTaskCreate(
+        bootstrap_wifi_manager_task,
+        "bootstrap_wifi",
+        4096, manager,
+        BOOTSTRAP_WIFI_TASK_PRIORITY,
+        &manager->wifi_task_handle
+    );
+    if (task_ret != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create WiFi task");
+        vEventGroupDelete(manager->event_group);
+        return ESP_ERR_NO_MEM;
+    }
+    
     ESP_LOGI(TAG, "Three-phase bootstrap tasks spawned");
     ESP_LOGI(TAG, "  Phase A: Power (priority %d)", BOOTSTRAP_POWER_TASK_PRIORITY);
-    ESP_LOGI(TAG, "  Phase B: WiFi (priority %d)", BOOTSTRAP_WIFI_TASK_PRIORITY);
-    ESP_LOGI(TAG, "  Phase C: SD (priority %d)", BOOTSTRAP_SD_TASK_PRIORITY);
+    ESP_LOGI(TAG, "  Phase B: SD (priority %d)", BOOTSTRAP_SD_TASK_PRIORITY);
+    ESP_LOGI(TAG, "  Phase C: WiFi (priority %d)", BOOTSTRAP_WIFI_TASK_PRIORITY);
     
     return ESP_OK;
 }
@@ -355,8 +357,8 @@ esp_err_t bootstrap_manager_wait(bootstrap_manager_t *manager, uint32_t timeout_
     ESP_LOGI(TAG, "Waiting for bootstrap completion (timeout: %ums)...", timeout_ms);
     
     const EventBits_t ALL_READY_BITS = BOOTSTRAP_POWER_READY_BIT | 
-                                       BOOTSTRAP_HOSTED_READY_BIT |
-                                       BOOTSTRAP_SD_READY_BIT;
+                                       BOOTSTRAP_SD_READY_BIT |
+                                       BOOTSTRAP_HOSTED_READY_BIT;
     
     EventBits_t bits = xEventGroupWaitBits(
         manager->event_group,
@@ -377,9 +379,9 @@ esp_err_t bootstrap_manager_wait(bootstrap_manager_t *manager, uint32_t timeout_
         uint32_t elapsed_ms = (esp_timer_get_time() / 1000) - manager->boot_timestamp_ms;
         ESP_LOGI(TAG, "========================================");
         ESP_LOGI(TAG, "  Bootstrap COMPLETE (%u ms)", elapsed_ms);
-        ESP_LOGI(TAG, "  Power: READY");
-        ESP_LOGI(TAG, "  WiFi: READY");
-        ESP_LOGI(TAG, "  SD card: READY");
+        ESP_LOGI(TAG, "  Phase A: Power ✓");
+        ESP_LOGI(TAG, "  Phase B: SD card ✓");
+        ESP_LOGI(TAG, "  Phase C: WiFi ✓");
         ESP_LOGI(TAG, "========================================");
         return ESP_OK;
     }
@@ -389,11 +391,11 @@ esp_err_t bootstrap_manager_wait(bootstrap_manager_t *manager, uint32_t timeout_
     if (!(bits & BOOTSTRAP_POWER_READY_BIT)) {
         ESP_LOGE(TAG, "  Phase A (Power) did not complete");
     }
-    if (!(bits & BOOTSTRAP_HOSTED_READY_BIT)) {
-        ESP_LOGE(TAG, "  Phase B (WiFi) did not complete");
-    }
     if (!(bits & BOOTSTRAP_SD_READY_BIT)) {
-        ESP_LOGE(TAG, "  Phase C (SD) did not complete");
+        ESP_LOGE(TAG, "  Phase B (SD) did not complete");
+    }
+    if (!(bits & BOOTSTRAP_HOSTED_READY_BIT)) {
+        ESP_LOGE(TAG, "  Phase C (WiFi) did not complete");
     }
     
     return ESP_ERR_TIMEOUT;
