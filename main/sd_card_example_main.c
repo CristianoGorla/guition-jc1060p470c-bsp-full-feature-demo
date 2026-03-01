@@ -25,9 +25,9 @@ static const char *TAG = "GUITION_MAIN";
 #define I2C0_MASTER_SDA_IO 7
 #define I2C0_MASTER_SCL_IO 8
 
-// I2C Bus 1: RTC
-#define I2C1_MASTER_SDA_IO 12
-#define I2C1_MASTER_SCL_IO 10
+// I2C Bus 1: RTC (TEST SWAPPED PINS!)
+#define I2C1_MASTER_SDA_IO 10  // Was 12 - TESTING SWAP
+#define I2C1_MASTER_SCL_IO 12  // Was 10 - TESTING SWAP
 
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static esp_lcd_touch_handle_t touch_handle = NULL;
@@ -294,7 +294,7 @@ sd_failed:
     LOG_I2C(TAG, "I2C Bus 0 initialized (SDA=%d, SCL=%d) - ES8311 + GT911", 
             I2C0_MASTER_SDA_IO, I2C0_MASTER_SCL_IO);
     
-    // I2C Bus 1 (RTC)
+    // I2C Bus 1 (RTC) - TESTING SWAPPED PINS!
     i2c_master_bus_config_t i2c1_bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_1,
@@ -305,7 +305,7 @@ sd_failed:
     };
     i2c_master_bus_handle_t bus1_handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c1_bus_config, &bus1_handle));
-    LOG_I2C(TAG, "I2C Bus 1 initialized (SDA=%d, SCL=%d) - RX8025T RTC", 
+    LOG_I2C(TAG, "I2C Bus 1 initialized (SDA=%d, SCL=%d) - RX8025T RTC [SWAPPED TEST]", 
             I2C1_MASTER_SDA_IO, I2C1_MASTER_SCL_IO);
 #else
     ESP_LOGI(TAG, "I2C disabled by feature flags");
@@ -331,10 +331,10 @@ sd_failed:
         ESP_LOGI(TAG, "========== I2C BUS 0 SCAN COMPLETE ==========");
     }
     
-    // I2C SCAN BUS 1 (RTC)
+    // I2C SCAN BUS 1 (RTC) - SWAPPED PINS TEST
     if (bus1_handle) {
         vTaskDelay(pdMS_TO_TICKS(200));
-        ESP_LOGI(TAG, "\n========== I2C BUS 1 SCAN (RTC) ==========");
+        ESP_LOGI(TAG, "\n========== I2C BUS 1 SCAN (RTC - SWAPPED PINS TEST) ==========");
         i2c_scan_bus(bus1_handle);
         ESP_LOGI(TAG, "========== I2C BUS 1 SCAN COMPLETE ==========");
     }
