@@ -12,6 +12,10 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch.h"
 
+// Network includes (for WiFi connection test)
+#include "esp_netif.h"
+#include "esp_wifi.h"
+
 #include "display_jd9165.h"
 #include "touch_gt911.h"
 #include "rtc_rx8025t.h"
