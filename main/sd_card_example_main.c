@@ -272,6 +272,10 @@ sd_failed:
 #if ENABLE_I2C || ENABLE_DISPLAY || ENABLE_TOUCH
     ESP_LOGI(TAG, "Running hardware reset for peripherals (GT911/ES8311/RTC)...");
     hw_reset_all_peripherals();
+    
+    // CRITICAL: Wait for I2C bus to stabilize after resets
+    ESP_LOGI(TAG, "Waiting 500ms for I2C bus stabilization...");
+    vTaskDelay(pdMS_TO_TICKS(500));
 #else
     ESP_LOGI(TAG, "Hardware reset skipped (no I2C/Display/Touch enabled)");
 #endif
@@ -317,36 +321,49 @@ sd_failed:
 #if ENABLE_RTC
     if (bus_handle) {
         LOG_RTC(TAG, "\n========== RTC INITIALIZATION ==========");
-        ret = rtc_rx8025t_init(bus_handle);
+        
+        // STEP 1: Check if RTC responds with simple probe
+        ESP_LOGI(TAG, "Probing RTC at address 0x32...");
+        ret = i2c_master_probe(bus_handle, 0x32, 500);
+        
         if (ret == ESP_OK) {
-            LOG_RTC(TAG, "✓ RTC initialized successfully");
+            ESP_LOGI(TAG, "✓ RTC responds to probe!");
             
-#if ENABLE_RTC_TEST
-            // Read current time
-            rtc_time_t current_time;
-            ret = rtc_rx8025t_get_time(&current_time);
+            // STEP 2: Try to initialize
+            ret = rtc_rx8025t_init(bus_handle);
             if (ret == ESP_OK) {
-                LOG_RTC(TAG, "Current RTC time: 20%02d-%02d-%02d (wday=%d) %02d:%02d:%02d",
-                        current_time.year, current_time.month, current_time.day,
-                        current_time.wday,
-                        current_time.hour, current_time.minute, current_time.second);
-            } else {
-                ESP_LOGE(TAG, "Failed to read RTC time (0x%x)", ret);
-            }
-            
-            // Check flags
-            bool pon_flag, vlf_flag;
-            if (rtc_rx8025t_check_power_on_flag(&pon_flag) == ESP_OK) {
-                LOG_RTC(TAG, "PON Flag (Power-On): %s", pon_flag ? "SET" : "CLEAR");
-            }
-            if (rtc_rx8025t_check_voltage_low_flag(&vlf_flag) == ESP_OK) {
-                LOG_RTC(TAG, "VLF Flag (Voltage Low): %s", vlf_flag ? "SET" : "CLEAR");
-            }
+                LOG_RTC(TAG, "✓ RTC initialized successfully");
+                
+#if ENABLE_RTC_TEST
+                // Read current time
+                rtc_time_t current_time;
+                ret = rtc_rx8025t_get_time(&current_time);
+                if (ret == ESP_OK) {
+                    LOG_RTC(TAG, "Current RTC time: 20%02d-%02d-%02d (wday=%d) %02d:%02d:%02d",
+                            current_time.year, current_time.month, current_time.day,
+                            current_time.wday,
+                            current_time.hour, current_time.minute, current_time.second);
+                } else {
+                    ESP_LOGE(TAG, "Failed to read RTC time (0x%x)", ret);
+                }
+                
+                // Check flags
+                bool pon_flag, vlf_flag;
+                if (rtc_rx8025t_check_power_on_flag(&pon_flag) == ESP_OK) {
+                    LOG_RTC(TAG, "PON Flag (Power-On): %s", pon_flag ? "SET" : "CLEAR");
+                }
+                if (rtc_rx8025t_check_voltage_low_flag(&vlf_flag) == ESP_OK) {
+                    LOG_RTC(TAG, "VLF Flag (Voltage Low): %s", vlf_flag ? "SET" : "CLEAR");
+                }
 #endif
+            } else {
+                ESP_LOGE(TAG, "Failed to initialize RTC (0x%x)", ret);
+            }
         } else {
-            ESP_LOGE(TAG, "Failed to initialize RTC (0x%x)", ret);
-            ESP_LOGW(TAG, "RTC might not be populated on board or on different I2C address");
+            ESP_LOGE(TAG, "RTC does NOT respond to probe (0x%x)", ret);
+            ESP_LOGW(TAG, "RTC might not be populated or needs different timing");
         }
+        
         LOG_RTC(TAG, "========== RTC INIT COMPLETE ==========");
     } else {
         ESP_LOGW(TAG, "RTC init skipped (I2C not initialized)");
