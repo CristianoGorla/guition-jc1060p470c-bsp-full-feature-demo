@@ -61,3 +61,10 @@ config.local.*
 logs/
 .cache/
 .history/
+
+# --- AI and Project Notes ---
+# Internal project notes and AI drafts (local only)
+progetto_per_ai.txt
+project_notes.txt
+*_per_ai.txt
+notes_ai/
