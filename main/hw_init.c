@@ -96,21 +96,25 @@ void hw_reset_all_peripherals(void)
     // Lo schematic mostra che è trovato a 0x14, quindi usa INT=HIGH
     ESP_LOGI(TAG, "[1/3] GT911 Touch Controller reset...");
     hw_reset_gt911_for_address_0x14();
+    ESP_LOGI(TAG, "      I2C Bus: I2C_NUM_0 (GPIO7=SDA, GPIO8=SCL)");
     ESP_LOGI(TAG, "      Expected I2C address: 0x14");
     ESP_LOGI(TAG, "");
     
     // 2. ES8311 Audio Codec
     // Non ha pin di reset dedicato, si inizializza via I2C
     ESP_LOGI(TAG, "[2/3] ES8311 Audio Codec");
+    ESP_LOGI(TAG, "      I2C Bus: I2C_NUM_0 (GPIO7=SDA, GPIO8=SCL)");
     ESP_LOGI(TAG, "      No hardware reset pin (I2C init only)");
     ESP_LOGI(TAG, "      Expected I2C address: 0x18");
     ESP_LOGI(TAG, "");
     
-    // 3. RX8025T RTC
+    // 3. RX8025T RTC (U9) - SEPARATE I2C BUS!
     // Non ha pin di reset, sempre attivo
-    ESP_LOGI(TAG, "[3/3] RX8025T RTC");
+    // CRITICAL: Uses separate I2C bus!
+    ESP_LOGI(TAG, "[3/3] RX8025T RTC (U9)");
+    ESP_LOGI(TAG, "      I2C Bus: I2C_NUM_1 (GPIO12=SDA, GPIO10=SCL) <-- SEPARATE BUS!");
     ESP_LOGI(TAG, "      No hardware reset pin (always active)");
-    ESP_LOGI(TAG, "      Expected I2C address: 0x32 (7-bit: 0x19)");
+    ESP_LOGI(TAG, "      Expected I2C address: 0x32");
     ESP_LOGI(TAG, "");
     
     // Note sulla camera CSI
