@@ -20,9 +20,10 @@
 #define ENABLE_I2C_SCAN 1 // Scan bus I2C
 
 // ========== RTC ==========
-#define ENABLE_RTC 1      // RX8025T RTC (test)
-#define DEBUG_RTC 1       // Log dettagliati RTC
-#define ENABLE_RTC_TEST 1 // Test lettura/scrittura RTC
+#define ENABLE_RTC 1         // RX8025T RTC (test)
+#define DEBUG_RTC 1          // Log dettagliati RTC
+#define ENABLE_RTC_TEST 1    // Test lettura/scrittura RTC
+#define ENABLE_RTC_HW_TEST 1 // Hardware diagnostic (multi-speed/address test)
 
 // ========== DISPLAY ==========
 #define ENABLE_DISPLAY 0      // JD9165 MIPI DSI display (disabilitato per ora)
