@@ -31,20 +31,20 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
         return;
     }
 
+    // Temporaneamente disabilita i log ERROR per i2c.master
+    esp_log_level_set("i2c.master", ESP_LOG_NONE);
+
     printf("\n");
     printf("\033[36m========================================\033[0m\n");
-    printf("\033[36m   I2C BUS SCANNER (Probe Mode)\033[0m\n");
+    printf("\033[36m   I2C DEVICES FOUND\033[0m\n");
     printf("\033[36m========================================\033[0m\n");
-    ESP_LOGI(TAG, "Scanning 0x08 to 0x77...");
-    ESP_LOGI(TAG, "Using lightweight probe (add_device only)");
     printf("\n");
 
     int devices_found = 0;
-    int probe_attempts = 0;
+    bool found_gt911_both = false;
 
-    // Scan completo con approccio ultra-leggero
+    // Scan completo silenzioso
     for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
-        probe_attempts++;
         
         i2c_device_config_t dev_cfg = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -53,23 +53,22 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
         };
 
         i2c_master_dev_handle_t dev_handle;
-        
-        // Prova SOLO ad aggiungere il device (no receive!)
-        // Se add_device funziona, il device potrebbe essere presente
         esp_err_t ret = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
         
         if (ret == ESP_OK) {
-            // Device handle creato - prova una singola transazione velocissima
             uint8_t dummy;
-            esp_err_t read_ret = i2c_master_receive(dev_handle, &dummy, 1, 10); // 10ms timeout cortissimo
-            
-            // Rimuovi IMMEDIATAMENTE
+            ret = i2c_master_receive(dev_handle, &dummy, 1, 10);
             i2c_master_bus_rm_device(dev_handle);
             
-            // Considera trovato solo se riceve ACK o TIMEOUT (= ACK + no data)
-            if (read_ret == ESP_OK || read_ret == ESP_ERR_TIMEOUT) {
+            if (ret == ESP_OK || ret == ESP_ERR_TIMEOUT) {
+                // Skip 0x08 (falso positivo comune)
+                if (addr == 0x08) {
+                    continue;
+                }
+                
                 devices_found++;
                 
+                // Trova nome
                 const char *device_name = NULL;
                 for (int i = 0; i < sizeof(known_devices) / sizeof(known_devices[0]); i++) {
                     if (known_devices[i].addr == addr) {
@@ -80,31 +79,45 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
                 
                 if (device_name) {
                     printf("\033[32m[0x%02X] ✓ %s\033[0m\n", addr, device_name);
+                    
+                    // Verifica se GT911 risponde a entrambi gli indirizzi
+                    if (addr == 0x14 || addr == 0x5D) {
+                        static bool found_first_gt911 = false;
+                        if (found_first_gt911) {
+                            found_gt911_both = true;
+                        }
+                        found_first_gt911 = true;
+                    }
                 } else {
-                    printf("\033[32m[0x%02X] ✓ Unknown\033[0m\n", addr);
+                    printf("\033[32m[0x%02X] ✓ Unknown device\033[0m\n", addr);
                 }
             }
-            // Altri errori = silenzioso
         }
         
-        // Delay ridotto ma non zero
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     printf("\n");
     printf("\033[36m========================================\033[0m\n");
-    printf("\033[32mDevices found: %d\033[0m\n", devices_found);
-    printf("Addresses probed: %d\n", probe_attempts);
+    printf("\033[32mTotal devices: %d\033[0m\n", devices_found);
     printf("\033[36m========================================\033[0m\n");
     printf("\n");
     
-    ESP_LOGI(TAG, "Board devices:");
-    ESP_LOGI(TAG, "  0x14 = GT911 Touch");
-    ESP_LOGI(TAG, "  0x18 = ES8311 Audio");
-    ESP_LOGI(TAG, "  0x32 = RX8025T RTC");
-    
-    if (devices_found < 2) {
-        ESP_LOGW(TAG, "Warning: Expected at least 2 devices (GT911 + ES8311)");
+    // Warnings
+    if (found_gt911_both) {
+        ESP_LOGW(TAG, "GT911 responds at BOTH 0x14 and 0x5D!");
+        ESP_LOGW(TAG, "This may indicate incorrect reset sequence.");
+        ESP_LOGW(TAG, "Only 0x14 should respond (INT=HIGH config).");
+        printf("\n");
     }
+    
+    // Verifica dispositivi attesi
+    ESP_LOGI(TAG, "Expected devices:");
+    ESP_LOGI(TAG, "  ✓ 0x14 = GT911 Touch (board config)");
+    ESP_LOGI(TAG, "  ✓ 0x18 = ES8311 Audio Codec");
+    ESP_LOGI(TAG, "  ? 0x32 = RX8025T RTC (needs init)");
     printf("\n");
+    
+    // Riabilita i log i2c.master
+    esp_log_level_set("i2c.master", ESP_LOG_ERROR);
 }
