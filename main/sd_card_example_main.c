@@ -170,9 +170,23 @@ void app_main(void)
     ESP_LOGI(TAG, "NVS disabled by feature flags");
 #endif
 
-    // ========== 2. SD Card (NO HW RESET PRIMA!) ==========
+    // ========== 2. SD Card (DOPO RESET SLOT) ==========
 #if ENABLE_SD_CARD
     LOG_SD(TAG, "Initializing SD card (Slot 0 - forced)...");
+
+    // FIX CRITICO: Reset slot 0 dopo che ESP-Hosted ha preso il controllo
+#ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
+    LOG_SD(TAG, "Resetting SDMMC Slot 0 (ESP-Hosted workaround)...");
+    ret = sdmmc_host_deinit_slot(SDMMC_HOST_SLOT_0);
+    if (ret == ESP_OK) {
+        LOG_SD(TAG, "Slot 0 deinitialized successfully");
+    } else if (ret == ESP_ERR_INVALID_STATE) {
+        LOG_SD(TAG, "Slot 0 was not initialized (expected with ESP-Hosted)");
+    } else {
+        ESP_LOGW(TAG, "Slot 0 deinit returned 0x%x (continuing anyway)", ret);
+    }
+    vTaskDelay(pdMS_TO_TICKS(100)); // Attendi stabilizzazione
+#endif
 
 #ifdef CONFIG_EXAMPLE_PIN_CARD_POWER_RESET
     gpio_config_t pwr_io_conf = {
@@ -204,13 +218,13 @@ void app_main(void)
     };
 
 #ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-    LOG_SD(TAG, "ESP-Hosted detected - using workaround");
+    LOG_SD(TAG, "ESP-Hosted detected - reinitializing slot 0");
     ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to init slot 0 (0x%x)", ret);
+        ESP_LOGE(TAG, "Failed to reinit slot 0 (0x%x)", ret);
         goto sd_failed;
     }
-    LOG_SD(TAG, "Slot 0 initialized successfully");
+    LOG_SD(TAG, "Slot 0 reinitialized successfully");
     vTaskDelay(pdMS_TO_TICKS(100));
 #endif
 
@@ -223,7 +237,7 @@ void app_main(void)
     sdmmc_card_t *card;
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     host.slot = SDMMC_HOST_SLOT_0;
-    LOG_SD(TAG, "Forced host.slot = SDMMC_HOST_SLOT_0 (fix for ESP-Hosted)");
+    LOG_SD(TAG, "Forced host.slot = SDMMC_HOST_SLOT_0");
 
 #ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
     host.init = &sdmmc_host_init_dummy;
@@ -255,8 +269,7 @@ sd_failed:
     init_wifi();
     LOG_WIFI(TAG, "✓ WiFi initialized - scanning networks...");
     
-    // Test WiFi scan
-    vTaskDelay(pdMS_TO_TICKS(2000)); // Attendi stabilizzazione
+    vTaskDelay(pdMS_TO_TICKS(2000));
     
     if (do_wifi_scan_and_check(NULL)) {
         LOG_WIFI(TAG, "✓ WiFi scan successful - ESP-Hosted is working!");
