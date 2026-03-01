@@ -11,8 +11,9 @@
 #define DEBUG_SD_CARD 1  // Detailed SD logs
 
 // ========== WIFI/ESP-HOSTED ==========
-#define ENABLE_WIFI 1 // ✅ ESP-Hosted WiFi via C6
-#define DEBUG_WIFI 1  // Detailed WiFi logs
+#define ENABLE_WIFI 1         // ✅ ESP-Hosted WiFi via C6
+#define DEBUG_WIFI 1          // Detailed WiFi logs
+#define ENABLE_WIFI_CONNECT 0 // 🔧 WiFi connection test (requires wifi_config.h)
 
 // ========== I2C BUS ==========
 #define ENABLE_I2C 1      // I2C bus (required for Touch/Audio/RTC)
