@@ -33,7 +33,7 @@ void init_jd9165_display(void)
     // Utilizzo della nuova factory function bridge [4]
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_dbi(mipi_dsi_bus, &dbi_config, &io_handle));
 
-    // 4. FIX: Configurazione Timing con pclk_hz al livello superiore
+    // 4. FIX: Configurazione Timing con dpi_clock_freq_mhz
     // Valori estratti dal file .dtsi JC1060 [5]
     esp_lcd_video_timing_t video_timing = {
         .h_size = 1024,

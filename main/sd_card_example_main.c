@@ -12,9 +12,7 @@
 #include "esp_hosted_wifi.h"
 #include "display_jd9165.h"
 #include "wifi_config.h"
-#include "wifi_config.h"
 
-static const char *TAG = "example";
 static i2c_master_bus_handle_t i2c_bus_handle;
 
 void custom_sntp_sync(void)
