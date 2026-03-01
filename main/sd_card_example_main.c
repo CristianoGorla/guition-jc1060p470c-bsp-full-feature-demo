@@ -44,7 +44,7 @@ void app_main(void)
     // Video e Touch
     init_jd9165_display();
 
-    init_gt911_touch(i2c_bus_handle);
+    init_touch_gt911(i2c_bus_handle);
 
     init_wifi();
     wifi_connect(WIFI_SSID, WIFI_PASSWORD);
