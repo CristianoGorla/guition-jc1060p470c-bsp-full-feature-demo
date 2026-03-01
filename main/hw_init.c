@@ -103,18 +103,19 @@ void hw_reset_all_peripherals(void)
     // 2. ES8311 Audio Codec
     // Non ha pin di reset dedicato, si inizializza via I2C
     ESP_LOGI(TAG, "[2/3] ES8311 Audio Codec");
-    ESP_LOGI(TAG, "      I2C Bus: I2C_NUM_0 (GPIO7=SDA, GPIO8=SCL)");
+    ESP_LOGI(TAG, "      I2C Bus: I2C_NUM_0 (GPIO7=SDA, GPIO8=SCL) - SHARED");
     ESP_LOGI(TAG, "      No hardware reset pin (I2C init only)");
     ESP_LOGI(TAG, "      Expected I2C address: 0x18");
     ESP_LOGI(TAG, "");
     
-    // 3. RX8025T RTC (U9) - SEPARATE I2C BUS!
+    // 3. RX8025T RTC (U9)
     // Non ha pin di reset, sempre attivo
-    // CRITICAL: Uses separate I2C bus!
+    // Shares same I2C bus with Audio + Touch!
     ESP_LOGI(TAG, "[3/3] RX8025T RTC (U9)");
-    ESP_LOGI(TAG, "      I2C Bus: I2C_NUM_1 (GPIO12=SDA, GPIO10=SCL) <-- SEPARATE BUS!");
+    ESP_LOGI(TAG, "      I2C Bus: I2C_NUM_0 (GPIO7=SDA, GPIO8=SCL) - SHARED");
     ESP_LOGI(TAG, "      No hardware reset pin (always active)");
     ESP_LOGI(TAG, "      Expected I2C address: 0x32");
+    ESP_LOGI(TAG, "      Note: May need wake-up command if not responding");
     ESP_LOGI(TAG, "");
     
     // Note sulla camera CSI
@@ -123,6 +124,7 @@ void hw_reset_all_peripherals(void)
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "Hardware reset complete");
+    ESP_LOGI(TAG, "All I2C devices share single bus: GPIO7+8");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "");
     
