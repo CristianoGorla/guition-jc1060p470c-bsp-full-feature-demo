@@ -19,6 +19,10 @@
 #define DEBUG_I2C 1       // Log dettagliati I2C
 #define ENABLE_I2C_SCAN 1 // Scan bus I2C
 
+// ========== AUDIO CODEC ==========
+#define ENABLE_AUDIO 1       // ES8311 audio codec (test)
+#define DEBUG_AUDIO 1        // Log dettagliati audio
+
 // ========== RTC ==========
 #define ENABLE_RTC 1         // RX8025T RTC (test)
 #define DEBUG_RTC 1          // Log dettagliati RTC
@@ -66,6 +70,15 @@
 #define LOG_I2C(tag, format, ...) \
     do                            \
     {                             \
+    } while (0)
+#endif
+
+#if DEBUG_AUDIO
+#define LOG_AUDIO(tag, format, ...) ESP_LOGI(tag, format, ##__VA_ARGS__)
+#else
+#define LOG_AUDIO(tag, format, ...) \
+    do                              \
+    {                               \
     } while (0)
 #endif
 
