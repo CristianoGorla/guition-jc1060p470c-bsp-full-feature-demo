@@ -9,7 +9,7 @@
 
 static const char *TAG = "GT911";
 
-#define GT911_I2C_ADDRESS      0x5D
+#define GT911_I2C_ADDRESS      0x14  // Cambiato da 0x5D -> Usa 0x14
 #define GT911_RST_GPIO         GPIO_NUM_22
 #define GT911_INT_GPIO         GPIO_NUM_21
 
@@ -17,9 +17,9 @@ esp_lcd_touch_handle_t init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
 {
     ESP_LOGI(TAG, "Initializing GT911 touch controller");
 
-    // Hardware reset sequence per settare indirizzo 0x5D
-    // INT low durante reset -> Address 0x5D
-    // INT high durante reset -> Address 0x14
+    // Hardware reset sequence per settare indirizzo 0x14
+    // INT HIGH durante reset -> Address 0x14
+    // INT LOW durante reset -> Address 0x5D
     
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << GT911_RST_GPIO) | (1ULL << GT911_INT_GPIO),
@@ -30,15 +30,15 @@ esp_lcd_touch_handle_t init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
     };
     gpio_config(&io_conf);
 
-    // Reset sequence per address 0x5D
-    gpio_set_level(GT911_INT_GPIO, 0);  // INT = LOW per 0x5D
+    // Reset sequence per address 0x14 (INT HIGH)
+    gpio_set_level(GT911_INT_GPIO, 1);  // INT = HIGH per 0x14
     gpio_set_level(GT911_RST_GPIO, 0);  // RST = LOW
     vTaskDelay(pdMS_TO_TICKS(20));
     
     gpio_set_level(GT911_RST_GPIO, 1);  // RST = HIGH
     vTaskDelay(pdMS_TO_TICKS(5));
     
-    gpio_set_level(GT911_INT_GPIO, 0);  // Keep INT LOW
+    gpio_set_level(GT911_INT_GPIO, 1);  // Keep INT HIGH
     vTaskDelay(pdMS_TO_TICKS(50));
     
     // Rilascia INT come input per interrupt
