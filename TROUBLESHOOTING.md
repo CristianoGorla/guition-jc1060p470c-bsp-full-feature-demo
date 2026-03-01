@@ -45,6 +45,43 @@ I (1830) GUITION_MAIN: GT911 active at 0x14 (INT=HIGH during reset)
 
 ---
 
+## ESP-Hosted WiFi/BLE Interrupt Configuration
+
+### Hardware Schematic Analysis (JC1060P470C Board)
+
+**Control Lines Between ESP32-C6 and ESP32-P4:**
+
+```
+Function            C6 Pin      P4 Pin      Description
+─────────────────────────────────────────────────────────
+Interrupt/OOB       GPIO 2  →   GPIO 6      Data ready signal
+Reset               CHIP_PU →   GPIO 54     Hardware reset
+Debug (unused)      GPIO 9  →   JP1 Pin 18  External header only
+```
+
+**Important:** The C6 GPIO9 signal is **NOT** internally connected to any P4 GPIO. It routes only to external header JP1 for debug purposes.
+
+### Configuration Required
+
+In `sdkconfig.defaults`:
+```
+CONFIG_ESP_HOSTED_DATA_READY_GPIO=6
+CONFIG_ESP_HOSTED_RESETPIN_GPIO=54
+```
+
+**Why GPIO6 Matters:**
+- Without interrupt configuration, ESP-Hosted uses polling mode (less efficient)
+- With GPIO6 configured, the C6 can wake the P4 when data is ready
+- Improves WiFi/BLE performance and reduces power consumption
+
+**Expected Boot Log:**
+```
+I (2287) os_wrapper_esp: GPIO [54] configured  // Reset pin
+I (xxxx) os_wrapper_esp: GPIO [6] configured   // Interrupt pin (with fix)
+```
+
+---
+
 ## RTC RX8025T Initialization
 
 ### Best Practice: Direct Initialization (No Pre-Probe)
