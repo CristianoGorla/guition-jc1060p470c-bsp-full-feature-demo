@@ -18,11 +18,26 @@ static const char *TAG = "GUITION_MAIN";
 #define I2C_MASTER_SDA_IO 7
 #define I2C_MASTER_SCL_IO 8
 
+// Workaround per ESP-Hosted: dummy functions che non re-inizializzano il controller
+#ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
+static esp_err_t sdmmc_host_init_dummy(void) 
+{ 
+    ESP_LOGI(TAG, "Skipping sdmmc_host_init (controller already initialized by ESP-Hosted)");
+    return ESP_OK; 
+}
+
+static esp_err_t sdmmc_host_deinit_dummy(void) 
+{ 
+    ESP_LOGI(TAG, "Skipping sdmmc_host_deinit (keep controller active for ESP-Hosted)");
+    return ESP_OK; 
+}
+#endif
+
 void app_main(void)
 {
     esp_err_t ret;
 
-    // 1. Inizializzazione NVS (Necessaria per Wi-Fi e calibrazioni)
+    // 1. Inizializzazione NVS
     ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
@@ -33,11 +48,11 @@ void app_main(void)
     ESP_LOGI(TAG, "NVS initialized");
 
     // ============================================================
-    // 2. SD CARD INIT - PRIMA DI TUTTO (prima che ESP-Hosted usi il controller)
+    // 2. SD CARD INIT con workaround ESP-Hosted
     // ============================================================
     ESP_LOGI(TAG, "Initializing SD card (Slot %d)...", CONFIG_EXAMPLE_SDMMC_SLOT);
 
-    // Attiva alimentazione SD Card via GPIO (dal Kconfig)
+    // Attiva alimentazione SD Card
 #ifdef CONFIG_EXAMPLE_PIN_CARD_POWER_RESET
     gpio_config_t pwr_io_conf = {
         .pin_bit_mask = (1ULL << CONFIG_EXAMPLE_PIN_CARD_POWER_RESET),
@@ -47,20 +62,10 @@ void app_main(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&pwr_io_conf);
-    gpio_set_level(CONFIG_EXAMPLE_PIN_CARD_POWER_RESET, 0); // Assumo LOW = Power ON
+    gpio_set_level(CONFIG_EXAMPLE_PIN_CARD_POWER_RESET, 0); // LOW = Power ON
     vTaskDelay(pdMS_TO_TICKS(100));
     ESP_LOGI(TAG, "SD Card power enabled via GPIO%d", CONFIG_EXAMPLE_PIN_CARD_POWER_RESET);
 #endif
-
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = false,
-        .max_files = 5,
-        .allocation_unit_size = 16 * 1024
-    };
-
-    sdmmc_card_t *card;
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    host.slot = CONFIG_EXAMPLE_SDMMC_SLOT;
 
     // Configurazione slot con pin dal Kconfig
     sdmmc_slot_config_t slot_config = {
@@ -78,6 +83,33 @@ void app_main(void)
         .flags = 0,
     };
 
+    // WORKAROUND: Inizializza solo lo Slot 0 senza toccare il controller
+#ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
+    ESP_LOGI(TAG, "ESP-Hosted detected - using workaround");
+    ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to init slot 0 (0x%x)", ret);
+        goto sd_failed;
+    }
+    ESP_LOGI(TAG, "Slot 0 initialized successfully");
+#endif
+
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024
+    };
+
+    sdmmc_card_t *card;
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    host.slot = CONFIG_EXAMPLE_SDMMC_SLOT;
+
+#ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
+    // Usa dummy functions invece delle funzioni vere
+    host.init = &sdmmc_host_init_dummy;
+    host.deinit = &sdmmc_host_deinit_dummy;
+#endif
+
     ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
 
     if (ret != ESP_OK)
@@ -92,8 +124,9 @@ void app_main(void)
                  ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
     }
 
+sd_failed:
     // ============================================================
-    // 3. Resto delle periferiche (Display, Touch, I2C)
+    // 3. Resto delle periferiche
     // ============================================================
 
     // I2C
