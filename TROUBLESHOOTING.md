@@ -340,23 +340,23 @@ I (1276) ES8311: ✓ ES8311 initialized successfully (powered down, safe state)
 I (1276) ES8311: Note: PA power pin GPIO11 not configured (needs I2S setup)
 I (1283) GUITION_MAIN: ✓ ES8311 initialized (powered down)
 
-I (1288) GUITION_MAIN: === RTC Initialization ===
-I (1293) GUITION_MAIN: RTC driver will validate device at 0x32 (no pre-probe)
-I (1300) RX8025T: Initializing RX8025T RTC...
-I (1304) RX8025T: I2C Address: 0x32
-I (1307) RX8025T: Reading current time (gentle init)...
-I (1313) RX8025T: ✓ RTC responding on I2C!
-I (1316) RX8025T: Current RTC time: 2026-03-01 (wday=6) 19:16:45
-I (1322) RX8025T: PON/VLF flags already clear - RTC time is valid
-I (1328) RX8025T: Already in 24-hour format
-I (1331) RX8025T: RX8025T initialized successfully
-I (1336) GUITION_MAIN: ✓ RTC initialized successfully
-I (1342) GUITION_MAIN: Current time: 2026-03-01 19:16:45
+I (1304) GUITION_MAIN: === RTC Initialization ===
+I (1309) GUITION_MAIN: RTC driver will validate device at 0x32 (no pre-probe)
+I (1316) RX8025T: Initializing RX8025T RTC...
+I (1320) RX8025T: I2C Address: 0x32
+I (1323) RX8025T: Reading current time (gentle init)...
+I (1329) RX8025T: ✓ RTC responding on I2C!
+I (1332) RX8025T: Current RTC time: 20139-02-26 (wday=2) 03:27:11
+I (1338) RX8025T: PON/VLF flags already clear - RTC time is valid
+I (1344) RX8025T: Already in 24-hour format
+I (1347) RX8025T: RX8025T initialized successfully
+I (1352) GUITION_MAIN: ✓ RTC initialized successfully
+I (1358) GUITION_MAIN: Current time: 20139-02-26 03:27:11
 
-I (1353) GUITION_MAIN: === Display Initialization ===
-I (1358) JD9165: Initializing JD9165 display
-I (1660) JD9165: Display initialized (1024x600 @ 52MHz, 2-lane DSI, HBP=136)
-I (1660) GUITION_MAIN: ✓ Display ready (1024x600 MIPI DSI)
+I (1369) GUITION_MAIN: === Display Initialization ===
+I (1374) JD9165: Initializing JD9165 display
+I (1676) JD9165: Display initialized (1024x600 @ 52MHz, 2-lane DSI, HBP=136)
+I (1676) GUITION_MAIN: ✓ Display ready (1024x600 MIPI DSI)
 
 I (1661) GUITION_MAIN: === Touch Controller Initialization ===
 I (1666) GUITION_MAIN: GT911 driver will auto-reset and detect I2C address (0x14 or 0x5D)
