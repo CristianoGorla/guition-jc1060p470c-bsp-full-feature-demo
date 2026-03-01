@@ -3,7 +3,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_sntp.h"
-#include "driver/gpio.h" // FIX: Necessario per gpio_set_direction e gpio_set_level
+#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/sdmmc_host.h"
 #include "freertos/FreeRTOS.h"
@@ -16,8 +16,7 @@
 #include "driver/i2c_types.h"
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
 
-// static const char *TAG = "GUITION_MAIN";
-
+static const char *TAG = "GUITION_MAIN";
 static i2c_master_bus_handle_t i2c_bus_handle;
 
 void custom_sntp_sync(void)
@@ -32,12 +31,16 @@ void custom_sntp_sync(void)
     }
 }
 
+static void display_init_task(void *arg)
+{
+    ESP_LOGI(TAG, "Display init task started");
+    init_jd9165_display();
+    ESP_LOGI(TAG, "Display init task completed");
+    vTaskDelete(NULL);
+}
+
 void app_main(void)
 {
-    static const char *TAG = "GUITION_MAIN";
-
-    // NON fare reset C6 qui - lascia che lo faccia il driver LCD
-
     // 1. I2C
     i2c_master_bus_config_t i2c_cfg = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -50,13 +53,11 @@ void app_main(void)
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c_bus_handle));
     ESP_LOGI(TAG, "I2C initialized");
 
-    ESP_LOGI(TAG, ">>> PRIMA di chiamare init_jd9165_display()");
-    vTaskDelay(pdMS_TO_TICKS(100)); // Piccolo delay per assicurarsi che il log venga stampato
+    // 2. Display in task separato con stack più grande
+    ESP_LOGI(TAG, "Creating display init task");
+    xTaskCreate(display_init_task, "display_init", 8192, NULL, 5, NULL);
+    vTaskDelay(pdMS_TO_TICKS(3000)); // Attesa completamento display
     
-    // 2. Display
-    init_jd9165_display();
-    
-    ESP_LOGI(TAG, ">>> DOPO init_jd9165_display()");
     ESP_LOGI(TAG, "Display initialized");
 
     // 3. Touch
