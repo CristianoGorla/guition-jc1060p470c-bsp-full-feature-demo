@@ -1,0 +1,38 @@
+# --- ESP-IDF Build & Outputs ---
+build/
+sdkconfig
+sdkconfig.old
+# Opzionale: mantenere sdkconfig.defaults se usato per configurazioni condivise
+# !sdkconfig.defaults
+
+# --- ESP-IDF IDE & Tools ---
+.vscode/
+# Se usi CMake/Ninja direttamente
+.ninja_log
+.ninja_deps
+compile_commands.json
+
+# --- Generati da Componenti ---
+*.o
+*.a
+*.elf
+*.bin
+*.map
+# Ignora i file creati dal flash
+flash_project_args
+
+# --- Python & Virtualenv ---
+env/
+venv/
+__pycache__/
+*.pyc
+
+# --- Altro ---
+.DS_Store
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+managed_components/q
+main/wifi_config.h
+
