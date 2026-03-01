@@ -17,11 +17,10 @@ This example does the following steps:
    - mount FAT filesystem using FATFS library
    - register FAT filesystem in VFS, enabling C standard library and POSIX functions to be used.
 1. Print information about the card, such as name, type, capacity, and maximum supported frequency.
-1. Perform a Wi-Fi Scan
+1. Perform a Wi-Fi Scan (or Connect if enabled)
 1. Create a file using `fopen` and write to it using `fprintf`.
 1. Rename the file. Before renaming, check if destination file already exists using `stat` function, and remove it using `unlink` function.
 1. Open renamed file for reading, read back the line, and print it to the terminal.
-1. Perform another Wi-Fi Scan
 
 This example supports SD (SDSC, SDHC, SDXC) cards and eMMC chips.
 
@@ -48,11 +47,76 @@ The table below lists the default pin assignments.
 | GPIO41       | D2          | not used in 1-line SD mode; 10k pullup in 4-line mode                |
 | GPIO42       | D3          | not used in 1-line SD mode, but card's D3 pin must have a 10k pullup |
 
+### ESP-Hosted Control Pins (ESP32-C6 ↔ ESP32-P4)
+
+| Function          | C6 Pin      | P4 Pin  | Description               |
+| ----------------- | ----------- | ------- | ------------------------- |
+| Interrupt/OOB     | GPIO 2      | GPIO 6  | Data ready signal         |
+| Reset             | CHIP_PU     | GPIO 54 | Hardware reset            |
+| Debug (unused)    | GPIO 9      | JP1-18  | External header only      |
+
+**Note:** GPIO6 interrupt is configured in `sdkconfig.defaults` for efficient ESP-Hosted communication.
+
 ### 4-line and 1-line SD modes
 
 By default, this example uses 4 line SD mode, utilizing 6 pins: CLK, CMD, D0 - D3. It is possible to use 1-line mode (CLK, CMD, D0) by changing "SD/MMC bus width" in the example configuration menu (see `CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_1`).
 
 Note that even if card's D3 line is not connected to the ESP chip, it still has to be pulled up, otherwise the card will go into SPI protocol mode.
+
+## WiFi Features
+
+### WiFi Scan (Default)
+
+By default, the example performs a WiFi scan to verify ESP-Hosted connectivity:
+
+```c
+// In main/feature_flags.h
+#define ENABLE_WIFI 1         // ✅ Enable WiFi/ESP-Hosted
+#define ENABLE_WIFI_CONNECT 0 // ❌ Scan only (default)
+```
+
+### WiFi Connection Test (Advanced)
+
+To test WiFi connection instead of just scanning:
+
+1. **Create WiFi credentials file:**
+   ```bash
+   cd main
+   cp wifi_config.h.example wifi_config.h
+   ```
+
+2. **Edit credentials:**
+   ```c
+   // In main/wifi_config.h
+   #define WIFI_SSID "YourWiFiSSID"
+   #define WIFI_PASSWORD "YourWiFiPassword"
+   ```
+
+3. **Enable connection test:**
+   ```c
+   // In main/feature_flags.h
+   #define ENABLE_WIFI_CONNECT 1 // ✅ Enable connection test
+   ```
+
+4. **Build and flash:**
+   ```bash
+   idf.py build flash monitor
+   ```
+
+**Expected Output (WiFi Connected):**
+```
+I (4429) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
+I (6429) GUITION_MAIN: === WiFi Connection Test ===
+I (6429) GUITION_MAIN: Connecting to: YourWiFiSSID
+I (8500) GUITION_MAIN: ✓ WiFi connected!
+I (8500) GUITION_MAIN:    IP Address: 192.168.1.123
+I (8501) GUITION_MAIN:    Netmask:    255.255.255.0
+I (8502) GUITION_MAIN:    Gateway:    192.168.1.1
+I (8503) GUITION_MAIN:    RSSI: -45 dBm
+```
+
+> [!NOTE]
+> The `wifi_config.h` file is gitignored for security. Never commit your WiFi credentials to the repository.
 
 ## How to use example
 
@@ -162,3 +226,11 @@ example: Failed to mount filesystem.
 ```
 
 The example will be able to mount only cards formatted using FAT32 filesystem.
+
+### WiFi connection timeout
+
+If WiFi connection times out:
+1. Verify credentials in `main/wifi_config.h`
+2. Check WiFi signal strength (RSSI)
+3. Ensure router is 2.4GHz compatible (ESP32-C6 doesn't support 5GHz)
+4. Check `troubleshooting.md` for GPIO6 interrupt configuration
