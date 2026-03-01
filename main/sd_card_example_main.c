@@ -20,6 +20,7 @@
 #include "touch_gt911.h"
 #include "rtc_rx8025t.h"
 #include "rtc_test.h"
+#include "rtc_ntp_sync.h"
 #include "es8311_audio.h"
 #include "feature_flags.h"
 #include "i2c_utils.h"
@@ -236,8 +237,8 @@ void app_main(void)
         if (ret == ESP_OK) {
             LOG_RTC(TAG, "✓ RTC initialized successfully\n");
             
-#if ENABLE_RTC_TEST
-            // Read and display current time
+#if ENABLE_RTC_TEST && !ENABLE_RTC_NTP_SYNC
+            // Read and display current time (skip if NTP sync test will run)
             rtc_time_t current_time;
             if (rtc_rx8025t_get_time(&current_time) == ESP_OK) {
                 LOG_RTC(TAG, "Current time: 20%02d-%02d-%02d %02d:%02d:%02d",
@@ -413,6 +414,11 @@ sd_failed:
             if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
                 LOG_WIFI(TAG, "   RSSI: %d dBm\n", ap_info.rssi);
             }
+            
+#if ENABLE_RTC && ENABLE_RTC_NTP_SYNC
+            // RTC NTP Sync Test (requires WiFi connection)
+            rtc_ntp_sync_test();
+#endif
         }
     } else {
         ESP_LOGW(TAG, "WiFi connection timeout\n");
