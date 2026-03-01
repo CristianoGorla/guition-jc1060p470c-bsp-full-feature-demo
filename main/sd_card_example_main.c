@@ -1,3 +1,15 @@
+/*
+ * SD Card + ESP-Hosted Example with Bootstrap Manager
+ * 
+ * v1.1.0-dev: Deterministic three-phase initialization
+ * - Phase A: Power management (GPIO isolation)
+ * - Phase B: WiFi Hosted (SDIO transport)
+ * - Phase C: SD card (safe mount)
+ * 
+ * Copyright (c) 2026 Cristiano Gorla
+ * SPDX-License-Identifier: Unlicense
+ */
+
 #include <string.h>
 #include <sys/unistd.h>
 #include <sys/stat.h>
@@ -25,6 +37,7 @@
 #include "feature_flags.h"
 #include "i2c_utils.h"
 #include "esp_hosted_wifi.h"
+#include "bootstrap_manager.h"  // NEW: Coordinated initialization
 
 #if ENABLE_WIFI && ENABLE_WIFI_CONNECT
 // Load WiFi credentials from wifi_config.h (gitignored)
@@ -39,22 +52,6 @@ static const char *TAG = "GUITION_MAIN";
 
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static esp_lcd_touch_handle_t touch_handle = NULL;
-
-#if ENABLE_SD_CARD
-#ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-static esp_err_t sdmmc_host_init_dummy(void) 
-{ 
-    LOG_SD(TAG, "Skipping sdmmc_host_init (controller already initialized by ESP-Hosted)");
-    return ESP_OK; 
-}
-
-static esp_err_t sdmmc_host_deinit_dummy(void) 
-{ 
-    LOG_SD(TAG, "Skipping sdmmc_host_deinit (keep controller active for ESP-Hosted)");
-    return ESP_OK; 
-}
-#endif
-#endif
 
 #if ENABLE_DISPLAY && ENABLE_DISPLAY_TEST
 void test_display_fill_color(uint16_t color)
@@ -172,6 +169,7 @@ void app_main(void)
     ESP_LOGI(TAG, "\n");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "   Guition JC1060P470C Initialization");
+    ESP_LOGI(TAG, "   v1.1.0-dev (Bootstrap Manager)");
     ESP_LOGI(TAG, "========================================\n");
 
     // ========== 1. NVS ==========
@@ -308,134 +306,106 @@ void app_main(void)
     ESP_LOGI(TAG, "Touch disabled by feature flags\n");
 #endif
 
-    // ========== 7. SD Card (optional) ==========
-#if ENABLE_SD_CARD
-    LOG_SD(TAG, "=== SD Card Initialization ===");
-
-#ifdef CONFIG_EXAMPLE_PIN_CARD_POWER_RESET
-    gpio_config_t pwr_io_conf = {
-        .pin_bit_mask = (1ULL << CONFIG_EXAMPLE_PIN_CARD_POWER_RESET),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&pwr_io_conf);
-    gpio_set_level(CONFIG_EXAMPLE_PIN_CARD_POWER_RESET, 0);
-    vTaskDelay(pdMS_TO_TICKS(250));
-    LOG_SD(TAG, "SD Card power enabled (GPIO%d)", CONFIG_EXAMPLE_PIN_CARD_POWER_RESET);
-#endif
-
-    sdmmc_slot_config_t slot_config = {
-        .clk = CONFIG_EXAMPLE_PIN_CLK,
-        .cmd = CONFIG_EXAMPLE_PIN_CMD,
-        .d0 = CONFIG_EXAMPLE_PIN_D0,
-#ifdef CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_4
-        .d1 = CONFIG_EXAMPLE_PIN_D1,
-        .d2 = CONFIG_EXAMPLE_PIN_D2,
-        .d3 = CONFIG_EXAMPLE_PIN_D3,
-#endif
-        .cd = SDMMC_SLOT_NO_CD,
-        .wp = SDMMC_SLOT_NO_WP,
-        .width = 4,
-        .flags = 0,
-    };
-
-#ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-    LOG_SD(TAG, "ESP-Hosted detected - init slot only");
-    ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
+    // ========== 7. Bootstrap Manager (SD + WiFi Coordinated Init) ==========
+    // NEW: Three-phase coordinated initialization
+    //   Phase A: Power management (GPIO isolation, strapping)
+    //   Phase B: WiFi Hosted (SDIO transport)
+    //   Phase C: SD card (safe mount)
+    
+    ESP_LOGI(TAG, "\n");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "   Starting Bootstrap Manager");
+    ESP_LOGI(TAG, "========================================\n");
+    
+    bootstrap_manager_t bootstrap_mgr = {0};
+    
+#if ENABLE_SD_CARD || ENABLE_WIFI
+    // Initialize bootstrap manager (spawns three tasks)
+    ret = bootstrap_manager_init(&bootstrap_mgr);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Slot init failed (0x%x)", ret);
-        goto sd_failed;
+        ESP_LOGE(TAG, "Bootstrap manager init failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Cannot continue without SD/WiFi - restarting in 5s...");
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        esp_restart();
     }
-#endif
-
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = false,
-        .max_files = 5,
-        .allocation_unit_size = 16 * 1024
-    };
-
-    sdmmc_card_t *card;
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    host.slot = SDMMC_HOST_SLOT_0;
-
-#ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-    host.init = &sdmmc_host_init_dummy;
-    host.deinit = &sdmmc_host_deinit_dummy;
-#endif
-
-    ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-
+    
+    // Wait for all phases to complete (30 second timeout)
+    ret = bootstrap_manager_wait(&bootstrap_mgr, 30000);
     if (ret == ESP_OK) {
-        LOG_SD(TAG, "✓ SD card mounted");
-        LOG_SD(TAG, "Card: %s, Capacity: %llu MB\n",
-                card->cid.name,
-                ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
-    } else {
-        ESP_LOGE(TAG, "SD mount failed (0x%x)\n", ret);
-    }
-
-sd_failed:
-#else
-    ESP_LOGI(TAG, "SD card disabled by feature flags\n");
-#endif
-
-    // ========== 8. WiFi (ESP-Hosted - optional) ==========
-#if ENABLE_WIFI
-    LOG_WIFI(TAG, "=== WiFi Initialization ===");
-    init_wifi();
-    LOG_WIFI(TAG, "✓ WiFi initialized (ESP-Hosted via C6)\n");
-    
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    
-#if ENABLE_WIFI_CONNECT
-    // Test WiFi connection (requires wifi_config.h with SSID/password)
-    LOG_WIFI(TAG, "=== WiFi Connection Test ===");
-    LOG_WIFI(TAG, "Connecting to: %s", WIFI_SSID);
-    
-    wifi_connect(WIFI_SSID, WIFI_PASSWORD);
-    LOG_WIFI(TAG, "Waiting for IP address (15s timeout)...");
-    
-    wait_for_ip();
-    
-    if (check_if_already_has_ip()) {
-        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-        esp_netif_ip_info_t ip;
+        ESP_LOGI(TAG, "\n");
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "   Bootstrap Complete - System Ready");
+        ESP_LOGI(TAG, "========================================\n");
         
-        if (netif && esp_netif_get_ip_info(netif, &ip) == ESP_OK) {
-            LOG_WIFI(TAG, "✓ WiFi connected!");
-            LOG_WIFI(TAG, "   IP Address: " IPSTR, IP2STR(&ip.ip));
-            LOG_WIFI(TAG, "   Netmask:    " IPSTR, IP2STR(&ip.netmask));
-            LOG_WIFI(TAG, "   Gateway:    " IPSTR "\n", IP2STR(&ip.gw));
-            
-            // Get signal strength (RSSI)
-            wifi_ap_record_t ap_info;
-            if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-                LOG_WIFI(TAG, "   RSSI: %d dBm\n", ap_info.rssi);
-            }
-            
-#if ENABLE_RTC && ENABLE_RTC_NTP_SYNC
-            // RTC NTP Sync Test (requires WiFi connection)
-            rtc_ntp_sync_test();
-#endif
+        // Get SD card handle from bootstrap manager
+        sdmmc_card_t *card = bootstrap_manager_get_sd_card(&bootstrap_mgr);
+        if (card) {
+            ESP_LOGI(TAG, "SD Card: %s, Capacity: %llu MB",
+                    card->cid.name,
+                    ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
         }
-    } else {
-        ESP_LOGW(TAG, "WiFi connection timeout\n");
-    }
-#else
-    // Simple scan test (default)
-    if (do_wifi_scan_and_check(NULL)) {
-        LOG_WIFI(TAG, "✓ WiFi scan successful\n");
-    } else {
-        ESP_LOGW(TAG, "WiFi scan returned no networks\n");
-    }
+        
+#if ENABLE_WIFI_CONNECT
+        // WiFi connection test (if enabled)
+        ESP_LOGI(TAG, "\n=== WiFi Connection Test ===");
+        ESP_LOGI(TAG, "Connecting to: %s", WIFI_SSID);
+        
+        wifi_connect(WIFI_SSID, WIFI_PASSWORD);
+        ESP_LOGI(TAG, "Waiting for IP address (15s timeout)...");
+        
+        wait_for_ip();
+        
+        if (check_if_already_has_ip()) {
+            esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+            esp_netif_ip_info_t ip;
+            
+            if (netif && esp_netif_get_ip_info(netif, &ip) == ESP_OK) {
+                ESP_LOGI(TAG, "✓ WiFi connected!");
+                ESP_LOGI(TAG, "   IP Address: " IPSTR, IP2STR(&ip.ip));
+                ESP_LOGI(TAG, "   Netmask:    " IPSTR, IP2STR(&ip.netmask));
+                ESP_LOGI(TAG, "   Gateway:    " IPSTR "\n", IP2STR(&ip.gw));
+                
+                // Get signal strength (RSSI)
+                wifi_ap_record_t ap_info;
+                if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+                    ESP_LOGI(TAG, "   RSSI: %d dBm\n", ap_info.rssi);
+                }
+                
+#if ENABLE_RTC && ENABLE_RTC_NTP_SYNC
+                // RTC NTP Sync Test (requires WiFi connection)
+                rtc_ntp_sync_test();
 #endif
+            }
+        } else {
+            ESP_LOGW(TAG, "WiFi connection timeout\n");
+        }
+#elif ENABLE_WIFI
+        // Simple scan test (default)
+        ESP_LOGI(TAG, "\n=== WiFi Scan Test ===");
+        if (do_wifi_scan_and_check(NULL)) {
+            ESP_LOGI(TAG, "✓ WiFi scan successful\n");
+        } else {
+            ESP_LOGW(TAG, "WiFi scan returned no networks\n");
+        }
+#endif
+        
+    } else if (ret == ESP_ERR_TIMEOUT) {
+        ESP_LOGE(TAG, "Bootstrap timeout! Check hardware connections.");
+        ESP_LOGE(TAG, "Restarting in 10 seconds...");
+        vTaskDelay(pdMS_TO_TICKS(10000));
+        esp_restart();
+    } else {
+        ESP_LOGE(TAG, "Bootstrap failed! Error: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Restarting in 10 seconds...");
+        vTaskDelay(pdMS_TO_TICKS(10000));
+        esp_restart();
+    }
 #else
-    ESP_LOGI(TAG, "WiFi disabled by feature flags\n");
+    ESP_LOGI(TAG, "Bootstrap manager skipped (SD and WiFi disabled)\n");
 #endif
 
     // ========== System Ready ==========
+    ESP_LOGI(TAG, "\n");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "   System Initialization Complete");
     ESP_LOGI(TAG, "========================================\n");
@@ -474,6 +444,7 @@ sd_failed:
 #endif
 
     // Main loop
+    ESP_LOGI(TAG, "Entering main loop...\n");
     while (1)
     {
         vTaskDelay(pdMS_TO_TICKS(10000));
