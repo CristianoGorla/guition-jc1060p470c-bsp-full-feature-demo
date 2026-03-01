@@ -181,6 +181,28 @@ GPIO11 - PA_CTRL (power amplifier enable)
 GPIO45-52 - MIPI DSI interface (dedicated)
 ```
 
+### SDMMC Slot 0 (SD Card)
+```
+GPIO43 - CLK
+GPIO44 - CMD
+GPIO39 - D0
+GPIO40 - D1
+GPIO41 - D2
+GPIO42 - D3
+GPIO45 - Power enable
+```
+
+### SDMMC Slot 1 (ESP-Hosted WiFi/BLE)
+```
+GPIO18 - CLK
+GPIO19 - CMD
+GPIO14 - D0
+GPIO15 - D1
+GPIO16 - D2
+GPIO17 - D3
+GPIO54 - ESP32-C6 reset
+```
+
 ---
 
 ## Complete Initialization Sequence (Final)
