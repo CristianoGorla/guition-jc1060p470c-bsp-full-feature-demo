@@ -47,6 +47,104 @@ static esp_err_t sdmmc_host_deinit_dummy(void)
 #endif
 #endif
 
+#if ENABLE_I2C
+/**
+ * @brief Check GPIO raw state and detect I2C bus faults
+ * @return true if both SDA and SCL are HIGH (healthy), false otherwise
+ */
+static bool check_i2c_gpio_state(const char *context)
+{
+    ESP_LOGI(TAG, "\n=== I2C GPIO STATE CHECK (%s) ===", context);
+    
+    // Reset GPIO to default state
+    gpio_reset_pin(GPIO_NUM_7);
+    gpio_reset_pin(GPIO_NUM_8);
+    
+    // Configure as input with pullup
+    gpio_set_direction(GPIO_NUM_7, GPIO_MODE_INPUT);
+    gpio_set_direction(GPIO_NUM_8, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(GPIO_NUM_7, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(GPIO_NUM_8, GPIO_PULLUP_ONLY);
+    
+    vTaskDelay(pdMS_TO_TICKS(10));  // Let pullups stabilize
+    
+    int sda_level = gpio_get_level(GPIO_NUM_7);
+    int scl_level = gpio_get_level(GPIO_NUM_8);
+    
+    ESP_LOGI(TAG, "GPIO7 (SDA) level: %d", sda_level);
+    ESP_LOGI(TAG, "GPIO8 (SCL) level: %d", scl_level);
+    
+    bool gpio_ok = (sda_level == 1 && scl_level == 1);
+    
+    if (gpio_ok) {
+        ESP_LOGI(TAG, "✓ GPIO levels OK (both HIGH with pullups)");
+    } else {
+        ESP_LOGE(TAG, "✗ GPIO FAULT DETECTED!");
+        if (sda_level == 0) {
+            ESP_LOGE(TAG, "  → SDA (GPIO7) stuck LOW - possible short to GND or slave holding bus");
+        }
+        if (scl_level == 0) {
+            ESP_LOGE(TAG, "  → SCL (GPIO8) stuck LOW - possible short to GND or clock stretch issue");
+        }
+        ESP_LOGE(TAG, "  Possible causes:");
+        ESP_LOGE(TAG, "    1. Missing or damaged pull-up resistors");
+        ESP_LOGE(TAG, "    2. Short circuit on PCB traces");
+        ESP_LOGE(TAG, "    3. I2C slave holding bus (power issue)");
+        ESP_LOGE(TAG, "    4. GPIO conflict with other peripheral (e.g., MIPI DSI)");
+    }
+    ESP_LOGI(TAG, "===========================\n");
+    
+    return gpio_ok;
+}
+
+/**
+ * @brief Re-initialize I2C bus (recovery from lockup)
+ * @param bus_handle Pointer to bus handle (will be updated)
+ * @return ESP_OK on success
+ */
+static esp_err_t reinit_i2c_bus(i2c_master_bus_handle_t *bus_handle)
+{
+    ESP_LOGI(TAG, "=== I2C BUS RE-INITIALIZATION ===");
+    
+    if (*bus_handle != NULL) {
+        ESP_LOGI(TAG, "Deleting existing I2C bus...");
+        esp_err_t ret = i2c_del_master_bus(*bus_handle);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to delete I2C bus (0x%x), forcing NULL", ret);
+        }
+        *bus_handle = NULL;
+        vTaskDelay(pdMS_TO_TICKS(100));  // Wait for hardware to settle
+    }
+    
+    // Force GPIO reset before re-init
+    ESP_LOGI(TAG, "Resetting I2C GPIO pins...");
+    gpio_reset_pin(GPIO_NUM_7);
+    gpio_reset_pin(GPIO_NUM_8);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    
+    // Re-create bus
+    ESP_LOGI(TAG, "Creating new I2C bus (SDA=%d, SCL=%d)...", I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
+    i2c_master_bus_config_t i2c_bus_config = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_NUM_0,
+        .scl_io_num = I2C_MASTER_SCL_IO,
+        .sda_io_num = I2C_MASTER_SDA_IO,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+    
+    esp_err_t ret = i2c_new_master_bus(&i2c_bus_config, bus_handle);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "✓ I2C bus re-initialized successfully");
+    } else {
+        ESP_LOGE(TAG, "✗ Failed to re-initialize I2C bus (0x%x)", ret);
+    }
+    
+    ESP_LOGI(TAG, "=================================\n");
+    return ret;
+}
+#endif
+
 #if ENABLE_DISPLAY && ENABLE_DISPLAY_TEST
 void test_display_fill_color(uint16_t color)
 {
@@ -176,44 +274,7 @@ void app_main(void)
 
     // ========== 2. GPIO RAW STATE CHECK (before I2C config) ==========
 #if ENABLE_I2C
-    ESP_LOGI(TAG, "\n=== GPIO RAW STATE CHECK ===");
-    ESP_LOGI(TAG, "Checking GPIO7 (SDA) and GPIO8 (SCL) BEFORE I2C configuration...");
-    
-    // Reset GPIO to default state
-    gpio_reset_pin(GPIO_NUM_7);
-    gpio_reset_pin(GPIO_NUM_8);
-    
-    // Configure as input with pullup
-    gpio_set_direction(GPIO_NUM_7, GPIO_MODE_INPUT);
-    gpio_set_direction(GPIO_NUM_8, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(GPIO_NUM_7, GPIO_PULLUP_ONLY);
-    gpio_set_pull_mode(GPIO_NUM_8, GPIO_PULLUP_ONLY);
-    
-    vTaskDelay(pdMS_TO_TICKS(10));  // Let pullups stabilize
-    
-    int sda_level = gpio_get_level(GPIO_NUM_7);
-    int scl_level = gpio_get_level(GPIO_NUM_8);
-    
-    ESP_LOGI(TAG, "GPIO7 (SDA) level: %d", sda_level);
-    ESP_LOGI(TAG, "GPIO8 (SCL) level: %d", scl_level);
-    
-    if (sda_level == 1 && scl_level == 1) {
-        ESP_LOGI(TAG, "\u2713 GPIO levels OK (both HIGH with pullups)");
-    } else {
-        ESP_LOGE(TAG, "\u2717 GPIO FAULT DETECTED!");
-        if (sda_level == 0) {
-            ESP_LOGE(TAG, "  \u2192 SDA (GPIO7) stuck LOW - possible short to GND or slave holding bus");
-        }
-        if (scl_level == 0) {
-            ESP_LOGE(TAG, "  \u2192 SCL (GPIO8) stuck LOW - possible short to GND or clock stretch issue");
-        }
-        ESP_LOGE(TAG, "  Possible causes:");
-        ESP_LOGE(TAG, "    1. Missing or damaged pull-up resistors");
-        ESP_LOGE(TAG, "    2. Short circuit on PCB traces");
-        ESP_LOGE(TAG, "    3. I2C slave holding bus (power issue)");
-        ESP_LOGE(TAG, "    4. GPIO conflict with other peripheral");
-    }
-    ESP_LOGI(TAG, "===========================\n");
+    check_i2c_gpio_state("before I2C init");
 #endif
 
     // ========== 3. I2C Bus (EARLY INIT - before peripherals!) ==========
@@ -229,7 +290,7 @@ void app_main(void)
     };
     i2c_master_bus_handle_t bus_handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &bus_handle));
-    LOG_I2C(TAG, "\u2713 I2C bus initialized EARLY (SDA=%d, SCL=%d)", I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
+    LOG_I2C(TAG, "✓ I2C bus initialized EARLY (SDA=%d, SCL=%d)", I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
     LOG_I2C(TAG, "This prevents bus lockup from GT911 reset\n");
 #else
     ESP_LOGI(TAG, "I2C disabled by feature flags");
@@ -244,7 +305,7 @@ void app_main(void)
         
         ret = es8311_init(bus_handle);
         if (ret == ESP_OK) {
-            LOG_AUDIO(TAG, "\u2713 ES8311 initialized and powered down");
+            LOG_AUDIO(TAG, "✓ ES8311 initialized and powered down");
             LOG_AUDIO(TAG, "I2C bus should be free now");
         } else {
             ESP_LOGW(TAG, "ES8311 init failed or not responding (0x%x)", ret);
@@ -282,11 +343,11 @@ void app_main(void)
         ret = i2c_master_probe(bus_handle, 0x32, 500);
         
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "\u2713 RTC responds to probe!");
+            ESP_LOGI(TAG, "✓ RTC responds to probe!");
             
             ret = rtc_rx8025t_init(bus_handle);
             if (ret == ESP_OK) {
-                LOG_RTC(TAG, "\u2713 RTC initialized successfully");
+                LOG_RTC(TAG, "✓ RTC initialized successfully");
                 
 #if ENABLE_RTC_TEST
                 rtc_time_t current_time;
@@ -390,7 +451,7 @@ void app_main(void)
     }
     else
     {
-        LOG_SD(TAG, "\u2713 SD card mounted successfully");
+        LOG_SD(TAG, "✓ SD card mounted successfully");
         LOG_SD(TAG, "Card name: %s", card->cid.name);
         LOG_SD(TAG, "Capacity: %llu MB",
                  ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
@@ -405,12 +466,12 @@ sd_failed:
 #if ENABLE_WIFI
     LOG_WIFI(TAG, "Initializing WiFi (ESP-Hosted via C6)...");
     init_wifi();
-    LOG_WIFI(TAG, "\u2713 WiFi initialized - scanning networks...");
+    LOG_WIFI(TAG, "✓ WiFi initialized - scanning networks...");
     
     vTaskDelay(pdMS_TO_TICKS(2000));
     
     if (do_wifi_scan_and_check(NULL)) {
-        LOG_WIFI(TAG, "\u2713 WiFi scan successful - ESP-Hosted is working!");
+        LOG_WIFI(TAG, "✓ WiFi scan successful - ESP-Hosted is working!");
     } else {
         ESP_LOGW(TAG, "WiFi scan returned 0 networks (check C6 firmware)");
     }
@@ -434,7 +495,34 @@ sd_failed:
 #if ENABLE_DISPLAY
     ESP_LOGI(TAG, "Initializing display...");
     panel_handle = init_jd9165_display();
-    ESP_LOGI(TAG, "\u2713 Display ready (1024x600)");
+    ESP_LOGI(TAG, "✓ Display ready (1024x600)");
+    
+    // CRITICAL: Check I2C GPIO state after display init
+#if ENABLE_I2C
+    vTaskDelay(pdMS_TO_TICKS(100));
+    bool gpio_healthy = check_i2c_gpio_state("after display init");
+    
+    if (!gpio_healthy) {
+        ESP_LOGW(TAG, "\n⚠ MIPI DSI display has disrupted I2C GPIO!");
+        ESP_LOGW(TAG, "Attempting I2C bus recovery...\n");
+        
+        if (reinit_i2c_bus(&bus_handle) == ESP_OK) {
+            ESP_LOGI(TAG, "✓ I2C bus recovery successful");
+            
+            // Verify recovery worked
+            vTaskDelay(pdMS_TO_TICKS(100));
+            if (check_i2c_gpio_state("after I2C recovery")) {
+                ESP_LOGI(TAG, "✓ I2C GPIO confirmed healthy after recovery\n");
+            } else {
+                ESP_LOGE(TAG, "✗ I2C recovery FAILED - GPIO still stuck\n");
+            }
+        } else {
+            ESP_LOGE(TAG, "✗ I2C bus recovery FAILED\n");
+        }
+    } else {
+        ESP_LOGI(TAG, "✓ I2C GPIO remains healthy after display init\n");
+    }
+#endif
 #else
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
