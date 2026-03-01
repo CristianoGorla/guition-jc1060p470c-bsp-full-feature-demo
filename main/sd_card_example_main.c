@@ -118,7 +118,7 @@ void test_display_rgb_pattern(void)
     ESP_LOGI(TAG, "RGB pattern complete");
 }
 
-// Test RAW Touch: legge e stampa coordinate
+// Test RAW Touch: legge e stampa coordinate (API NON deprecata)
 void test_touch_read_loop(void)
 {
     if (!touch_handle) {
@@ -129,19 +129,17 @@ void test_touch_read_loop(void)
     ESP_LOGI(TAG, "Touch test started. Touch the screen...");
     ESP_LOGI(TAG, "Press Ctrl+C to stop");
 
-    uint16_t touch_x[1];
-    uint16_t touch_y[1];
-    uint16_t touch_strength[1];
-    uint8_t touch_cnt = 0;
-
     while (1) {
         esp_lcd_touch_read_data(touch_handle);
         
-        bool touched = esp_lcd_touch_get_coordinates(touch_handle, touch_x, touch_y, touch_strength, &touch_cnt, 1);
+        uint16_t x[1], y[1], strength[1];
+        uint8_t touch_cnt = 0;
+        
+        bool touched = esp_lcd_touch_get_data(touch_handle, x, y, strength, &touch_cnt, 1);
         
         if (touched && touch_cnt > 0) {
             ESP_LOGI(TAG, "Touch detected: X=%d, Y=%d, Strength=%d", 
-                     touch_x[0], touch_y[0], touch_strength[0]);
+                     x[0], y[0], strength[0]);
         }
         
         vTaskDelay(pdMS_TO_TICKS(100)); // Poll ogni 100ms
