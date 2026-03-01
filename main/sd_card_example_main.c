@@ -15,7 +15,8 @@
 #include "display_jd9165.h"
 #include "touch_gt911.h"
 #include "feature_flags.h"
-#include "i2c_utils.h"  // <-- I2C scanner
+#include "i2c_utils.h"
+#include "hw_init.h"  // <-- Hardware reset sequences
 
 static const char *TAG = "GUITION_MAIN";
 
@@ -250,7 +251,10 @@ sd_failed:
     ESP_LOGI(TAG, "SD card disabled by feature flags");
 #endif // ENABLE_SD_CARD
 
-    // ========== 3. I2C Bus ==========
+    // ========== 3. Hardware Reset (PRIMA dell'I2C) ==========
+    hw_reset_all_peripherals();
+
+    // ========== 4. I2C Bus ==========
 #if ENABLE_I2C
     i2c_master_bus_config_t i2c_bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -268,7 +272,7 @@ sd_failed:
     i2c_master_bus_handle_t bus_handle = NULL;
 #endif
 
-    // ========== 4. Display ==========
+    // ========== 5. Display ==========
 #if ENABLE_DISPLAY
     ESP_LOGI(TAG, "Initializing display...");
     panel_handle = init_jd9165_display();
@@ -277,7 +281,7 @@ sd_failed:
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
 
-    // ========== 5. I2C SCAN ==========
+    // ========== 6. I2C SCAN ==========
 #if ENABLE_I2C && ENABLE_I2C_SCAN
     if (bus_handle) {
         vTaskDelay(pdMS_TO_TICKS(500)); // Attendi stabilizzazione
@@ -293,7 +297,7 @@ sd_failed:
     }
 #endif
 
-    // ========== 6. Touch (NON RAGGIUNTO) ==========
+    // ========== 7. Touch (NON RAGGIUNTO) ==========
 #if ENABLE_TOUCH
     if (bus_handle) {
         LOG_TOUCH(TAG, "Initializing touch...");
