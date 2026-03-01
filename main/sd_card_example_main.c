@@ -14,7 +14,8 @@
 
 #include "display_jd9165.h"
 #include "touch_gt911.h"
-#include "feature_flags.h"  // <-- Flag di controllo
+#include "feature_flags.h"
+#include "i2c_utils.h"  // <-- I2C scanner
 
 static const char *TAG = "GUITION_MAIN";
 
@@ -261,7 +262,7 @@ sd_failed:
     };
     i2c_master_bus_handle_t bus_handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &bus_handle));
-    LOG_I2C(TAG, "I2C bus initialized");
+    LOG_I2C(TAG, "I2C bus initialized (SDA=%d, SCL=%d)", I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
 #else
     ESP_LOGI(TAG, "I2C disabled by feature flags");
     i2c_master_bus_handle_t bus_handle = NULL;
@@ -269,14 +270,30 @@ sd_failed:
 
     // ========== 4. Display ==========
 #if ENABLE_DISPLAY
-    LOG_DISPLAY(TAG, "Initializing display...");
+    ESP_LOGI(TAG, "Initializing display...");
     panel_handle = init_jd9165_display();
-    LOG_DISPLAY(TAG, "Display ready");
+    ESP_LOGI(TAG, "✓ Display ready (1024x600)");
 #else
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
 
-    // ========== 5. Touch ==========
+    // ========== 5. I2C SCAN ==========
+#if ENABLE_I2C && ENABLE_I2C_SCAN
+    if (bus_handle) {
+        vTaskDelay(pdMS_TO_TICKS(500)); // Attendi stabilizzazione
+        i2c_scan_bus(bus_handle);
+        
+        ESP_LOGI(TAG, "I2C scan complete. System halted.");
+        ESP_LOGI(TAG, "Check the devices found above before continuing.");
+        
+        // HALT QUI - Non proseguire
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(10000));
+        }
+    }
+#endif
+
+    // ========== 6. Touch (NON RAGGIUNTO) ==========
 #if ENABLE_TOUCH
     if (bus_handle) {
         LOG_TOUCH(TAG, "Initializing touch...");
