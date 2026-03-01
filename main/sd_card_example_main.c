@@ -257,6 +257,16 @@ void app_main(void)
     ESP_LOGI(TAG, "Audio codec disabled by feature flags");
 #endif
 
+    // ========== 4.5 I2C SCAN (after audio, BEFORE RTC test!) ==========
+#if ENABLE_I2C && ENABLE_I2C_SCAN
+    if (bus_handle) {
+        ESP_LOGI(TAG, "\n========== I2C BUS SCAN (after audio init, before RTC) ==========");
+        ESP_LOGI(TAG, "This scan should show ES8311 (0x18), GT911 (0x14), and RTC (0x32)\n");
+        i2c_scan_bus(bus_handle);
+        ESP_LOGI(TAG, "========== I2C BUS SCAN COMPLETE ==========\n");
+    }
+#endif
+
     // ========== 5. RTC Init (AFTER audio codec!) ==========
 #if ENABLE_RTC
     if (bus_handle) {
@@ -429,11 +439,11 @@ sd_failed:
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
 
-    // ========== 10. I2C SCAN ==========
+    // ========== 10. I2C SCAN (final) ==========
 #if ENABLE_I2C && ENABLE_I2C_SCAN
     if (bus_handle) {
         vTaskDelay(pdMS_TO_TICKS(500));
-        ESP_LOGI(TAG, "\n========== I2C BUS SCAN (after all resets) ==========");
+        ESP_LOGI(TAG, "\n========== I2C BUS SCAN (final - after all init) ==========");
         i2c_scan_bus(bus_handle);
         ESP_LOGI(TAG, "========== I2C BUS SCAN COMPLETE ==========\n");
     }
