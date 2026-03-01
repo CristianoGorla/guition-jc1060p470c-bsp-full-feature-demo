@@ -118,7 +118,6 @@ void app_main(void)
     {
         ESP_LOGI(TAG, "SD card mounted successfully");
         ESP_LOGI(TAG, "Card name: %s", card->cid.name);
-        ESP_LOGI(TAG, "Card type: %s", (card->ocr & SD_OCR_SDHC_CAP) ? "SDHC/SDXC" : "SDSC");
         ESP_LOGI(TAG, "Capacity: %llu MB", 
                  ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
     }
