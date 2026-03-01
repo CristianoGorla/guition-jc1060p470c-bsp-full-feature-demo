@@ -5,8 +5,8 @@
 
 static const char *TAG = "ES8311";
 
-// Power Amplifier control pin (from GUITION board BSP)
-#define ES8311_PA_POWER_PIN GPIO_NUM_20
+// Power Amplifier control pin (from GUITION board schematic)
+#define ES8311_PA_POWER_PIN GPIO_NUM_11
 
 static esp_err_t es8311_write_reg(i2c_master_bus_handle_t bus_handle, uint8_t reg_addr, uint8_t data)
 {

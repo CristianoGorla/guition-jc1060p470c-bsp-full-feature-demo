@@ -9,7 +9,7 @@
  * Hardware Configuration (Guition JC1060P470C):
  * - I2C Address: 0x18 (7-bit)
  * - I2C Bus: GPIO7 (SDA), GPIO8 (SCL) - shared with GT911 and RX8025T
- * - PA Power: GPIO20 (NS4150B amplifier enable)
+ * - PA Power: GPIO11 (NS4150B amplifier enable, active HIGH)
  * 
  * This is a minimal I2C-only driver for ES8311 initialization.
  * For full audio functionality, consider using:
@@ -43,7 +43,7 @@
  * 
  * For audio playback/recording, additional setup required:
  * - I2S peripheral configuration
- * - PA power pin (GPIO20) control
+ * - PA power pin (GPIO11) control
  * - Clock configuration (MCLK)
  * 
  * @param bus_handle I2C master bus handle
