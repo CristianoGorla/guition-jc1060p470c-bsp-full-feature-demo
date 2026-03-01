@@ -799,6 +799,8 @@ I (7914) GUITION_MAIN: ========================================
 
 #define ENABLE_WIFI 1          // ✅ ESP-Hosted WiFi
 #define ENABLE_WIFI_CONNECT 1  // Enable WiFi connection test
+
+#define ENABLE_SD_CARD 1       // ✅ SD card (SDMMC Slot 0)
 ```
 
 ---
@@ -878,4 +880,5 @@ Final Approach → I2C init → Direct device init (driver self-validates)
                   ✅ SD + WiFi coexisting
                   ✅ Single lwip reference
                   ✅ Stable networking
+                  ✅ Proper reset handling
 ```
