@@ -121,3 +121,62 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
     // Riabilita i log i2c.master
     esp_log_level_set("i2c.master", ESP_LOG_ERROR);
 }
+
+bool i2c_check_bus_health(i2c_master_bus_handle_t bus_handle)
+{
+    if (!bus_handle) {
+        ESP_LOGE(TAG, "Bus handle is NULL - cannot check health");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "\n========== I2C BUS HEALTH CHECK ==========");
+    
+    // Temporarily disable i2c.master error logs
+    esp_log_level_set("i2c.master", ESP_LOG_NONE);
+
+    // Test addresses for known devices on this board
+    const uint8_t test_addrs[] = {0x14, 0x18, 0x32};  // GT911, ES8311, RTC
+    const char *test_names[] = {"GT911", "ES8311", "RX8025T"};
+    const int num_tests = sizeof(test_addrs) / sizeof(test_addrs[0]);
+    
+    int successful_probes = 0;
+    int failed_probes = 0;
+    
+    for (int i = 0; i < num_tests; i++) {
+        esp_err_t ret = i2c_master_probe(bus_handle, test_addrs[i], 500);
+        
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "  [0x%02X] %s: ✓ RESPONDS", test_addrs[i], test_names[i]);
+            successful_probes++;
+        } else {
+            ESP_LOGW(TAG, "  [0x%02X] %s: ✗ NO RESPONSE (0x%x)", 
+                     test_addrs[i], test_names[i], ret);
+            failed_probes++;
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    
+    // Re-enable i2c.master logs
+    esp_log_level_set("i2c.master", ESP_LOG_ERROR);
+    
+    ESP_LOGI(TAG, "\nHealth check summary:");
+    ESP_LOGI(TAG, "  Successful probes: %d/%d", successful_probes, num_tests);
+    ESP_LOGI(TAG, "  Failed probes: %d/%d", failed_probes, num_tests);
+    
+    bool is_healthy = (successful_probes > 0);  // At least one device must respond
+    
+    if (is_healthy) {
+        ESP_LOGI(TAG, "\n✓ I2C bus appears HEALTHY");
+    } else {
+        ESP_LOGE(TAG, "\n✗ I2C bus appears DEAD (no devices responding)");
+        ESP_LOGE(TAG, "  Possible causes:");
+        ESP_LOGE(TAG, "    1. Bus electrically shorted or stuck");
+        ESP_LOGE(TAG, "    2. GPIO conflict with other peripheral");
+        ESP_LOGE(TAG, "    3. Clock/power domain issue");
+    }
+    
+    ESP_LOGI(TAG, "==========================================\n");
+    
+    return is_healthy;
+}
