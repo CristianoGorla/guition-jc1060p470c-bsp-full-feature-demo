@@ -5,9 +5,9 @@
 - **MCU**: ESP32-P4 (Host)
 - **Coprocessor**: ESP32-C6 (via ESP-Hosted SDIO)
 - **Display**: JD9165 MIPI DSI 1024x600
-- **Touch**: GT911 I2C
-- **Audio**: ES8311 I2C
-- **RTC**: RX8025T I2C
+- **Touch**: GT911 I2C (address 0x14)
+- **Audio**: ES8311 I2C (address 0x18)
+- **RTC**: RX8025T I2C (address 0x32)
 - **Storage**: SD Card (SDMMC Slot 0)
 - **WiFi**: ESP-Hosted (SDMMC Slot 1)
 
@@ -137,9 +137,14 @@ I (8854) GUITION_MAIN: ✓ WiFi scan successful - ESP-Hosted is working!  ← SU
 
 ---
 
-### ❌ Problem 3: RTC Not Found on I2C Bus 0
+### ❌ Problem 3: RTC Bus Configuration Error
 
 **Commit**: `50b399a` - "feat: add second I2C bus (I2C_NUM_1) for RTC - GPIO10+12"
+
+**Initial Assumption (WRONG)**:
+- Assumed RTC was on separate I2C bus (GPIO12+10)
+- Created I2C_NUM_1 for RTC
+- RTC not found on separate bus
 
 **Symptoms**:
 ```
@@ -148,36 +153,49 @@ I (8854) GUITION_MAIN: ✓ WiFi scan successful - ESP-Hosted is working!  ← SU
 [0x18] ✓ ES8311 Audio Codec
 Total devices: 2
 
-? 0x32 = RX8025T RTC (expected but not found)
+========== I2C BUS 1 SCAN ==========
+Total devices: 0  ← RTC NOT FOUND!
 ```
 
-**Root Cause**:
-- RTC RX8025T uses a **separate I2C bus**
-- Schematic shows RTC on GPIO12 (SDA) + GPIO10 (SCL)
-- Main I2C bus is GPIO7 (SDA) + GPIO8 (SCL)
-- RTC cannot be detected on wrong bus!
+**Root Cause (from schematic analysis)**:
+- **ALL I2C devices share the SAME bus**: GPIO7 (SDA) + GPIO8 (SCL)
+- Schematic shows GPIO7/8 signals split to multiple devices
+- RTC, Audio, Touch are all on I2C_NUM_0
+- No separate I2C bus exists!
 
 **Solution**:
-- Added second I2C controller (I2C_NUM_1)
-- Configured separate bus for RTC
-- Both buses work independently with zero interference
+**Commit**: `139033a` + `73128f0` - "fix: remove I2C Bus 1 - RTC is on Bus 0 with Audio+Touch"
 
-**Code**:
+**Corrected Code**:
 ```c
-// I2C Bus 0: Audio + Touch
-#define I2C0_MASTER_SDA_IO 7
-#define I2C0_MASTER_SCL_IO 8
+// Single I2C Bus for ALL devices
+#define I2C_MASTER_SDA_IO 7
+#define I2C_MASTER_SCL_IO 8
 
-// I2C Bus 1: RTC  
-#define I2C1_MASTER_SDA_IO 12
-#define I2C1_MASTER_SCL_IO 10
+// All devices on I2C_NUM_0:
+// - 0x14: GT911 Touch
+// - 0x18: ES8311 Audio
+// - 0x32: RX8025T RTC
+```
 
-// Initialize both buses
-i2c_master_bus_handle_t bus0_handle;
-ESP_ERROR_CHECK(i2c_new_master_bus(&i2c0_bus_config, &bus0_handle));
+**RTC Driver Added**:
+**Commit**: `9fe3b67` + `aa66203` - "feat: add RTC enable flag + initialization"
+- Created `rtc_rx8025t.c/.h` driver
+- Added `ENABLE_RTC` flag
+- Integrated RTC init after I2C scan
 
-i2c_master_bus_handle_t bus1_handle;
-ESP_ERROR_CHECK(i2c_new_master_bus(&i2c1_bus_config, &bus1_handle));
+**Expected Boot Log** (awaiting test):
+```
+========== I2C BUS SCAN (Audio + Touch + RTC) ==========
+[0x14] ✓ GT911 Touch
+[0x18] ✓ ES8311 Audio Codec
+[0x32] ✓ RX8025T RTC  ← SHOULD APPEAR NOW!
+
+========== RTC INITIALIZATION ==========
+I (xxxx) RX8025T: Initializing RX8025T RTC...
+I (xxxx) RX8025T: Clearing PON/VLF flags...
+I (xxxx) RX8025T: ✓ RTC initialized successfully
+I (xxxx) GUITION_MAIN: Current RTC time: 2026-03-01 15:56:00
 ```
 
 ---
@@ -189,18 +207,18 @@ ESP_ERROR_CHECK(i2c_new_master_bus(&i2c1_bus_config, &bus1_handle));
 ```
 1. NVS Flash Init
 2. SD Card Init:
-   - Power ON via GPIO36/45 (250ms delay)
+   - Power ON via GPIO45 (250ms delay)
    - sdmmc_host_init_slot(SLOT_0) - NO DEINIT!
    - esp_vfs_fat_sdmmc_mount() with dummy init/deinit
 3. WiFi/ESP-Hosted Init:
    - init_wifi() via ESP-Hosted
    - WiFi scan test
 4. Hardware Reset (GPIO toggles for I2C devices)
-5. I2C Bus Init:
-   - Bus 0: GPIO7+8 (Audio + Touch)
-   - Bus 1: GPIO12+10 (RTC)
-6. Display Init (MIPI DSI)
-7. Touch Init (GT911 via I2C Bus 0)
+5. I2C Bus Init (single bus GPIO7+8)
+6. I2C Scan (detect all devices)
+7. RTC Init (RX8025T driver)
+8. Display Init (MIPI DSI - disabled)
+9. Touch Init (GT911 - disabled)
 ```
 
 ### Feature Flags (feature_flags.h)
@@ -208,7 +226,8 @@ ESP_ERROR_CHECK(i2c_new_master_bus(&i2c1_bus_config, &bus1_handle));
 ```c
 #define ENABLE_SD_CARD 1  // ✅ Working
 #define ENABLE_WIFI 1     // ✅ Working  
-#define ENABLE_I2C 1      // ✅ Working (2 buses)
+#define ENABLE_I2C 1      // ✅ Working (single bus)
+#define ENABLE_RTC 1      // 🔄 Testing
 #define ENABLE_DISPLAY 0  // Not tested yet
 #define ENABLE_TOUCH 0    // Not tested yet
 ```
@@ -232,19 +251,16 @@ static esp_err_t sdmmc_host_deinit_dummy(void)
 #endif
 ```
 
-**Slot Config for SD Card**:
+**I2C Bus Configuration (CORRECTED)**:
 ```c
-sdmmc_slot_config_t slot_config = {
-    .clk = CONFIG_EXAMPLE_PIN_CLK,
-    .cmd = CONFIG_EXAMPLE_PIN_CMD,
-    .d0 = CONFIG_EXAMPLE_PIN_D0,
-    .d1 = CONFIG_EXAMPLE_PIN_D1,
-    .d2 = CONFIG_EXAMPLE_PIN_D2,
-    .d3 = CONFIG_EXAMPLE_PIN_D3,
-    .cd = SDMMC_SLOT_NO_CD,
-    .wp = SDMMC_SLOT_NO_WP,
-    .width = 4,
-    .flags = 0,
+// Single I2C bus for ALL devices
+i2c_master_bus_config_t i2c_bus_config = {
+    .clk_source = I2C_CLK_SRC_DEFAULT,
+    .i2c_port = I2C_NUM_0,
+    .scl_io_num = 8,
+    .sda_io_num = 7,
+    .glitch_ignore_cnt = 7,
+    .flags.enable_internal_pullup = true,
 };
 ```
 
@@ -314,27 +330,16 @@ sdmmc_slot_config_t slot_config = {
 | DSI Data Lane 0 | GPIO 36, 37 | D-PHY Data pair 0 (differential) |
 | DSI Data Lane 1 | GPIO 38, 39 | D-PHY Data pair 1 (differential) |
 
-### Bus I2C (Due controller separati)
-
-#### I2C Bus 0 (Audio + Touch)
+### Bus I2C (Controller singolo - I2C_NUM_0)
 
 | Funzione | Pin ESP32-P4 | Note Hardware |
 |----------|--------------|---------------|
-| SDA (Dati) | GPIO 7 | Condiviso tra GT911 e ES8311 |
+| SDA (Dati) | GPIO 7 | Condiviso tra TUTTI i device I2C |
 | SCL (Clock) | GPIO 8 | Richiede resistenze di pull-up esterne (2.2kΩ tipiche) |
 
-**Devices su Bus 0:**
+**Devices su I2C_NUM_0 (GPIO7+8)**:
 - `0x14`: GT911 Touch Controller
 - `0x18`: ES8311 Audio Codec
-
-#### I2C Bus 1 (RTC)
-
-| Funzione | Pin ESP32-P4 | Note Hardware |
-|----------|--------------|---------------|
-| SDA (Dati) | GPIO 12 | Bus dedicato per RTC |
-| SCL (Clock) | GPIO 10 | Separato dal bus principale |
-
-**Devices su Bus 1:**
 - `0x32`: RX8025T RTC (U9)
 
 ### Touch Screen (GT911)
@@ -387,20 +392,36 @@ sdmmc_slot_config_t slot_config = {
 
 ---
 
+## Boot Logs History
+
+### 🔄 Latest Boot Log (awaiting RTC test)
+
+**Date**: 2026-03-01 15:57 CET  
+**Commit**: `aa66203` - RTC driver integrated  
+**Status**: Awaiting boot log with RTC init
+
+**Expected output**:
+```
+[Paste boot log here when received]
+```
+
+---
+
 ## Testing Checklist
 
 - [x] SD Card Mount (7580 MB SanDisk)
 - [x] WiFi/ESP-Hosted Init
 - [x] WiFi Scan (networks detected)
-- [x] I2C Bus 0 Init (Audio + Touch)
-- [x] I2C Bus 1 Init (RTC)
-- [x] I2C Bus 0 Scan (GT911 + ES8311 found)
-- [ ] I2C Bus 1 Scan (RX8025T RTC)
+- [x] I2C Bus Init (single bus GPIO7+8)
+- [x] I2C Scan (GT911 + ES8311 found)
+- [ ] RTC Detection on I2C scan
+- [ ] RTC Initialization
+- [ ] RTC Read Time
+- [ ] RTC Write Time
 - [ ] Display Init (JD9165)
 - [ ] Display Test Pattern (RGB)
 - [ ] Touch Init (GT911)
 - [ ] Touch Input Test
-- [ ] RTC Read/Write
 
 ---
 
@@ -423,12 +444,15 @@ git log --oneline --graph --all
 
 # Key commits:
 0da9779 - feat: add WiFi init with ENABLE_WIFI flag (test ESP-Hosted)
-008dc74 - fix: add sdmmc_host_deinit_slot(0) before SD init (reset slot after ESP-Hosted)
-1dd8fcb - fix: remove deinit_slot - only reinit slot 0 (preserve ESP-Hosted state) ✅ WORKING
+008dc74 - fix: add sdmmc_host_deinit_slot(0) before SD init ❌ CAUSED CRASH
+1dd8fcb - fix: remove deinit_slot - only reinit slot 0 ✅ WORKING
 7162db3 - test: enable I2C + scan (no halt) with SD+WiFi working
-b5e40f6 - fix: remove halt after I2C scan - system continues after scan
-50b399a - feat: add second I2C bus (I2C_NUM_1) for RTC - GPIO10+12 ✅ WORKING
-4007bfa - docs: update RTC info - RX8025T on separate I2C bus (GPIO10+12)
+b5e40f6 - fix: remove halt after I2C scan
+50b399a - feat: add second I2C bus for RTC ❌ WRONG ASSUMPTION
+139033a - fix: remove I2C Bus 1 - RTC is on Bus 0 ✅ CORRECTED
+73128f0 - docs: update hw_init - all I2C devices on single bus
+9fe3b67 - feat: add RTC enable flag to feature_flags
+aa66203 - feat: add RTC initialization and test ✅ CURRENT
 ```
 
 ---
