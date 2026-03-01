@@ -67,23 +67,32 @@ static const jd9165_lcd_init_cmd_t lcd_init_cmds[] = {
 
 void init_jd9165_display(void)
 {
-    ESP_LOGI(TAG, "Inizializzazione display JD9165 Guition 1024x600");
+    ESP_LOGI(TAG, "=== INIZIO INIT DISPLAY ===");
 
     // 1. Backlight su GPIO 23
+    ESP_LOGI(TAG, ">>> Step 1: Configurazione GPIO23 backlight");
     gpio_set_direction(23, GPIO_MODE_OUTPUT);
     gpio_set_level(23, 0); // Spento inizialmente
+    ESP_LOGI(TAG, ">>> Step 1: COMPLETATO");
 
     // 2. Power MIPI DSI PHY (LDO3 a 2.5V)
+    ESP_LOGI(TAG, ">>> Step 2: Acquisizione LDO3 per MIPI DSI PHY");
     esp_ldo_channel_handle_t ldo_mipi = NULL;
     esp_ldo_channel_config_t ldo_cfg = {
         .chan_id = 3,
         .voltage_mv = 2500,
     };
-    ESP_ERROR_CHECK(esp_ldo_acquire_channel(&ldo_cfg, &ldo_mipi));
-    ESP_LOGI(TAG, "MIPI DSI PHY powered");
-    vTaskDelay(pdMS_TO_TICKS(50)); // Wait for PHY stabilization
+    esp_err_t ret = esp_ldo_acquire_channel(&ldo_cfg, &ldo_mipi);
+    ESP_LOGI(TAG, ">>> Step 2: esp_ldo_acquire_channel returned: %s (0x%x)", esp_err_to_name(ret), ret);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ERRORE LDO3! Uscita.");
+        return;
+    }
+    ESP_LOGI(TAG, ">>> Step 2: COMPLETATO - Attesa stabilizzazione PHY (50ms)");
+    vTaskDelay(pdMS_TO_TICKS(50));
 
     // 3. DSI Bus (750 Mbps come nel BSP vendor)
+    ESP_LOGI(TAG, ">>> Step 3: Creazione DSI bus");
     esp_lcd_dsi_bus_handle_t mipi_dsi_bus;
     esp_lcd_dsi_bus_config_t bus_config = {
         .bus_id = 0,
@@ -91,18 +100,32 @@ void init_jd9165_display(void)
         .phy_clk_src = MIPI_DSI_PHY_CLK_SRC_DEFAULT,
         .lane_bit_rate_mbps = 750,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_dsi_bus(&bus_config, &mipi_dsi_bus));
+    ret = esp_lcd_new_dsi_bus(&bus_config, &mipi_dsi_bus);
+    ESP_LOGI(TAG, ">>> Step 3: esp_lcd_new_dsi_bus returned: %s (0x%x)", esp_err_to_name(ret), ret);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ERRORE DSI BUS! Uscita.");
+        return;
+    }
+    ESP_LOGI(TAG, ">>> Step 3: COMPLETATO");
 
     // 4. DBI IO per comandi DCS
+    ESP_LOGI(TAG, ">>> Step 4: Creazione DBI IO handle");
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_dbi_io_config_t dbi_config = {
         .virtual_channel = 0,
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_dbi(mipi_dsi_bus, &dbi_config, &io_handle));
+    ret = esp_lcd_new_panel_io_dbi(mipi_dsi_bus, &dbi_config, &io_handle);
+    ESP_LOGI(TAG, ">>> Step 4: esp_lcd_new_panel_io_dbi returned: %s (0x%x)", esp_err_to_name(ret), ret);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ERRORE DBI IO! Uscita.");
+        return;
+    }
+    ESP_LOGI(TAG, ">>> Step 4: COMPLETATO");
 
     // 5. DPI Panel Config (esattamente come BSP vendor)
+    ESP_LOGI(TAG, ">>> Step 5: Configurazione DPI panel");
     esp_lcd_dpi_panel_config_t dpi_config = {
         .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
         .dpi_clock_freq_mhz = 52, // 51.2 arrotondato a 52
@@ -122,8 +145,10 @@ void init_jd9165_display(void)
         .flags = {
             .use_dma2d = true,
         }};
+    ESP_LOGI(TAG, ">>> Step 5: COMPLETATO");
 
     // 6. Vendor Config con init sequence custom
+    ESP_LOGI(TAG, ">>> Step 6: Preparazione vendor config");
     jd9165_vendor_config_t vendor_config = {
         .init_cmds = lcd_init_cmds,
         .init_cmds_size = sizeof(lcd_init_cmds) / sizeof(jd9165_lcd_init_cmd_t),
@@ -132,24 +157,52 @@ void init_jd9165_display(void)
             .dpi_config = &dpi_config,
         },
     };
+    ESP_LOGI(TAG, ">>> Step 6: COMPLETATO");
 
     // 7. Panel Device Config
+    ESP_LOGI(TAG, ">>> Step 7: Configurazione panel device");
     esp_lcd_panel_dev_config_t panel_dev_config = {
         .bits_per_pixel = 16,
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .reset_gpio_num = -1, // Reset gestito dal tuo board, non qui
         .vendor_config = &vendor_config,
     };
+    ESP_LOGI(TAG, ">>> Step 7: COMPLETATO");
 
     // 8. Crea pannello
+    ESP_LOGI(TAG, ">>> Step 8: Creazione pannello JD9165");
     esp_lcd_panel_handle_t panel_handle = NULL;
-    ESP_ERROR_CHECK(esp_lcd_new_panel_jd9165(io_handle, &panel_dev_config, &panel_handle));
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
-    ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
+    ret = esp_lcd_new_panel_jd9165(io_handle, &panel_dev_config, &panel_handle);
+    ESP_LOGI(TAG, ">>> Step 8: esp_lcd_new_panel_jd9165 returned: %s (0x%x)", esp_err_to_name(ret), ret);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ERRORE CREAZIONE PANEL! Uscita.");
+        return;
+    }
+    ESP_LOGI(TAG, ">>> Step 8: COMPLETATO");
+
+    ESP_LOGI(TAG, ">>> Step 9: Panel reset");
+    ret = esp_lcd_panel_reset(panel_handle);
+    ESP_LOGI(TAG, ">>> Step 9: esp_lcd_panel_reset returned: %s (0x%x)", esp_err_to_name(ret), ret);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ERRORE PANEL RESET! Uscita.");
+        return;
+    }
+    ESP_LOGI(TAG, ">>> Step 9: COMPLETATO");
+
+    ESP_LOGI(TAG, ">>> Step 10: Panel init");
+    ret = esp_lcd_panel_init(panel_handle);
+    ESP_LOGI(TAG, ">>> Step 10: esp_lcd_panel_init returned: %s (0x%x)", esp_err_to_name(ret), ret);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ERRORE PANEL INIT! Uscita.");
+        return;
+    }
+    ESP_LOGI(TAG, ">>> Step 10: COMPLETATO");
 
     // 9. Accendi backlight
+    ESP_LOGI(TAG, ">>> Step 11: Accensione backlight");
     vTaskDelay(pdMS_TO_TICKS(100));
     gpio_set_level(23, 1);
+    ESP_LOGI(TAG, ">>> Step 11: COMPLETATO");
 
-    ESP_LOGI(TAG, "Display JD9165 pronto (1024x600 @ 52MHz, 2 lane DSI)");
+    ESP_LOGI(TAG, "=== DISPLAY JD9165 PRONTO (1024x600 @ 52MHz, 2 lane DSI) ===");
 }
