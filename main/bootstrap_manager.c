@@ -12,7 +12,6 @@
 #include "esp_timer.h"
 #include "driver/gpio.h"
 #include "esp_sleep.h"
-#include "soc/rtc_cntl_reg.h"
 #include "sdmmc_cmd.h"
 #include "esp_vfs_fat.h"
 
