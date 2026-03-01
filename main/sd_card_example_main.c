@@ -634,6 +634,37 @@ sd_failed:
     } else {
         ESP_LOGI(TAG, "✓ I2C GPIO remains healthy after display init (no recovery needed)\n");
     }
+    
+    // GT911 DUAL ADDRESS TEST (0x14 vs 0x5D)
+    ESP_LOGI(TAG, "\n========================================");
+    ESP_LOGI(TAG, "   GT911 DUAL ADDRESS TEST");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "Testing GT911 presence at both possible I2C addresses...");
+    ESP_LOGI(TAG, "(Address determined by INT pin state during reset)\n");
+    
+    esp_err_t ret14 = i2c_master_probe(bus_handle, 0x14, 100);
+    esp_err_t ret5d = i2c_master_probe(bus_handle, 0x5D, 100);
+    
+    ESP_LOGI(TAG, "[0x14] INT=HIGH config:  %s", ret14 == ESP_OK ? "✓ RESPONDS" : "✗ NO RESPONSE");
+    ESP_LOGI(TAG, "[0x5D] INT=LOW config:   %s", ret5d == ESP_OK ? "✓ RESPONDS" : "✗ NO RESPONSE");
+    ESP_LOGI(TAG, "");
+    
+    if (ret14 == ESP_OK && ret5d != ESP_OK) {
+        ESP_LOGI(TAG, "✓ CORRECT: GT911 locked to 0x14 (INT=HIGH reset)");
+        ESP_LOGI(TAG, "   Hardware reset sequence executed correctly.");
+    } else if (ret5d == ESP_OK && ret14 != ESP_OK) {
+        ESP_LOGW(TAG, "⚠ WARNING: GT911 at 0x5D (INT=LOW reset)");
+        ESP_LOGW(TAG, "   Expected 0x14. Check hw_init.c reset sequence.");
+    } else if (ret14 == ESP_OK && ret5d == ESP_OK) {
+        ESP_LOGE(TAG, "✗ ERROR: GT911 responds at BOTH addresses!");
+        ESP_LOGE(TAG, "   This indicates incomplete/incorrect reset.");
+        ESP_LOGE(TAG, "   GT911 may be in undefined state.");
+    } else {
+        ESP_LOGE(TAG, "✗ ERROR: GT911 not responding at any address!");
+        ESP_LOGE(TAG, "   Check I2C bus, power, and hardware connections.");
+    }
+    
+    ESP_LOGI(TAG, "========================================\n");
 #endif
 #else
     ESP_LOGI(TAG, "Display disabled by feature flags");
