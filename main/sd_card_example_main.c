@@ -21,13 +21,9 @@
 
 static const char *TAG = "GUITION_MAIN";
 
-// I2C Bus 0: Audio + Touch
-#define I2C0_MASTER_SDA_IO 7
-#define I2C0_MASTER_SCL_IO 8
-
-// I2C Bus 1: RTC (TEST SWAPPED PINS!)
-#define I2C1_MASTER_SDA_IO 10  // Was 12 - TESTING SWAP
-#define I2C1_MASTER_SCL_IO 12  // Was 10 - TESTING SWAP
+// I2C Bus 0: Audio + Touch + RTC (all share same bus!)
+#define I2C_MASTER_SDA_IO 7
+#define I2C_MASTER_SCL_IO 8
 
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static esp_lcd_touch_handle_t touch_handle = NULL;
@@ -279,38 +275,22 @@ sd_failed:
     ESP_LOGI(TAG, "Hardware reset skipped (no I2C/Display/Touch enabled)");
 #endif
 
-    // ========== 5. I2C Bus 0 (Audio + Touch) ==========
+    // ========== 5. I2C Bus (Audio + Touch + RTC on same bus!) ==========
 #if ENABLE_I2C
-    i2c_master_bus_config_t i2c0_bus_config = {
+    i2c_master_bus_config_t i2c_bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
-        .scl_io_num = I2C0_MASTER_SCL_IO,
-        .sda_io_num = I2C0_MASTER_SDA_IO,
+        .scl_io_num = I2C_MASTER_SCL_IO,
+        .sda_io_num = I2C_MASTER_SDA_IO,
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = true,
     };
-    i2c_master_bus_handle_t bus0_handle;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c0_bus_config, &bus0_handle));
-    LOG_I2C(TAG, "I2C Bus 0 initialized (SDA=%d, SCL=%d) - ES8311 + GT911", 
-            I2C0_MASTER_SDA_IO, I2C0_MASTER_SCL_IO);
-    
-    // I2C Bus 1 (RTC) - TESTING SWAPPED PINS!
-    i2c_master_bus_config_t i2c1_bus_config = {
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .i2c_port = I2C_NUM_1,
-        .scl_io_num = I2C1_MASTER_SCL_IO,
-        .sda_io_num = I2C1_MASTER_SDA_IO,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
-    };
-    i2c_master_bus_handle_t bus1_handle;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c1_bus_config, &bus1_handle));
-    LOG_I2C(TAG, "I2C Bus 1 initialized (SDA=%d, SCL=%d) - RX8025T RTC [SWAPPED TEST]", 
-            I2C1_MASTER_SDA_IO, I2C1_MASTER_SCL_IO);
+    i2c_master_bus_handle_t bus_handle;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &bus_handle));
+    LOG_I2C(TAG, "I2C bus initialized (SDA=%d, SCL=%d)", I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO);
 #else
     ESP_LOGI(TAG, "I2C disabled by feature flags");
-    i2c_master_bus_handle_t bus0_handle = NULL;
-    i2c_master_bus_handle_t bus1_handle = NULL;
+    i2c_master_bus_handle_t bus_handle = NULL;
 #endif
 
     // ========== 6. Display ==========
@@ -322,32 +302,24 @@ sd_failed:
     ESP_LOGI(TAG, "Display disabled by feature flags");
 #endif
 
-    // ========== 7. I2C SCAN BUS 0 (Audio + Touch) ==========
+    // ========== 7. I2C SCAN ==========
 #if ENABLE_I2C && ENABLE_I2C_SCAN
-    if (bus0_handle) {
+    if (bus_handle) {
         vTaskDelay(pdMS_TO_TICKS(500));
-        ESP_LOGI(TAG, "\n========== I2C BUS 0 SCAN (Audio + Touch) ==========");
-        i2c_scan_bus(bus0_handle);
-        ESP_LOGI(TAG, "========== I2C BUS 0 SCAN COMPLETE ==========");
-    }
-    
-    // I2C SCAN BUS 1 (RTC) - SWAPPED PINS TEST
-    if (bus1_handle) {
-        vTaskDelay(pdMS_TO_TICKS(200));
-        ESP_LOGI(TAG, "\n========== I2C BUS 1 SCAN (RTC - SWAPPED PINS TEST) ==========");
-        i2c_scan_bus(bus1_handle);
-        ESP_LOGI(TAG, "========== I2C BUS 1 SCAN COMPLETE ==========");
+        ESP_LOGI(TAG, "\n========== I2C BUS SCAN (Audio + Touch + RTC) ==========");
+        i2c_scan_bus(bus_handle);
+        ESP_LOGI(TAG, "========== I2C BUS SCAN COMPLETE ==========");
     }
 #endif
 
     // ========== 8. Touch ==========
 #if ENABLE_TOUCH
-    if (bus0_handle) {
+    if (bus_handle) {
         LOG_TOUCH(TAG, "Initializing touch...");
-        touch_handle = init_touch_gt911(bus0_handle);
+        touch_handle = init_touch_gt911(bus_handle);
         LOG_TOUCH(TAG, "Touch ready");
     } else {
-        ESP_LOGW(TAG, "Touch skipped (I2C Bus 0 not initialized)");
+        ESP_LOGW(TAG, "Touch skipped (I2C not initialized)");
     }
 #else
     ESP_LOGI(TAG, "Touch disabled by feature flags");
