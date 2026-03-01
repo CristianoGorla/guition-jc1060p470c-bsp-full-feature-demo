@@ -1,10 +1,10 @@
 /*
  * Bootstrap Manager for Guition JC1060P470C
  * 
- * Implements deterministic initialization strategy to prevent reset issues:
+ * Implements deterministic initialization strategy with SDMMC arbiter:
  * - Phase A: Power management (C6 + SD isolation)
- * - Phase B: WiFi Hosted initialization (SDIO handshake)
- * - Phase C: SD card mount (safe after bus stabilization)
+ * - Phase B: WiFi Hosted initialization (SDIO via arbiter)
+ * - SD card: On-demand access via sdmmc_arbiter_request_sd_card()
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -28,7 +28,6 @@ extern "C" {
  */
 #define BOOTSTRAP_POWER_READY_BIT    (1 << 0)  // Phase A complete: Power rails stable
 #define BOOTSTRAP_HOSTED_READY_BIT   (1 << 1)  // Phase B complete: WiFi transport active
-#define BOOTSTRAP_SD_READY_BIT       (1 << 2)  // Phase C complete: SD mounted
 #define BOOTSTRAP_FAILURE_BIT        (1 << 3)  // Critical failure detected
 
 /**
@@ -45,7 +44,6 @@ extern "C" {
 #define BOOTSTRAP_POWER_STABILIZATION_MS    100   // VDD rail stabilization
 #define BOOTSTRAP_C6_BOOT_TIMEOUT_MS        5000  // Max time for C6 firmware load
 #define BOOTSTRAP_WIFI_LINK_STABILIZATION_MS 5000 // ESP-Hosted SDIO link establishment (increased from 2s)
-#define BOOTSTRAP_SD_MOUNT_TIMEOUT_MS       3000  // Max time for SD mount
 #define BOOTSTRAP_HARD_RESET_DELAY_MS       500   // Capacitor discharge time
 
 /**
@@ -53,7 +51,6 @@ extern "C" {
  */
 #define BOOTSTRAP_POWER_TASK_PRIORITY       (configMAX_PRIORITIES - 1)  // Highest
 #define BOOTSTRAP_WIFI_TASK_PRIORITY        (configMAX_PRIORITIES - 2)
-#define BOOTSTRAP_SD_TASK_PRIORITY          (configMAX_PRIORITIES - 3)
 
 /**
  * Bootstrap Manager State
@@ -62,8 +59,7 @@ typedef struct {
     EventGroupHandle_t event_group;        // Coordination event group
     TaskHandle_t power_task_handle;        // Phase A task
     TaskHandle_t wifi_task_handle;         // Phase B task
-    TaskHandle_t sd_task_handle;           // Phase C task
-    sdmmc_card_t *sd_card;                 // SD card handle (output)
+    sdmmc_card_t *sd_card;                 // SD card handle (populated by arbiter)
     bool warm_boot_detected;               // True if software reset
     uint32_t boot_timestamp_ms;            // Boot start time
 } bootstrap_manager_t;
@@ -72,13 +68,14 @@ typedef struct {
  * Initialize bootstrap manager and start coordinated boot sequence
  * 
  * This function:
- * 1. Creates event group for inter-task coordination
+ * 1. Initializes SDMMC arbiter
  * 2. Detects warm boot vs cold boot
  * 3. Performs hard reset if needed (warm boot)
- * 4. Spawns three coordinated tasks:
+ * 4. Spawns two coordinated tasks:
  *    - Phase A: Power Management (GPIO isolation + power sequencing)
- *    - Phase B: WiFi Hosted (SDIO handshake + link stabilization)
- *    - Phase C: SD Manager (safe filesystem mount)
+ *    - Phase B: WiFi Hosted (requests WiFi mode from arbiter)
+ * 
+ * SD card access: Call sdmmc_arbiter_request_sd_card() after bootstrap.
  * 
  * @param[out] manager  Pointer to bootstrap manager structure
  * @return ESP_OK on success, error code otherwise
@@ -90,17 +87,19 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager);
  * 
  * @param manager     Bootstrap manager instance
  * @param timeout_ms  Maximum wait time in milliseconds
- * @return ESP_OK if all phases completed successfully
+ * @return ESP_OK if both phases completed successfully
  *         ESP_ERR_TIMEOUT if timeout occurred
  *         ESP_FAIL if critical failure detected
  */
 esp_err_t bootstrap_manager_wait(bootstrap_manager_t *manager, uint32_t timeout_ms);
 
 /**
- * Get SD card handle after successful bootstrap
+ * Get SD card handle after requesting SD mode from arbiter
+ * 
+ * Automatically switches from WiFi to SD card mode if needed.
  * 
  * @param manager  Bootstrap manager instance
- * @return Pointer to SD card structure, or NULL if not ready
+ * @return Pointer to SD card structure, or NULL if switch failed
  */
 sdmmc_card_t* bootstrap_manager_get_sd_card(bootstrap_manager_t *manager);
 
