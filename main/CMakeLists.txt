@@ -1,6 +1,8 @@
 idf_component_register(SRCS "sd_card_example_main.c" 
                             "sd_card_functions.c" 
                             "esp_hosted_wifi.c"
+                            "bootstrap_manager.c"
+                            "sd_card_manager.c"
                             "display_jd9165.c"
                             "touch_gt911.c"
                             "i2c_utils.c"
