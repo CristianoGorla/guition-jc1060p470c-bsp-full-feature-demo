@@ -26,10 +26,10 @@ static const jd9165_lcd_init_cmd_t lcd_cmd[] = {
     {0x04, (uint8_t[]){0x0C}, 1, 0},
     {0x05, (uint8_t[]){0x00}, 1, 0},
     {0x06, (uint8_t[]){0x00}, 1, 0},
-    {0x0B, (uint8_t[]){0x11}, 1, 0},
+    {0x0B, (uint8_t[]){0x11}, 1, 0},  // 0x11 = 2 lanes (CRITICO!)
     {0x17, (uint8_t[]){0x00}, 1, 0},
     {0x20, (uint8_t[]){0x04}, 1, 0},
-    {0x1F, (uint8_t[]){0x05}, 1, 0},
+    {0x1F, (uint8_t[]){0x05}, 1, 0},  // hs_settle time = 5
     {0x23, (uint8_t[]){0x00}, 1, 0},
     {0x25, (uint8_t[]){0x19}, 1, 0},
     {0x28, (uint8_t[]){0x18}, 1, 0},
@@ -68,9 +68,9 @@ static const jd9165_lcd_init_cmd_t lcd_cmd[] = {
     {0x12, (uint8_t[]){0x0C}, 1, 0},
     {0x13, (uint8_t[]){0x0C}, 1, 0},
     {0x30, (uint8_t[]){0x00}, 1, 0},
-    {0X3A, (uint8_t[]){0x55}, 1, 0},
-    {0x11, (uint8_t[]){0x00}, 1, 120},
-    {0x29, (uint8_t[]){0x00}, 1, 20},
+    {0X3A, (uint8_t[]){0x55}, 1, 0},  // RGB565 format
+    {0x11, (uint8_t[]){0x00}, 1, 120}, // Sleep OUT + WAIT 120ms (CRITICO!)
+    {0x29, (uint8_t[]){0x00}, 1, 20},  // Display ON + WAIT 20ms (CRITICO!)
 };
 
 static esp_err_t display_brightness_init(void)
@@ -121,11 +121,12 @@ esp_lcd_panel_handle_t init_jd9165_display(void)
     esp_lcd_panel_io_handle_t io = NULL;
     esp_lcd_panel_handle_t disp_panel = NULL;
 
+    // Bus config: 2-lane MIPI DSI @ 750Mbps (51.2MHz dotclk equiv)
     esp_lcd_dsi_bus_config_t bus_config = {
         .bus_id = 0,
         .num_data_lanes = LCD_MIPI_DSI_LANE_NUM,
         .phy_clk_src = MIPI_DSI_PHY_CLK_SRC_DEFAULT,
-        .lane_bit_rate_mbps = 750,
+        .lane_bit_rate_mbps = 750,  // Per datasheet MTK
     };
     ESP_ERROR_CHECK(esp_lcd_new_dsi_bus(&bus_config, &mipi_dsi_bus));
 
@@ -138,21 +139,22 @@ esp_lcd_panel_handle_t init_jd9165_display(void)
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_dbi(mipi_dsi_bus, &dbi_config, &io));
 
     ESP_LOGI(TAG, "Install JD9165 LCD control panel");
+    // Display timing parameters dal datasheet MTK QD070AS01
     esp_lcd_dpi_panel_config_t dpi_config = {
         .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
-        .dpi_clock_freq_mhz = 52,
+        .dpi_clock_freq_mhz = 52,  // ~51.2MHz per datasheet
         .virtual_channel = 0,
         .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
         .num_fbs = 1,
         .video_timing = {
-            .h_size = 1024,
-            .v_size = 600,
-            .hsync_back_porch = 160,
-            .hsync_pulse_width = 24,
-            .hsync_front_porch = 160,
-            .vsync_back_porch = 21,
-            .vsync_pulse_width = 2,
-            .vsync_front_porch = 12,
+            .h_size = 1024,             // JDEVB_RSOX
+            .v_size = 600,              // JDEVB_RSOY
+            .hsync_back_porch = 136,    // JDEVB_HBP (CORRETTO! era 160)
+            .hsync_pulse_width = 24,    // JDEVB_HS
+            .hsync_front_porch = 160,   // JDEVB_HFP
+            .vsync_back_porch = 21,     // JDEVB_VBP
+            .vsync_pulse_width = 2,     // JDEVB_VS
+            .vsync_front_porch = 12,    // JDEVB_VFP
         },
         .flags = {
             .use_dma2d = true,
@@ -184,7 +186,7 @@ esp_lcd_panel_handle_t init_jd9165_display(void)
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LCD_LEDC_CHANNEL, duty_cycle);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LCD_LEDC_CHANNEL);
 
-    ESP_LOGI(TAG, "Display initialized (1024x600 @ 52MHz, 2-lane DSI)");
+    ESP_LOGI(TAG, "Display initialized (1024x600 @ 52MHz, 2-lane DSI, HBP=136)");
     
     return disp_panel;
 }
