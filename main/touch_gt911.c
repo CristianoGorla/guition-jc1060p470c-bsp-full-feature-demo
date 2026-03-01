@@ -8,21 +8,45 @@
 
 static const char *TAG = "GT911";
 
-#define GT911_I2C_ADDRESS  0x5D
+#define GT911_I2C_ADDRESS      0x5D
+#define GT911_RST_GPIO         GPIO_NUM_22
+#define GT911_INT_GPIO         GPIO_NUM_21
 
 void init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
 {
     ESP_LOGI(TAG, "Initializing GT911 touch controller");
 
-    // Reset hardware Guition: INT=21, RST=22
-    gpio_set_direction(22, GPIO_MODE_OUTPUT);
-    gpio_set_direction(21, GPIO_MODE_OUTPUT);
-    gpio_set_level(22, 0);
-    gpio_set_level(21, 0);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    gpio_set_level(22, 1);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    gpio_set_direction(21, GPIO_MODE_INPUT);
+    // Hardware reset sequence per settare indirizzo 0x5D
+    // INT low durante reset -> Address 0x5D
+    // INT high durante reset -> Address 0x14
+    
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << GT911_RST_GPIO) | (1ULL << GT911_INT_GPIO),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    // Reset sequence per address 0x5D
+    gpio_set_level(GT911_INT_GPIO, 0);  // INT = LOW per 0x5D
+    gpio_set_level(GT911_RST_GPIO, 0);  // RST = LOW
+    vTaskDelay(pdMS_TO_TICKS(20));
+    
+    gpio_set_level(GT911_RST_GPIO, 1);  // RST = HIGH
+    vTaskDelay(pdMS_TO_TICKS(5));
+    
+    gpio_set_level(GT911_INT_GPIO, 0);  // Keep INT LOW
+    vTaskDelay(pdMS_TO_TICKS(50));
+    
+    // Rilascia INT come input per interrupt
+    io_conf.pin_bit_mask = (1ULL << GT911_INT_GPIO);
+    io_conf.mode = GPIO_MODE_INPUT;
+    gpio_config(&io_conf);
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    ESP_LOGI(TAG, "GT911 reset sequence completed (Address: 0x%02X)", GT911_I2C_ADDRESS);
 
     // Create panel IO handle for I2C
     esp_lcd_panel_io_handle_t tp_io_handle = NULL;
@@ -41,8 +65,8 @@ void init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = 1024,
         .y_max = 600,
-        .rst_gpio_num = GPIO_NUM_22,
-        .int_gpio_num = GPIO_NUM_21,
+        .rst_gpio_num = -1,  // Reset already done
+        .int_gpio_num = GT911_INT_GPIO,
         .levels = {
             .reset = 0,
             .interrupt = 0,
@@ -57,5 +81,5 @@ void init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
     esp_lcd_touch_handle_t touch_handle = NULL;
     ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &touch_handle));
     
-    ESP_LOGI(TAG, "GT911 touch initialized");
+    ESP_LOGI(TAG, "GT911 touch initialized successfully");
 }
