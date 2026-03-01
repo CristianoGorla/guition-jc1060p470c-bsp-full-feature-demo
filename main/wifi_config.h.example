@@ -1,7 +1,16 @@
 #ifndef WIFI_CONFIG_H
 #define WIFI_CONFIG_H
 
-#define WIFI_SSID "YOUR_SSID_HERE"
-#define WIFI_PASSWORD "YOUR_PASSWORD_HERE"
+/*
+ * WiFi Credentials Configuration
+ * 
+ * Copy this file to wifi_config.h and fill in your credentials:
+ *   cp wifi_config.h.example wifi_config.h
+ * 
+ * The wifi_config.h file is gitignored for security.
+ */
 
-#endif
+#define WIFI_SSID "YourWiFiSSID"
+#define WIFI_PASSWORD "YourWiFiPassword"
+
+#endif // WIFI_CONFIG_H
