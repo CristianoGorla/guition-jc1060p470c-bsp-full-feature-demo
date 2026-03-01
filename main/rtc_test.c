@@ -3,11 +3,15 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/gpio.h"
 
 static const char *TAG = "RTC_TEST";
 
-// Test addresses for RTC (0x32 is standard, but test alternates)
-static const uint8_t test_addresses[] = {0x32, 0x30, 0x31, 0x33};
+// RX8025T può rispondere a questi indirizzi:
+// 0x32 (standard 7-bit)
+// 0x64 (8-bit write address >> 1)
+// 0x65 (8-bit read address >> 1) 
+static const uint8_t test_addresses[] = {0x32, 0x64, 0x30, 0x31, 0x33};
 
 // Test speeds (from slowest to fastest)
 static const uint32_t test_speeds[] = {
@@ -17,6 +21,50 @@ static const uint32_t test_speeds[] = {
     200000,  // 200 kHz - fast
     400000   // 400 kHz - full speed
 };
+
+// I2C bus recovery: manual clock pulsing
+esp_err_t i2c_bus_recovery(uint8_t scl_pin, uint8_t sda_pin)
+{
+    ESP_LOGW(TAG, "\n=== I2C BUS RECOVERY ===");
+    ESP_LOGW(TAG, "Attempting to recover stuck I2C bus...");
+    ESP_LOGW(TAG, "SCL=%d, SDA=%d", scl_pin, sda_pin);
+    
+    // Temporarily configure as GPIO output
+    gpio_config_t io_conf = {
+        .mode = GPIO_MODE_OUTPUT_OD,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pin_bit_mask = (1ULL << scl_pin) | (1ULL << sda_pin),
+    };
+    gpio_config(&io_conf);
+    
+    // Set both HIGH
+    gpio_set_level(scl_pin, 1);
+    gpio_set_level(sda_pin, 1);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    // Send 9 clock pulses to clear stuck slave
+    ESP_LOGI(TAG, "Sending 9 clock pulses...");
+    for (int i = 0; i < 9; i++) {
+        gpio_set_level(scl_pin, 0);
+        vTaskDelay(pdMS_TO_TICKS(1));
+        gpio_set_level(scl_pin, 1);
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    
+    // Generate STOP condition
+    ESP_LOGI(TAG, "Generating STOP condition...");
+    gpio_set_level(sda_pin, 0);
+    vTaskDelay(pdMS_TO_TICKS(1));
+    gpio_set_level(scl_pin, 1);
+    vTaskDelay(pdMS_TO_TICKS(1));
+    gpio_set_level(sda_pin, 1);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    ESP_LOGI(TAG, "Bus recovery complete - reconfiguring as I2C\n");
+    
+    // GPIO will be reconfigured as I2C by caller
+    return ESP_OK;
+}
 
 esp_err_t rtc_test_at_address(i2c_master_bus_handle_t bus_handle, uint8_t addr, uint32_t speed_hz)
 {
@@ -150,11 +198,20 @@ void rtc_hardware_test(i2c_master_bus_handle_t bus_handle)
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "This test will try:");
-    ESP_LOGI(TAG, "  1. Different I2C addresses");
-    ESP_LOGI(TAG, "  2. Different I2C speeds (10kHz - 400kHz)");
-    ESP_LOGI(TAG, "  3. Read-only operations (no writes)");
-    ESP_LOGI(TAG, "  4. Different timeout values");
+    ESP_LOGI(TAG, "  1. I2C bus recovery (if stuck)");
+    ESP_LOGI(TAG, "  2. Different I2C addresses (0x32, 0x64)");
+    ESP_LOGI(TAG, "  3. Different I2C speeds (10kHz - 400kHz)");
+    ESP_LOGI(TAG, "  4. Read-only operations (no writes)");
     ESP_LOGI(TAG, "");
+
+    // Test 0: I2C bus recovery
+    ESP_LOGW(TAG, "NOTE: First attempt may show 'clear bus failed' error");
+    ESP_LOGW(TAG, "This indicates I2C bus is stuck (likely from GT911 reset)");
+    ESP_LOGW(TAG, "Attempting bus recovery...\n");
+    
+    i2c_bus_recovery(8, 7);  // SCL=8, SDA=7
+    
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     // Test 1: Read-only (gentlest approach)
     esp_err_t ret = rtc_test_read_only(bus_handle);
@@ -172,7 +229,8 @@ void rtc_hardware_test(i2c_master_bus_handle_t bus_handle)
 
     // Test 3: Try alternative addresses at 100kHz
     ESP_LOGI(TAG, "\n=== ADDRESS SCAN ===");
-    ESP_LOGI(TAG, "Testing alternative I2C addresses at 100kHz...");
+    ESP_LOGI(TAG, "Testing RX8025T alternate addresses at 100kHz...");
+    ESP_LOGI(TAG, "Addresses: 0x32 (7-bit standard), 0x64 (8-bit/2)");
     ESP_LOGI(TAG, "");
     
     for (int i = 0; i < sizeof(test_addresses) / sizeof(test_addresses[0]); i++) {
@@ -226,12 +284,16 @@ void rtc_hardware_test(i2c_master_bus_handle_t bus_handle)
     ESP_LOGI(TAG, "");
     
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "\n⚠️  CONCLUSION: RTC does not respond");
-        ESP_LOGE(TAG, "Possible causes:");
-        ESP_LOGE(TAG, "  1. RTC chip not populated (check U9 on PCB)");
-        ESP_LOGE(TAG, "  2. Missing VBAT (CR2032 battery)");
-        ESP_LOGE(TAG, "  3. I2C bus issue after GT911 reset");
-        ESP_LOGE(TAG, "  4. RTC in deep sleep mode");
+        ESP_LOGE(TAG, "\n⚠️  CONCLUSION: I2C bus stuck or RTC not responding");
+        ESP_LOGE(TAG, "The 'clear bus failed (0x103)' error indicates:");
+        ESP_LOGE(TAG, "  → I2C bus is STUCK (SDA or SCL held LOW)");
+        ESP_LOGE(TAG, "  → Likely caused by GT911 reset sequence");
+        ESP_LOGE(TAG, "");
+        ESP_LOGE(TAG, "Possible solutions:");
+        ESP_LOGE(TAG, "  1. Initialize RTC BEFORE GT911 reset");
+        ESP_LOGE(TAG, "  2. Don't do GT911 hardware reset (software init only)");
+        ESP_LOGE(TAG, "  3. Use separate I2C bus for RTC");
+        ESP_LOGE(TAG, "  4. Add bus recovery after GT911 reset");
         ESP_LOGE(TAG, "");
     }
 }
