@@ -214,7 +214,7 @@ To test WiFi connection instead of just scanning:
 ```
 I (4429) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
 I (6429) GUITION_MAIN: === WiFi Connection Test ===
-I (6429) GUITION_MAIN: Connecting to: YourWiFiSSID
+I (6429) GUITION_MAIN: Connecting to: GUITION_BETA_AP
 I (8500) GUITION_MAIN: ✓ WiFi connected!
 I (8500) GUITION_MAIN:    IP Address: 10.0.0.100
 I (8501) GUITION_MAIN:    Netmask:    255.255.255.0
