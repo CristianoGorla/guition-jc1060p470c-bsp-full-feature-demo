@@ -25,10 +25,11 @@
 #define DEBUG_AUDIO 1  // Detailed audio logs
 
 // ========== RTC ==========
-#define ENABLE_RTC 1         // RX8025T RTC (direct init at 0x32)
-#define DEBUG_RTC 1          // Detailed RTC logs
-#define ENABLE_RTC_TEST 1    // Test RTC read/write
-#define ENABLE_RTC_HW_TEST 0 // Hardware diagnostic (advanced)
+#define ENABLE_RTC 1            // RX8025T RTC (direct init at 0x32)
+#define DEBUG_RTC 1             // Detailed RTC logs
+#define ENABLE_RTC_TEST 1       // Test RTC read/write
+#define ENABLE_RTC_HW_TEST 0    // Hardware diagnostic (advanced)
+#define ENABLE_RTC_NTP_SYNC 0   // 🔧 NTP sync test (requires WiFi + wifi_config.h)
 
 // ========== DISPLAY ==========
 #define ENABLE_DISPLAY 1      // JD9165 MIPI DSI display (1024x600)
