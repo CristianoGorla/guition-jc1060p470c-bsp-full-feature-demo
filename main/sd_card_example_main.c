@@ -50,8 +50,13 @@ void app_main(void)
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c_bus_handle));
     ESP_LOGI(TAG, "I2C initialized");
 
+    ESP_LOGI(TAG, ">>> PRIMA di chiamare init_jd9165_display()");
+    vTaskDelay(pdMS_TO_TICKS(100)); // Piccolo delay per assicurarsi che il log venga stampato
+    
     // 2. Display
     init_jd9165_display();
+    
+    ESP_LOGI(TAG, ">>> DOPO init_jd9165_display()");
     ESP_LOGI(TAG, "Display initialized");
 
     // 3. Touch
