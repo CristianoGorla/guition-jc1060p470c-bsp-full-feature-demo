@@ -170,23 +170,9 @@ void app_main(void)
     ESP_LOGI(TAG, "NVS disabled by feature flags");
 #endif
 
-    // ========== 2. SD Card (DOPO RESET SLOT) ==========
+    // ========== 2. SD Card (NO DEINIT!) ==========
 #if ENABLE_SD_CARD
     LOG_SD(TAG, "Initializing SD card (Slot 0 - forced)...");
-
-    // FIX CRITICO: Reset slot 0 dopo che ESP-Hosted ha preso il controllo
-#ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-    LOG_SD(TAG, "Resetting SDMMC Slot 0 (ESP-Hosted workaround)...");
-    ret = sdmmc_host_deinit_slot(SDMMC_HOST_SLOT_0);
-    if (ret == ESP_OK) {
-        LOG_SD(TAG, "Slot 0 deinitialized successfully");
-    } else if (ret == ESP_ERR_INVALID_STATE) {
-        LOG_SD(TAG, "Slot 0 was not initialized (expected with ESP-Hosted)");
-    } else {
-        ESP_LOGW(TAG, "Slot 0 deinit returned 0x%x (continuing anyway)", ret);
-    }
-    vTaskDelay(pdMS_TO_TICKS(100)); // Attendi stabilizzazione
-#endif
 
 #ifdef CONFIG_EXAMPLE_PIN_CARD_POWER_RESET
     gpio_config_t pwr_io_conf = {
@@ -218,13 +204,13 @@ void app_main(void)
     };
 
 #ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-    LOG_SD(TAG, "ESP-Hosted detected - reinitializing slot 0");
+    LOG_SD(TAG, "ESP-Hosted detected - initializing slot 0 (no deinit)");
     ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reinit slot 0 (0x%x)", ret);
+        ESP_LOGE(TAG, "Failed to init slot 0 (0x%x)", ret);
         goto sd_failed;
     }
-    LOG_SD(TAG, "Slot 0 reinitialized successfully");
+    LOG_SD(TAG, "Slot 0 initialized successfully");
     vTaskDelay(pdMS_TO_TICKS(100));
 #endif
 
