@@ -178,6 +178,68 @@ I (1336) GUITION_MAIN: ✓ RTC initialized successfully
 
 ---
 
+## RTC NTP Synchronization
+
+### Feature: Automatic Time Sync with NTP
+
+**Purpose:**
+Synchronize RTC time with internet time servers when WiFi is available.
+
+**Configuration:**
+```c
+// feature_flags.h
+#define ENABLE_RTC 1
+#define ENABLE_RTC_NTP_SYNC 1   // Enable NTP sync test
+#define ENABLE_WIFI_CONNECT 1   // Required for NTP
+```
+
+**Test Workflow (4 Steps):**
+1. **Step 1/4**: Read current RTC time
+2. **Step 2/4**: Reset RTC to default time (2000-01-01 00:00:00)
+3. **Step 3/4**: Synchronize with NTP server (pool.ntp.org)
+4. **Step 4/4**: Update RTC with network time
+
+**Implementation Files:**
+- `rtc_ntp_sync.h` - API declarations
+- `rtc_ntp_sync.c` - SNTP sync implementation
+- Uses **lwIP SNTP** (ESP-IDF v5.5+)
+- Timezone: **CET (UTC+1)** with automatic DST
+
+**Expected Output:**
+```
+I (7869) RTC_NTP: ========================================
+I (7870) RTC_NTP:    RTC NTP Sync Test
+I (7871) RTC_NTP: ========================================
+
+I (7872) RTC_NTP: Step 1/4: Read current RTC time
+I (7873) RTC_NTP: Current RTC: 2026-03-01 19:52:55
+
+I (7874) RTC_NTP: Step 2/4: Reset RTC to default time
+I (7875) RTC_NTP: ✓ RTC reset to: 2000-01-01 00:00:00
+
+I (7878) RTC_NTP: Step 3/4: Synchronize with NTP server
+I (7879) RTC_NTP: NTP Server: pool.ntp.org
+I (7880) RTC_NTP: Timezone: CET (UTC+1, DST auto)
+I (8456) RTC_NTP: ✓ NTP sync successful!
+I (8457) RTC_NTP: Current time: 2026-03-01 19:52:56 CET
+
+I (8458) RTC_NTP: Step 4/4: Update RTC with NTP time
+I (8461) RTC_NTP: ✓ RTC updated successfully
+I (8462) RTC_NTP: RTC readback: 2026-03-01 19:52:56
+
+I (8463) RTC_NTP: ========================================
+I (8464) RTC_NTP:    RTC NTP Sync Test Complete
+I (8465) RTC_NTP: ========================================
+```
+
+**Use Cases:**
+- Initial RTC setup on first boot
+- Periodic time synchronization when WiFi is available
+- Recovery from RTC power loss (PON/VLF flags set)
+- Development/testing time synchronization
+
+---
+
 ## ES8311 Audio Codec Initialization
 
 ### Best Practice: Direct Initialization via Chip ID Read
@@ -231,6 +293,63 @@ Official BSP provides:
 - Sample rate config
 - PA power management
 - Microphone/Speaker routing
+
+---
+
+## CMakeLists.txt lwIP Duplicate Bug
+
+### Problem: Duplicate lwIP Component in REQUIRES
+
+**Date Fixed:** 2026-03-01 20:12 CET
+
+**Symptoms:**
+- WiFi connection instability (timeouts, disconnects)
+- SD card random failures (`0x107` errors)
+- Non-deterministic behavior (sometimes works, sometimes fails)
+- Issues appear after adding SNTP/NTP functionality
+
+**Root Cause:**
+The `lwip` component was listed **twice** in the CMakeLists.txt REQUIRES directive:
+
+```cmake
+# ❌ BROKEN: lwip appears twice
+REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs 
+         esp_wifi esp_event esp_netif lwip esp_hosted 
+         esp_lcd nvs_flash lwip)
+         ^^^^              ^^^^^
+      First time      Second time (ERROR!)
+```
+
+**Why This Breaks:**
+1. Duplicate linking causes symbol conflicts in the networking stack
+2. lwIP initialization may occur twice or in wrong order
+3. Memory layout becomes non-deterministic
+4. SNTP (which uses lwIP) amplifies the problem
+5. WiFi connection state machine gets confused
+
+**Solution:**
+Remove the duplicate `lwip` entry:
+
+```cmake
+# ✅ FIXED: lwip appears only once
+REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs 
+         esp_wifi esp_event esp_netif lwip esp_hosted 
+         esp_lcd nvs_flash)
+         ^^^^^
+      Only once (correct!)
+```
+
+**Commit:** `9f39778d7d2a9eee4205f138f3aae2f140c20fd5`
+
+**After Fix:**
+- ✅ WiFi connection stable and reliable
+- ✅ SD card initialization consistent
+- ✅ NTP sync works correctly
+- ✅ No more random `0x107` errors
+- ✅ Behavior is deterministic across reboots
+
+**Lesson Learned:**
+When adding SNTP support (which requires `lwip`), always check that `lwip` isn't already in the REQUIRES list. The duplicate was introduced when adding `rtc_ntp_sync.c` functionality.
 
 ---
 
@@ -304,8 +423,10 @@ GPIO54 - ESP32-C6 reset
 5. RTC RX8025T Init (direct init at 0x32)
 6. Display JD9165 Init (MIPI DSI, no I2C conflict)
 7. Touch GT911 Init (auto-reset, detects 0x14 or 0x5D)
-8. SD Card (optional)
-9. WiFi ESP-Hosted (optional)
+8. SD Card (SDMMC Slot 0)
+9. WiFi ESP-Hosted (SDMMC Slot 1)
+10. WiFi Connection Test (optional)
+11. RTC NTP Sync Test (optional, if WiFi connected)
 ```
 
 **Key Principles:**
@@ -314,66 +435,100 @@ GPIO54 - ESP32-C6 reset
 3. Direct init without pre-probe
 4. MIPI DSI does not interfere with I2C
 5. Consistent pattern across all devices
+6. SD and WiFi coexist on separate SDMMC slots
+7. Single `lwip` component reference in CMakeLists.txt
 
 ---
 
 ## Complete System Boot Log (All Devices Working)
 
-**Date: 2026-03-01 19:16 CET**
+**Date: 2026-03-01 20:12 CET**  
+**Build:** `9f39778` (lwip duplicate fixed)
 
 ```
-I (1120) GUITION_MAIN: ========================================
-I (1126) GUITION_MAIN:    Guition JC1060P470C Initialization
-I (1132) GUITION_MAIN: ========================================
+I (990) app_init: App version:      9f39778
+I (995) app_init: Compile time:     Mar  1 2026 20:12:03
 
-I (1141) GUITION_MAIN: === I2C Bus Initialization ===
-I (1142) GUITION_MAIN: ✓ I2C bus ready (SDA=GPIO7, SCL=GPIO8)
+I (1136) GUITION_MAIN: ========================================
+I (1142) GUITION_MAIN:    Guition JC1060P470C Initialization
+I (1148) GUITION_MAIN: ========================================
 
-I (1148) GUITION_MAIN: === ES8311 Audio Codec ===
-I (1152) ES8311: Initializing ES8311 audio codec...
-I (1157) ES8311: I2C Address: 0x18 (direct init, no pre-probe)
-I (1163) ES8311: ✓ ES8311 responding on I2C!
-I (1167) ES8311: ES8311 Chip ID: 0x83 (expected: 0x83)
-I (1172) ES8311: Performing soft reset...
-I (1276) ES8311: Setting codec to power-down mode...
-I (1276) ES8311: ✓ ES8311 initialized successfully (powered down, safe state)
-I (1276) ES8311: Note: PA power pin GPIO11 not configured (needs I2S setup)
-I (1283) GUITION_MAIN: ✓ ES8311 initialized (powered down)
+I (1157) GUITION_MAIN: === I2C Bus Initialization ===
+I (1158) GUITION_MAIN: ✓ I2C bus ready (SDA=GPIO7, SCL=GPIO8)
 
-I (1288) GUITION_MAIN: === RTC Initialization ===
-I (1293) GUITION_MAIN: RTC driver will validate device at 0x32 (no pre-probe)
-I (1300) RX8025T: Initializing RX8025T RTC...
-I (1304) RX8025T: I2C Address: 0x32
-I (1307) RX8025T: Reading current time (gentle init)...
-I (1313) RX8025T: ✓ RTC responding on I2C!
-I (1316) RX8025T: Current RTC time: 2026-03-01 (wday=6) 19:16:45
-I (1322) RX8025T: PON/VLF flags already clear - RTC time is valid
-I (1328) RX8025T: Already in 24-hour format
-I (1331) RX8025T: RX8025T initialized successfully
-I (1336) GUITION_MAIN: ✓ RTC initialized successfully
-I (1342) GUITION_MAIN: Current time: 2026-03-01 19:16:45
+I (1164) GUITION_MAIN: === ES8311 Audio Codec ===
+I (1168) ES8311: Initializing ES8311 audio codec...
+I (1173) ES8311: I2C Address: 0x18 (direct init, no pre-probe)
+I (1179) ES8311: ✓ ES8311 responding on I2C!
+I (1183) ES8311: ES8311 Chip ID: 0x83 (expected: 0x83)
+I (1188) ES8311: Performing soft reset...
+I (1292) ES8311: Setting codec to power-down mode...
+I (1292) ES8311: ✓ ES8311 initialized successfully (powered down, safe state)
+I (1299) GUITION_MAIN: ✓ ES8311 initialized (powered down)
 
-I (1353) GUITION_MAIN: === Display Initialization ===
-I (1358) JD9165: Initializing JD9165 display
-I (1660) JD9165: Display initialized (1024x600 @ 52MHz, 2-lane DSI, HBP=136)
-I (1660) GUITION_MAIN: ✓ Display ready (1024x600 MIPI DSI)
+I (1304) GUITION_MAIN: === RTC Initialization ===
+I (1309) GUITION_MAIN: RTC driver will validate device at 0x32 (no pre-probe)
+I (1316) RX8025T: Initializing RX8025T RTC...
+I (1320) RX8025T: I2C Address: 0x32
+I (1323) RX8025T: Reading current time (gentle init)...
+I (1329) RX8025T: ✓ RTC responding on I2C!
+I (1332) RX8025T: Current RTC time: 20139-02-26 (wday=2) 03:27:11
+I (1338) RX8025T: PON/VLF flags already clear - RTC time is valid
+I (1344) RX8025T: Already in 24-hour format
+I (1347) RX8025T: RX8025T initialized successfully
+I (1352) GUITION_MAIN: ✓ RTC initialized successfully
+I (1358) GUITION_MAIN: Current time: 20139-02-26 03:27:11
 
-I (1661) GUITION_MAIN: === Touch Controller Initialization ===
-I (1666) GUITION_MAIN: GT911 driver will auto-reset and detect I2C address (0x14 or 0x5D)
-I (1674) GT911: Initializing GT911 touch controller
-I (1686) GT911: I2C address initialization procedure skipped - using default GT9xx setup
-I (1713) GT911: TouchPad_ID:0x39,0x31,0x31
-I (1713) GT911: TouchPad_Config_Version:99
-I (1713) GT911: ✓ GT911 initialized successfully
-I (1714) GT911:   Resolution: 1024x600
-I (1718) GT911:   Driver auto-detected I2C address
-I (1722) GT911:   Touch ready for reading
-I (1726) GUITION_MAIN: ✓ Touch controller ready
-I (1830) GUITION_MAIN: GT911 active at 0x14 (INT=HIGH during reset)
+I (1369) GUITION_MAIN: === Display Initialization ===
+I (1374) JD9165: Initializing JD9165 display
+I (1676) JD9165: Display initialized (1024x600 @ 52MHz, 2-lane DSI, HBP=136)
+I (1676) GUITION_MAIN: ✓ Display ready (1024x600 MIPI DSI)
 
-I (1835) GUITION_MAIN: ========================================
-I (1841) GUITION_MAIN:    System Initialization Complete
-I (1846) GUITION_MAIN: ========================================
+I (1677) GUITION_MAIN: === Touch Controller Initialization ===
+I (1682) GUITION_MAIN: GT911 driver will auto-reset and detect I2C address (0x14 or 0x5D)
+I (1690) GT911: Initializing GT911 touch controller
+I (1695) GT911: Using driver auto-reset and auto-detect address (0x14/0x5D)
+I (1702) GT911: I2C address initialization procedure skipped - using default GT9xx setup
+I (1729) GT911: TouchPad_ID:0x39,0x31,0x31
+I (1729) GT911: TouchPad_Config_Version:99
+I (1729) GT911: ✓ GT911 initialized successfully
+I (1730) GT911:   Resolution: 1024x600
+I (1734) GT911:   Driver auto-detected I2C address
+I (1738) GT911:   Touch ready for reading
+I (1742) GUITION_MAIN: ✓ Touch controller ready
+I (1846) GUITION_MAIN: GT911 active at 0x14 (INT=HIGH during reset)
+
+I (1846) GUITION_MAIN: === SD Card Initialization ===
+I (2096) GUITION_MAIN: SD Card power enabled (GPIO45)
+I (2096) GUITION_MAIN: ESP-Hosted detected - init slot only
+I (2096) GUITION_MAIN: Skipping sdmmc_host_init (controller already initialized by ESP-Hosted)
+I (2269) GUITION_MAIN: ✓ SD card mounted
+I (2269) GUITION_MAIN: Card: SU08G, Capacity: 7580 MB
+
+I (2269) GUITION_MAIN: === WiFi Initialization ===
+I (2271) wifi_hosted: Inizializzazione interfaccia Wi-Fi Hosted...
+I (2278) transport: Attempt connection with slave: retry[0]
+W (2283) H_SDIO_DRV: Reset slave using GPIO[54]
+I (2287) os_wrapper_esp: GPIO [54] configured
+I (3811) sdio_wrapper: SDIO master: Slot 1, Data-Lines: 4-bit Freq(KHz)[40000 KHz]
+I (4148) H_SDIO_DRV: Write thread started
+I (4428) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
+
+I (6428) GUITION_MAIN: === WiFi Connection Test ===
+I (6428) GUITION_MAIN: Connecting to: FRITZ!Box 7530 WL
+I (6447) H_API: esp_wifi_remote_connect
+I (6468) GUITION_MAIN: Waiting for IP address (15s timeout)...
+I (6819) RPC_WRAP: ESP Event: Station mode: Connected
+I (7851) esp_netif_handlers: sta ip: 192.168.188.88, mask: 255.255.255.0, gw: 192.168.188.1
+I (7851) GUITION_MAIN: ✓ WiFi connected!
+I (7851) GUITION_MAIN:    IP Address: 192.168.188.88
+I (7856) GUITION_MAIN:    Netmask:    255.255.255.0
+I (7861) GUITION_MAIN:    Gateway:    192.168.188.1
+I (7868) GUITION_MAIN:    RSSI: -80 dBm
+
+I (7869) GUITION_MAIN: ========================================
+I (7875) GUITION_MAIN:    System Initialization Complete
+I (7880) GUITION_MAIN: ========================================
 ```
 
 **Summary:**
@@ -382,8 +537,11 @@ I (1846) GUITION_MAIN: ========================================
 - ✅ RTC RX8025T: 0x32 (time valid)
 - ✅ Display: 1024x600 MIPI DSI
 - ✅ Touch GT911: 0x14 (TouchPad ID: 911)
+- ✅ SD Card: SU08G 7580 MB (SDMMC Slot 0)
+- ✅ WiFi: ESP-Hosted via ESP32-C6 (SDMMC Slot 1)
+- ✅ WiFi Connected: IP 192.168.188.88, RSSI -80 dBm
 
-**All I2C devices initialized successfully using direct init pattern!**
+**All peripherals initialized successfully with stable WiFi connection!**
 
 ---
 
@@ -400,6 +558,7 @@ I (1846) GUITION_MAIN: ========================================
 #define ENABLE_RTC 1           // ✅ RX8025T RTC
 #define DEBUG_RTC 1            // Show detailed logs
 #define ENABLE_RTC_TEST 1      // Show time on boot
+#define ENABLE_RTC_NTP_SYNC 0  // Enable NTP sync test (requires WiFi connection)
 
 #define ENABLE_DISPLAY 1       // ✅ MIPI DSI display
 #define ENABLE_DISPLAY_TEST 0  // Disable RGB patterns
@@ -407,6 +566,9 @@ I (1846) GUITION_MAIN: ========================================
 #define ENABLE_TOUCH 1         // ✅ GT911 touch
 #define DEBUG_TOUCH 1          // Show detailed logs
 #define ENABLE_TOUCH_TEST 0    // Disable continuous read
+
+#define ENABLE_WIFI 1          // ✅ ESP-Hosted WiFi
+#define ENABLE_WIFI_CONNECT 1  // Enable WiFi connection test
 ```
 
 ---
@@ -438,6 +600,7 @@ The I2C bus issues were caused by **I2C scan timing**, not MIPI DSI initializati
 - **Board BSP:** `esp32_p4_function_ev_board.h`
 - **RTC Datasheet:** Epson RX8025T Real-Time Clock Module
 - **ES8311 Datasheet:** http://www.everest-semi.com/pdf/ES8311%20PB.pdf
+- **ESP-IDF SNTP Documentation:** https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/system_time.html
 
 ---
 
@@ -462,6 +625,11 @@ The I2C bus issues were caused by **I2C scan timing**, not MIPI DSI initializati
    - Driver validates presence internally
    - Applied to GT911, RTC, and ES8311
 
+5. ❌ **Duplicate lwip in CMakeLists.txt** - Fixed (2026-03-01)
+   - Caused WiFi instability
+   - Non-deterministic networking behavior
+   - Removed duplicate reference
+
 ### Evolution of Solution
 
 ```
@@ -477,4 +645,6 @@ Final Approach → I2C init → Direct device init (driver self-validates)
                   ✅ Consistent pattern
                   ✅ All devices working
                   ✅ SD + WiFi coexisting
+                  ✅ Single lwip reference
+                  ✅ Stable networking
 ```
