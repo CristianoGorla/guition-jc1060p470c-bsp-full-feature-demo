@@ -7,9 +7,10 @@
 #include "sdmmc_cmd.h"
 #include "esp_idf_version.h"
 #include "sdkconfig.h"
-#if SOC_SDMMC_IO_POWER_EXTERNAL
-#include "sd_pwr_ctrl_by_on_chip_ldo.h"
-#endif
+// RIMOSSO: include LDO header per slot 0
+// #if SOC_SDMMC_IO_POWER_EXTERNAL
+// #include "sd_pwr_ctrl_by_on_chip_ldo.h"
+// #endif
 #include "sd_card_example_common.h"
 #include "sd_card_functions.h"
 
@@ -42,25 +43,24 @@ esp_err_t sd_card_mount(int slot, const char *mount_point)
     host.deinit = &sdmmc_host_deinit_dummy;
 #endif
 
-#if CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO
-    if (!WORKAROUND_HOSTED_DOES_SDMMC_HOST_INIT)
-    {
-        sd_pwr_ctrl_ldo_config_t ldo_cfg = {.ldo_chan_id = 4};
-        sd_pwr_ctrl_handle_t pwr_handle = NULL;
-        if (sd_pwr_ctrl_new_on_chip_ldo(&ldo_cfg, &pwr_handle) == ESP_OK)
-            host.pwr_ctrl_handle = pwr_handle;
-    }
-#endif
+    // SLOT 0 SD CARD - NO LDO (alimentazione esterna)
+    // LDO chan 4 è usato solo per C6 SDIO su slot 1
+    // Per slot 0, lascia host.pwr_ctrl_handle = NULL (default)
 
     sdmmc_slot_config_t slot_cfg = SDMMC_SLOT_CONFIG_DEFAULT();
     slot_cfg.width = 4;
     slot_cfg.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
-    esp_vfs_fat_sdmmc_mount_config_t mnt_cfg = {.max_files = 5, .allocation_unit_size = 16 * 1024};
+
+    esp_vfs_fat_sdmmc_mount_config_t mnt_cfg = {
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024};
+
     esp_err_t ret = esp_vfs_fat_sdmmc_mount(mount_point, &host, &slot_cfg, &mnt_cfg, &card);
 
     if (ret == ESP_OK)
     {
         sdmmc_card_print_info(stdout, card);
+        ESP_LOGI(TAG, "SD card montata su %s", mount_point);
     }
     else
     {
