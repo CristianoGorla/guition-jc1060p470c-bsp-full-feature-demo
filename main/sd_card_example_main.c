@@ -15,6 +15,8 @@
 #include "touch_gt911.h"
 #include "driver/i2c_types.h"
 
+// static const char *TAG = "GUITION_MAIN";
+
 static i2c_master_bus_handle_t i2c_bus_handle;
 
 void custom_sntp_sync(void)
@@ -31,14 +33,11 @@ void custom_sntp_sync(void)
 
 void app_main(void)
 {
-    // Reset Hardware del C6 su GPIO 54 (C6_CHIP_PU) [2, 3]
-    gpio_set_direction(54, GPIO_MODE_OUTPUT);
-    gpio_set_level(54, 0);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    gpio_set_level(54, 1);
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    static const char *TAG = "GUITION_MAIN";
 
-    // I2C su 7/8 (Audio/Touch/RTC) [4]
+    // NON fare reset C6 qui - lascia che lo faccia il driver LCD
+
+    // 1. I2C
     i2c_master_bus_config_t i2c_cfg = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
@@ -48,15 +47,19 @@ void app_main(void)
         .flags.enable_internal_pullup = true,
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c_bus_handle));
+    ESP_LOGI(TAG, "I2C initialized");
 
-    // Video e Touch
+    // 2. Display
     init_jd9165_display();
+    ESP_LOGI(TAG, "Display initialized");
 
+    // 3. Touch
     init_touch_gt911(i2c_bus_handle);
+    ESP_LOGI(TAG, "Touch initialized");
 
+    // 4. WiFi
     init_wifi();
     wifi_connect(WIFI_SSID, WIFI_PASSWORD);
-
     wait_for_ip();
     custom_sntp_sync();
 

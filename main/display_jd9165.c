@@ -81,6 +81,7 @@ void init_jd9165_display(void)
     };
     ESP_ERROR_CHECK(esp_ldo_acquire_channel(&ldo_cfg, &ldo_mipi));
     ESP_LOGI(TAG, "MIPI DSI PHY powered");
+    vTaskDelay(pdMS_TO_TICKS(50)); // Wait for PHY stabilization
 
     // 3. DSI Bus (750 Mbps come nel BSP vendor)
     esp_lcd_dsi_bus_handle_t mipi_dsi_bus;
