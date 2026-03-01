@@ -11,45 +11,20 @@ static const char *TAG = "GT911";
 
 #define GT911_RST_GPIO         GPIO_NUM_22
 #define GT911_INT_GPIO         GPIO_NUM_21
+#define GT911_I2C_ADDRESS      0x14  // Confermato da I2C scan (INT=HIGH durante reset)
 
 esp_lcd_touch_handle_t init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
 {
     ESP_LOGI(TAG, "Initializing GT911 touch controller");
+    ESP_LOGI(TAG, "Using I2C address: 0x%02X (hardware reset already done in hw_init)", GT911_I2C_ADDRESS);
 
-    // Reset manuale PRIMA di comunicare via I2C
-    // Questo setta l'indirizzo a 0x5D (INT=LOW durante reset)
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << GT911_RST_GPIO) | (1ULL << GT911_INT_GPIO),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&io_conf);
+    // NON fare reset qui - già fatto in hw_init.c per address 0x14
+    // Il chip è già configurato con INT=HIGH durante reset
 
-    // Reset sequence per address 0x5D (INT LOW)
-    gpio_set_level(GT911_INT_GPIO, 0);  // INT = LOW per 0x5D
-    gpio_set_level(GT911_RST_GPIO, 0);  // RST = LOW
-    vTaskDelay(pdMS_TO_TICKS(10));
-    
-    gpio_set_level(GT911_RST_GPIO, 1);  // RST = HIGH
-    vTaskDelay(pdMS_TO_TICKS(5));
-    
-    gpio_set_level(GT911_INT_GPIO, 0);  // Keep INT LOW
-    vTaskDelay(pdMS_TO_TICKS(50));
-    
-    // Rilascia INT come input per interrupt
-    io_conf.pin_bit_mask = (1ULL << GT911_INT_GPIO);
-    io_conf.mode = GPIO_MODE_INPUT;
-    gpio_config(&io_conf);
-    vTaskDelay(pdMS_TO_TICKS(50));
-
-    ESP_LOGI(TAG, "GT911 reset sequence completed (Address: 0x5D)");
-
-    // Configurazione I2C con indirizzo 0x5D
+    // Configurazione I2C con indirizzo 0x14
     esp_lcd_panel_io_handle_t tp_io_handle = NULL;
     esp_lcd_panel_io_i2c_config_t tp_io_config = {
-        .dev_addr = 0x5D,  // Indirizzo dopo reset con INT=LOW
+        .dev_addr = GT911_I2C_ADDRESS,  // 0x14 (INT=HIGH durante reset)
         .on_color_trans_done = NULL,
         .user_ctx = NULL,
         .control_phase_bytes = 1,
@@ -62,13 +37,17 @@ esp_lcd_touch_handle_t init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
         .scl_speed_hz = 400000,  // 400kHz
     };
     
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c_v2(i2c_bus, &tp_io_config, &tp_io_handle));
+    esp_err_t ret = esp_lcd_new_panel_io_i2c_v2(i2c_bus, &tp_io_config, &tp_io_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create panel I/O (0x%x)", ret);
+        return NULL;
+    }
 
-    // GT911 touch config - DISABILITA il reset del driver (già fatto)
+    // GT911 touch config - DISABILITA il reset del driver (già fatto in hw_init)
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = 1024,
         .y_max = 600,
-        .rst_gpio_num = GPIO_NUM_NC,  // -1: NON fare reset (già fatto manualmente)
+        .rst_gpio_num = GPIO_NUM_NC,  // -1: NON fare reset (già fatto in hw_init)
         .int_gpio_num = GT911_INT_GPIO,
         .levels = {
             .reset = 0,
@@ -82,9 +61,15 @@ esp_lcd_touch_handle_t init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
     };
 
     esp_lcd_touch_handle_t touch_handle = NULL;
-    ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &touch_handle));
+    ret = esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &touch_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create GT911 touch handle (0x%x)", ret);
+        esp_lcd_panel_io_del(tp_io_handle);
+        return NULL;
+    }
     
-    ESP_LOGI(TAG, "GT911 touch initialized successfully");
+    ESP_LOGI(TAG, "GT911 touch initialized successfully at 0x%02X", GT911_I2C_ADDRESS);
+    ESP_LOGI(TAG, "Touch resolution: %dx%d", tp_cfg.x_max, tp_cfg.y_max);
     
     return touch_handle;
 }
