@@ -37,10 +37,16 @@ CONFIG_SPI_FLASH_BROWNOUT_RESET=y
 CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO=n
 
 # ===========================
-# ESP-Hosted C6 su SDIO slot 1 - LDO4 attivo
+# ESP-Hosted WiFi/BLE via C6 (SDIO Slot 1)
 # ===========================
 CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
 CONFIG_ESP_HOSTED_SD_PWR_CTRL_LDO_INTERNAL_IO=y
+
+# ESP-Hosted Interrupt Configuration (JC1060P470C Hardware)
+# C6 GPIO2 -> P4 GPIO6 (data ready interrupt)
+# C6 CHIP_PU -> P4 GPIO54 (reset line)
+CONFIG_ESP_HOSTED_DATA_READY_GPIO=6
+CONFIG_ESP_HOSTED_RESETPIN_GPIO=54
 
 # ===========================
 # PSRAM (32MB Octal 200MHz)
