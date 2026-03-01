@@ -44,6 +44,7 @@ extern "C" {
  */
 #define BOOTSTRAP_POWER_STABILIZATION_MS    100   // VDD rail stabilization
 #define BOOTSTRAP_C6_BOOT_TIMEOUT_MS        5000  // Max time for C6 firmware load
+#define BOOTSTRAP_WIFI_LINK_STABILIZATION_MS 2000 // ESP-Hosted SDIO link establishment
 #define BOOTSTRAP_SD_MOUNT_TIMEOUT_MS       3000  // Max time for SD mount
 #define BOOTSTRAP_HARD_RESET_DELAY_MS       500   // Capacitor discharge time
 
@@ -76,7 +77,7 @@ typedef struct {
  * 3. Performs hard reset if needed (warm boot)
  * 4. Spawns three coordinated tasks:
  *    - Phase A: Power Management (GPIO isolation + power sequencing)
- *    - Phase B: WiFi Hosted (SDIO handshake)
+ *    - Phase B: WiFi Hosted (SDIO handshake + link stabilization)
  *    - Phase C: SD Manager (safe filesystem mount)
  * 
  * @param[out] manager  Pointer to bootstrap manager structure
