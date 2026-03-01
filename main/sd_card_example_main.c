@@ -24,7 +24,7 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch.h"
 
-// Network includes (for WiFi connection test)
+// Network includes (always needed for WiFi connection test types)
 #include "esp_netif.h"
 #include "esp_wifi.h"
 
