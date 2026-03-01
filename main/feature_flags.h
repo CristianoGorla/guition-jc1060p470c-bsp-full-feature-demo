@@ -20,13 +20,13 @@
 #define ENABLE_I2C_SCAN 1 // Scan bus I2C
 
 // ========== AUDIO CODEC ==========
-#define ENABLE_AUDIO 1       // ES8311 audio codec (test)
-#define DEBUG_AUDIO 1        // Log dettagliati audio
+#define ENABLE_AUDIO 1 // ES8311 audio codec (test)
+#define DEBUG_AUDIO 1  // Log dettagliati audio
 
 // ========== RTC ==========
-#define ENABLE_RTC 1         // RX8025T RTC (test)
-#define DEBUG_RTC 1          // Log dettagliati RTC
-#define ENABLE_RTC_TEST 1    // Test lettura/scrittura RTC
+#define ENABLE_RTC 0         // RX8025T RTC (test)
+#define DEBUG_RTC 0          // Log dettagliati RTC
+#define ENABLE_RTC_TEST 0    // Test lettura/scrittura RTC
 #define ENABLE_RTC_HW_TEST 0 // Hardware diagnostic (DISABILITATO)
 
 // ========== DISPLAY ==========
