@@ -26,9 +26,14 @@ void init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
 
     // Create panel IO handle for I2C
     esp_lcd_panel_io_handle_t tp_io_handle = NULL;
-    esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_PANEL_IO_I2C_CONFIG();
-    tp_io_config.dev_addr = GT911_I2C_ADDRESS;
-    tp_io_config.scl_speed_hz = 400000;
+    esp_lcd_panel_io_i2c_config_t tp_io_config = {
+        .dev_addr = GT911_I2C_ADDRESS,
+        .scl_speed_hz = 400000,
+        .control_phase_bytes = 1,
+        .lcd_cmd_bits = 0,
+        .lcd_param_bits = 8,
+        .dc_bit_offset = 0,
+    };
     
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c_v2(i2c_bus, &tp_io_config, &tp_io_handle));
 
