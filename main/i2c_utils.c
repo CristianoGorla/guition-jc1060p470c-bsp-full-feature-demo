@@ -36,6 +36,10 @@ static const char* get_error_name(esp_err_t err) {
     }
 }
 
+/**
+ * Scan mirato solo agli indirizzi noti
+ * Evita il problema del bus I2C ESP32-P4 che va in INVALID_STATE
+ */
 void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
 {
     if (!bus_handle) {
@@ -44,17 +48,22 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
     }
 
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "   I2C BUS SCANNER");
+    ESP_LOGI(TAG, "   I2C BUS SCANNER (Targeted Mode)");
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "Scanning I2C bus (0x08 - 0x77)...");
-    ESP_LOGI(TAG, "Note: 0x00-0x07 and 0x78-0x7F are reserved");
+    ESP_LOGI(TAG, "Scanning only known device addresses...");
+    ESP_LOGI(TAG, "Note: Full scan causes ESP32-P4 I2C bus issues");
     ESP_LOGI(TAG, "");
 
     int devices_found = 0;
     int errors_found = 0;
 
-    // Scansiona solo indirizzi validi (0x08-0x77)
-    for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+    // Scansiona SOLO gli indirizzi dei dispositivi conosciuti
+    for (int i = 0; i < sizeof(known_devices) / sizeof(known_devices[0]); i++) {
+        uint8_t addr = known_devices[i].addr;
+        const char *device_name = known_devices[i].name;
+        
+        ESP_LOGI(TAG, "Probing 0x%02X (%s)...", addr, device_name);
+        
         // Crea device temporaneo per testare
         i2c_device_config_t dev_cfg = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -68,55 +77,53 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
         if (ret == ESP_OK) {
             // Prova a fare una lettura dummy con timeout breve
             uint8_t dummy_data;
-            ret = i2c_master_receive(dev_handle, &dummy_data, 1, 50); // 50ms timeout
+            ret = i2c_master_receive(dev_handle, &dummy_data, 1, 100); // 100ms timeout
             
             // Rimuovi device temporaneo SUBITO
             i2c_master_bus_rm_device(dev_handle);
             
-            if (ret == ESP_OK || ret == ESP_ERR_TIMEOUT) {
-                // Device risponde (anche timeout = ACK ricevuto)
+            if (ret == ESP_OK) {
                 devices_found++;
-                
-                // Cerca nome conosciuto
-                const char *device_name = "Unknown device";
-                for (int i = 0; i < sizeof(known_devices) / sizeof(known_devices[0]); i++) {
-                    if (known_devices[i].addr == addr) {
-                        device_name = known_devices[i].name;
-                        break;
-                    }
-                }
-                
-                ESP_LOGI(TAG, "[0x%02X] FOUND: %s (ret=%s)", addr, device_name, get_error_name(ret));
-                
-            } else if (ret != ESP_ERR_NOT_FOUND) {
-                // Errore diverso da "device not found"
+                ESP_LOGI(TAG, "  → [0x%02X] ✓ FOUND: %s", addr, device_name);
+            } else if (ret == ESP_ERR_TIMEOUT) {
+                devices_found++;
+                ESP_LOGI(TAG, "  → [0x%02X] ✓ FOUND: %s (ACK but timeout)", addr, device_name);
+            } else if (ret == ESP_ERR_NOT_FOUND) {
+                ESP_LOGW(TAG, "  → [0x%02X] ✗ Not responding", addr);
+            } else {
                 errors_found++;
-                ESP_LOGW(TAG, "[0x%02X] ERROR: %s (0x%x)", addr, get_error_name(ret), ret);
-                // CONTINUA invece di fare break!
+                ESP_LOGE(TAG, "  → [0x%02X] ✗ ERROR: %s (0x%x)", addr, get_error_name(ret), ret);
             }
-            // Se ESP_ERR_NOT_FOUND, silenzio (nessun device a questo indirizzo)
         } else {
-            // Errore nell'aggiunta del device al bus
             errors_found++;
-            ESP_LOGW(TAG, "[0x%02X] ADD_DEVICE ERROR: %s (0x%x)", addr, get_error_name(ret), ret);
+            ESP_LOGE(TAG, "  → [0x%02X] ✗ ADD_DEVICE ERROR: %s (0x%x)", addr, get_error_name(ret), ret);
         }
         
-        // Delay per dare tempo al bus di recuperare
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // Delay più lungo per dare tempo al bus di recuperare
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "Scan complete:");
-    ESP_LOGI(TAG, "  Devices found: %d", devices_found);
-    ESP_LOGI(TAG, "  Errors encountered: %d", errors_found);
+    ESP_LOGI(TAG, "  Devices found: %d / %d", devices_found, sizeof(known_devices) / sizeof(known_devices[0]));
+    if (errors_found > 0) {
+        ESP_LOGW(TAG, "  Errors encountered: %d", errors_found);
+    }
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "");
     
-    // Riepilogo devices trovati con gli indirizzi corretti
+    // Riepilogo
     ESP_LOGI(TAG, "Expected devices on this board:");
     ESP_LOGI(TAG, "  0x14 = GT911 Touch (INT=HIGH during reset)");
     ESP_LOGI(TAG, "  0x18 = ES8311 Audio Codec");
-    ESP_LOGI(TAG, "  0x19 = RX8025T RTC (7-bit address)");
+    ESP_LOGI(TAG, "  0x19 = RX8025T RTC");
+    ESP_LOGI(TAG, "");
+    
+    if (devices_found >= 2) {
+        ESP_LOGI(TAG, "✓ Bus is operational, found %d device(s)", devices_found);
+    } else {
+        ESP_LOGW(TAG, "⚠ Expected at least 2 devices, found %d", devices_found);
+    }
     ESP_LOGI(TAG, "");
 }
