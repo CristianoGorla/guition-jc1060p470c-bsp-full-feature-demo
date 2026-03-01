@@ -93,9 +93,10 @@ esp_err_t sdmmc_arbiter_request_wifi(uint32_t timeout_ms)
         }
         g_arbiter.sd_card = NULL;
         
-        // Deinitialize SDMMC host
+        // Deinitialize SDMMC host (releases slot)
+        ESP_LOGI(TAG, "Deinitializing SDMMC host...");
         sdmmc_host_deinit();
-        vTaskDelay(pdMS_TO_TICKS(100));  // Bus settling time
+        vTaskDelay(pdMS_TO_TICKS(200));  // Bus settling time
     }
     
     // Initialize WiFi transport (ESP-Hosted)
@@ -145,15 +146,28 @@ esp_err_t sdmmc_arbiter_request_sd_card(uint32_t timeout_ms, sdmmc_card_t **card
     // If WiFi mode is active, deinitialize it
     if (g_arbiter.current_mode == SDMMC_MODE_WIFI) {
         ESP_LOGI(TAG, "Switching from WiFi to SD card mode...");
+        
+        // Step 1: Deinit WiFi transport (releases SDIO slave)
         esp_err_t ret = wifi_hosted_deinit_transport();
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "WiFi deinit warning: %s (continuing)", esp_err_to_name(ret));
         }
         g_arbiter.wifi_transport_active = false;
         
-        // Deinitialize SDMMC host
+        // Step 2: Deinitialize SDMMC host (critical for clean switch)
+        ESP_LOGI(TAG, "Deinitializing SDMMC host (releases Slot 0)...");
         sdmmc_host_deinit();
-        vTaskDelay(pdMS_TO_TICKS(100));  // Bus settling time
+        vTaskDelay(pdMS_TO_TICKS(200));  // Bus settling time
+        
+        // Step 3: Reinitialize SDMMC host for SD card mode
+        ESP_LOGI(TAG, "Reinitializing SDMMC host for SD card mode...");
+        ret = sdmmc_host_init();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to reinit SDMMC host: %s", esp_err_to_name(ret));
+            xSemaphoreGive(g_arbiter.mutex);
+            return ret;
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));  // Controller stabilization
     }
     
     // Initialize SD card
@@ -200,6 +214,9 @@ esp_err_t sdmmc_arbiter_release_wifi(void)
         ESP_LOGW(TAG, "WiFi deinit warning: %s", esp_err_to_name(ret));
     }
     
+    // Deinitialize SDMMC host
+    sdmmc_host_deinit();
+    
     g_arbiter.current_mode = SDMMC_MODE_NONE;
     g_arbiter.wifi_transport_active = false;
     
@@ -232,6 +249,9 @@ esp_err_t sdmmc_arbiter_release_sd_card(void)
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "SD unmount warning: %s", esp_err_to_name(ret));
     }
+    
+    // Deinitialize SDMMC host
+    sdmmc_host_deinit();
     
     g_arbiter.current_mode = SDMMC_MODE_NONE;
     g_arbiter.sd_card = NULL;
