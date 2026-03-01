@@ -11,9 +11,10 @@
 
 static const char *TAG = "JD9165_GUITION";
 
-#define BSP_LCD_BACKLIGHT     (GPIO_NUM_23)
-#define BSP_LCD_RST           (GPIO_NUM_0)
-#define LCD_LEDC_CH           0
+#define LCD_BACKLIGHT_GPIO     (GPIO_NUM_23)
+#define LCD_RESET_GPIO         (GPIO_NUM_0)
+#define LCD_LEDC_CHANNEL       0
+#define LCD_MIPI_DSI_LANE_NUM  2
 
 // Init sequence dal BSP vendor
 static const jd9165_lcd_init_cmd_t lcd_cmd[] = {
@@ -70,13 +71,13 @@ static const jd9165_lcd_init_cmd_t lcd_cmd[] = {
     {0x29, (uint8_t[]){0x00}, 1, 20},
 };
 
-static esp_err_t bsp_display_brightness_init(void)
+static esp_err_t display_brightness_init(void)
 {
     // Setup LEDC peripheral for PWM backlight control
     const ledc_channel_config_t LCD_backlight_channel = {
-        .gpio_num = BSP_LCD_BACKLIGHT,
+        .gpio_num = LCD_BACKLIGHT_GPIO,
         .speed_mode = LEDC_LOW_SPEED_MODE,
-        .channel = LCD_LEDC_CH,
+        .channel = LCD_LEDC_CHANNEL,
         .intr_type = LEDC_INTR_DISABLE,
         .timer_sel = 1,
         .duty = 0,
@@ -95,15 +96,15 @@ static esp_err_t bsp_display_brightness_init(void)
     return ESP_OK;
 }
 
-static esp_err_t bsp_enable_dsi_phy_power(void)
+static esp_err_t enable_dsi_phy_power(void)
 {
-    // Turn on the power for MIPI DSI PHY
-    esp_ldo_channel_handle_t ldo_mipi_phy = NULL;
-    esp_ldo_channel_config_t ldo_mipi_cfg = {
+    // Turn on the power for MIPI DSI PHY, so it can go from "No Power" state to "Shutdown" state
+    static esp_ldo_channel_handle_t phy_pwr_chan = NULL;
+    esp_ldo_channel_config_t ldo_cfg = {
         .chan_id = 3,
         .voltage_mv = 2500,
     };
-    ESP_ERROR_CHECK(esp_ldo_acquire_channel(&ldo_mipi_cfg, &ldo_mipi_phy));
+    ESP_RETURN_ON_ERROR(esp_ldo_acquire_channel(&ldo_cfg, &phy_pwr_chan), TAG, "Acquire LDO channel for DPHY failed");
     ESP_LOGI(TAG, "MIPI DSI PHY Powered on");
     return ESP_OK;
 }
@@ -111,61 +112,34 @@ static esp_err_t bsp_enable_dsi_phy_power(void)
 void init_jd9165_display(void)
 {
     esp_err_t ret = ESP_OK;
-    ESP_LOGI(TAG, "=== INIZIO INIT DISPLAY ===");
+    ESP_LOGI(TAG, "Initializing display");
 
-    // Step 1: Brightness/backlight init (LEDC PWM)
-    ESP_LOGI(TAG, ">>> Step 1: Init brightness controller");
-    ret = bsp_display_brightness_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Brightness init failed: %s", esp_err_to_name(ret));
-        return;
-    }
-    ESP_LOGI(TAG, ">>> Step 1: OK");
+    ESP_RETURN_ON_ERROR(display_brightness_init(), TAG, "Brightness init failed");
+    ESP_RETURN_ON_ERROR(enable_dsi_phy_power(), TAG, "DSI PHY power failed");
 
-    // Step 2: Enable DSI PHY power (LDO3)
-    ESP_LOGI(TAG, ">>> Step 2: Enable DSI PHY power");
-    ret = bsp_enable_dsi_phy_power();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "DSI PHY power failed: %s", esp_err_to_name(ret));
-        return;
-    }
-    ESP_LOGI(TAG, ">>> Step 2: OK");
-
-    // Step 3: Create MIPI DSI bus
-    ESP_LOGI(TAG, ">>> Step 3: Create MIPI DSI bus");
+    /* create MIPI DSI bus first, it will initialize the DSI PHY as well */
     esp_lcd_dsi_bus_handle_t mipi_dsi_bus;
     esp_lcd_dsi_bus_config_t bus_config = {
         .bus_id = 0,
-        .num_data_lanes = 2,
+        .num_data_lanes = LCD_MIPI_DSI_LANE_NUM,
         .phy_clk_src = MIPI_DSI_PHY_CLK_SRC_DEFAULT,
         .lane_bit_rate_mbps = 750,
     };
-    ret = esp_lcd_new_dsi_bus(&bus_config, &mipi_dsi_bus);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "New DSI bus failed: %s", esp_err_to_name(ret));
-        return;
-    }
-    ESP_LOGI(TAG, ">>> Step 3: OK");
+    ESP_RETURN_ON_ERROR(esp_lcd_new_dsi_bus(&bus_config, &mipi_dsi_bus), TAG, "New DSI bus init failed");
 
-    // Step 4: Install MIPI DSI LCD control panel (DBI interface)
-    ESP_LOGI(TAG, ">>> Step 4: Install LCD control panel");
+    ESP_LOGI(TAG, "Install MIPI DSI LCD control panel");
+    // we use DBI interface to send LCD commands and parameters
     esp_lcd_panel_io_handle_t io;
     esp_lcd_dbi_io_config_t dbi_config = {
         .virtual_channel = 0,
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
     };
-    ret = esp_lcd_new_panel_io_dbi(mipi_dsi_bus, &dbi_config, &io);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "New panel IO DBI failed: %s", esp_err_to_name(ret));
-        return;
-    }
-    ESP_LOGI(TAG, ">>> Step 4: OK");
+    ESP_GOTO_ON_ERROR(esp_lcd_new_panel_io_dbi(mipi_dsi_bus, &dbi_config, &io), err, TAG, "New panel IO failed");
 
-    // Step 5: Install JD9165 panel driver
-    ESP_LOGI(TAG, ">>> Step 5: Install JD9165 panel driver");
-    esp_lcd_panel_handle_t panel_handle = NULL;
-    
+    esp_lcd_panel_handle_t disp_panel = NULL;
+    // create JD9165 control panel
+    ESP_LOGI(TAG, "Install JD9165 LCD control panel");
     esp_lcd_dpi_panel_config_t dpi_config = {
         .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
         .dpi_clock_freq_mhz = 52,
@@ -195,45 +169,32 @@ void init_jd9165_display(void)
             .dpi_config = &dpi_config,
         },
     };
-    
     esp_lcd_panel_dev_config_t lcd_dev_config = {
         .bits_per_pixel = 16,
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
-        .reset_gpio_num = BSP_LCD_RST,
+        .reset_gpio_num = LCD_RESET_GPIO,
         .vendor_config = &vendor_config,
     };
-    
-    ret = esp_lcd_new_panel_jd9165(io, &lcd_dev_config, &panel_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "New panel JD9165 failed: %s", esp_err_to_name(ret));
-        return;
+    ESP_GOTO_ON_ERROR(esp_lcd_new_panel_jd9165(io, &lcd_dev_config, &disp_panel), err, TAG, "New LCD panel JD9165 failed");
+    ESP_GOTO_ON_ERROR(esp_lcd_panel_reset(disp_panel), err, TAG, "LCD panel reset failed");
+    ESP_GOTO_ON_ERROR(esp_lcd_panel_init(disp_panel), err, TAG, "LCD panel init failed");
+
+    // Turn on backlight (100% brightness)
+    uint32_t duty_cycle = 1023; // 10-bit resolution
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LCD_LEDC_CHANNEL, duty_cycle);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LCD_LEDC_CHANNEL);
+
+    ESP_LOGI(TAG, "Display initialized");
+    return;
+
+err:
+    if (disp_panel) {
+        esp_lcd_panel_del(disp_panel);
     }
-    ESP_LOGI(TAG, ">>> Step 5: OK");
-
-    // Step 6: Reset panel
-    ESP_LOGI(TAG, ">>> Step 6: Reset panel");
-    ret = esp_lcd_panel_reset(panel_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Panel reset failed: %s", esp_err_to_name(ret));
-        return;
+    if (io) {
+        esp_lcd_panel_io_del(io);
     }
-    ESP_LOGI(TAG, ">>> Step 6: OK");
-
-    // Step 7: Init panel
-    ESP_LOGI(TAG, ">>> Step 7: Init panel");
-    ret = esp_lcd_panel_init(panel_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Panel init failed: %s", esp_err_to_name(ret));
-        return;
+    if (mipi_dsi_bus) {
+        esp_lcd_del_dsi_bus(mipi_dsi_bus);
     }
-    ESP_LOGI(TAG, ">>> Step 7: OK");
-
-    // Step 8: Turn on backlight
-    ESP_LOGI(TAG, ">>> Step 8: Turn on backlight");
-    uint32_t duty_cycle = 1023; // 100% brightness (10-bit resolution)
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LCD_LEDC_CH, duty_cycle);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LCD_LEDC_CH);
-    ESP_LOGI(TAG, ">>> Step 8: OK");
-
-    ESP_LOGI(TAG, "=== DISPLAY JD9165 PRONTO (1024x600 @ 52MHz) ===");
 }
