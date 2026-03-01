@@ -14,6 +14,7 @@
 
 #include "display_jd9165.h"
 #include "touch_gt911.h"
+#include "rtc_rx8025t.h"
 #include "feature_flags.h"
 #include "i2c_utils.h"
 #include "hw_init.h"
@@ -21,7 +22,7 @@
 
 static const char *TAG = "GUITION_MAIN";
 
-// I2C Bus 0: Audio + Touch + RTC (all share same bus!)
+// I2C Bus (Audio + Touch + RTC on same bus!)
 #define I2C_MASTER_SDA_IO 7
 #define I2C_MASTER_SCL_IO 8
 
@@ -312,7 +313,49 @@ sd_failed:
     }
 #endif
 
-    // ========== 8. Touch ==========
+    // ========== 8. RTC Init & Test ==========
+#if ENABLE_RTC
+    if (bus_handle) {
+        LOG_RTC(TAG, "\n========== RTC INITIALIZATION ==========");
+        ret = rtc_rx8025t_init(bus_handle);
+        if (ret == ESP_OK) {
+            LOG_RTC(TAG, "✓ RTC initialized successfully");
+            
+#if ENABLE_RTC_TEST
+            // Read current time
+            rtc_time_t current_time;
+            ret = rtc_rx8025t_get_time(&current_time);
+            if (ret == ESP_OK) {
+                LOG_RTC(TAG, "Current RTC time: 20%02d-%02d-%02d (wday=%d) %02d:%02d:%02d",
+                        current_time.year, current_time.month, current_time.day,
+                        current_time.wday,
+                        current_time.hour, current_time.minute, current_time.second);
+            } else {
+                ESP_LOGE(TAG, "Failed to read RTC time (0x%x)", ret);
+            }
+            
+            // Check flags
+            bool pon_flag, vlf_flag;
+            if (rtc_rx8025t_check_power_on_flag(&pon_flag) == ESP_OK) {
+                LOG_RTC(TAG, "PON Flag (Power-On): %s", pon_flag ? "SET" : "CLEAR");
+            }
+            if (rtc_rx8025t_check_voltage_low_flag(&vlf_flag) == ESP_OK) {
+                LOG_RTC(TAG, "VLF Flag (Voltage Low): %s", vlf_flag ? "SET" : "CLEAR");
+            }
+#endif
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize RTC (0x%x)", ret);
+            ESP_LOGW(TAG, "RTC might not be populated on board or on different I2C address");
+        }
+        LOG_RTC(TAG, "========== RTC INIT COMPLETE ==========");
+    } else {
+        ESP_LOGW(TAG, "RTC init skipped (I2C not initialized)");
+    }
+#else
+    ESP_LOGI(TAG, "RTC disabled by feature flags");
+#endif
+
+    // ========== 9. Touch ==========
 #if ENABLE_TOUCH
     if (bus_handle) {
         LOG_TOUCH(TAG, "Initializing touch...");
