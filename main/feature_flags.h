@@ -37,7 +37,7 @@
 // ========== TOUCH ==========
 #define ENABLE_TOUCH 1      // GT911 capacitive touch
 #define DEBUG_TOUCH 1       // Detailed touch logs
-#define ENABLE_TOUCH_TEST 1 // Touch input test (continuous)
+#define ENABLE_TOUCH_TEST 0 // Touch input test (DISABLED - only probe addresses)
 
 // ========== NVS ==========
 #define ENABLE_NVS 1 // NVS Flash (required for some peripherals)
