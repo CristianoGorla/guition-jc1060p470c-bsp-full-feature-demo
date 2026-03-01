@@ -198,20 +198,7 @@ void app_main(void)
     i2c_master_bus_handle_t bus_handle = NULL;
 #endif
 
-    // ========== 3. I2C Device Scan ==========
-#if ENABLE_I2C && ENABLE_I2C_SCAN
-    if (bus_handle) {
-        ESP_LOGI(TAG, "=== I2C Device Scan ===");
-        ESP_LOGI(TAG, "Expected devices:");
-        ESP_LOGI(TAG, "  0x18 - ES8311 Audio Codec");
-        ESP_LOGI(TAG, "  0x14 - GT911 Touch (after reset)");
-        ESP_LOGI(TAG, "  0x32 - RX8025T RTC\n");
-        i2c_scan_bus(bus_handle);
-        ESP_LOGI(TAG, "");
-    }
-#endif
-
-    // ========== 4. Audio Codec (ES8311 - optional) ==========
+    // ========== 3. Audio Codec (ES8311 - optional) ==========
 #if ENABLE_AUDIO
     if (bus_handle) {
         LOG_AUDIO(TAG, "=== ES8311 Audio Codec ===");
@@ -226,31 +213,40 @@ void app_main(void)
     ESP_LOGI(TAG, "Audio codec disabled by feature flags\n");
 #endif
 
-    // ========== 5. RTC (RX8025T - optional) ==========
+    // ========== 4. RTC (RX8025T - direct init, no probe) ==========
 #if ENABLE_RTC
     if (bus_handle) {
-        LOG_RTC(TAG, "=== RTC Initialization ===");
+        ESP_LOGI(TAG, "=== RTC Initialization ===");
+        LOG_RTC(TAG, "RTC driver will validate device at 0x32 (no pre-probe)");
         
 #if ENABLE_RTC_HW_TEST
         rtc_hardware_test(bus_handle);
 #else
-        ret = i2c_master_probe(bus_handle, 0x32, 500);
+        // Direct init - driver handles device detection via first read
+        ret = rtc_rx8025t_init(bus_handle);
         if (ret == ESP_OK) {
-            LOG_RTC(TAG, "✓ RTC detected at 0x32");
-            ret = rtc_rx8025t_init(bus_handle);
-            if (ret == ESP_OK) {
-                LOG_RTC(TAG, "✓ RTC initialized\n");
+            LOG_RTC(TAG, "✓ RTC initialized successfully\n");
+            
 #if ENABLE_RTC_TEST
-                rtc_time_t current_time;
-                if (rtc_rx8025t_get_time(&current_time) == ESP_OK) {
-                    LOG_RTC(TAG, "Current time: 20%02d-%02d-%02d %02d:%02d:%02d\n",
-                            current_time.year, current_time.month, current_time.day,
-                            current_time.hour, current_time.minute, current_time.second);
-                }
-#endif
+            // Read and display current time
+            rtc_time_t current_time;
+            if (rtc_rx8025t_get_time(&current_time) == ESP_OK) {
+                LOG_RTC(TAG, "Current time: 20%02d-%02d-%02d %02d:%02d:%02d",
+                        current_time.year, current_time.month, current_time.day,
+                        current_time.hour, current_time.minute, current_time.second);
             }
+            
+            // Check power flags
+            bool pon_flag, vlf_flag;
+            if (rtc_rx8025t_check_power_on_flag(&pon_flag) == ESP_OK) {
+                LOG_RTC(TAG, "PON Flag: %s", pon_flag ? "SET (power was lost)" : "CLEAR");
+            }
+            if (rtc_rx8025t_check_voltage_low_flag(&vlf_flag) == ESP_OK) {
+                LOG_RTC(TAG, "VLF Flag: %s\n", vlf_flag ? "SET (voltage was low)" : "CLEAR");
+            }
+#endif
         } else {
-            ESP_LOGW(TAG, "RTC not responding\n");
+            ESP_LOGW(TAG, "RTC not responding (may not be populated)\n");
         }
 #endif
     }
@@ -258,7 +254,7 @@ void app_main(void)
     ESP_LOGI(TAG, "RTC disabled by feature flags\n");
 #endif
 
-    // ========== 6. Display (MIPI DSI JD9165) ==========
+    // ========== 5. Display (MIPI DSI JD9165) ==========
 #if ENABLE_DISPLAY
     ESP_LOGI(TAG, "=== Display Initialization ===");
     panel_handle = init_jd9165_display();
@@ -271,7 +267,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Display disabled by feature flags\n");
 #endif
 
-    // ========== 7. Touch Controller (GT911) ==========
+    // ========== 6. Touch Controller (GT911 - direct init, no probe) ==========
 #if ENABLE_TOUCH
     if (bus_handle) {
         ESP_LOGI(TAG, "=== Touch Controller Initialization ===");
@@ -280,19 +276,18 @@ void app_main(void)
         touch_handle = init_touch_gt911(bus_handle);
         
         if (touch_handle) {
-            LOG_TOUCH(TAG, "✓ Touch controller ready\n");
+            LOG_TOUCH(TAG, "✓ Touch controller ready");
             
-            // Verify which address GT911 responded at
+            // Verify which address GT911 responded at (after init)
             vTaskDelay(pdMS_TO_TICKS(100));
             esp_err_t ret14 = i2c_master_probe(bus_handle, 0x14, 100);
             esp_err_t ret5d = i2c_master_probe(bus_handle, 0x5D, 100);
             
             if (ret14 == ESP_OK) {
-                LOG_TOUCH(TAG, "GT911 detected at address 0x14 (INT=HIGH during reset)");
+                LOG_TOUCH(TAG, "GT911 active at 0x14 (INT=HIGH during reset)\n");
             } else if (ret5d == ESP_OK) {
-                LOG_TOUCH(TAG, "GT911 detected at address 0x5D (INT=LOW during reset)");
+                LOG_TOUCH(TAG, "GT911 active at 0x5D (INT=LOW during reset)\n");
             }
-            ESP_LOGI(TAG, "");
         } else {
             ESP_LOGE(TAG, "✗ Touch initialization failed!\n");
         }
@@ -303,7 +298,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Touch disabled by feature flags\n");
 #endif
 
-    // ========== 8. SD Card (optional) ==========
+    // ========== 7. SD Card (optional) ==========
 #if ENABLE_SD_CARD
     LOG_SD(TAG, "=== SD Card Initialization ===");
 
@@ -376,7 +371,7 @@ sd_failed:
     ESP_LOGI(TAG, "SD card disabled by feature flags\n");
 #endif
 
-    // ========== 9. WiFi (ESP-Hosted - optional) ==========
+    // ========== 8. WiFi (ESP-Hosted - optional) ==========
 #if ENABLE_WIFI
     LOG_WIFI(TAG, "=== WiFi Initialization ===");
     init_wifi();

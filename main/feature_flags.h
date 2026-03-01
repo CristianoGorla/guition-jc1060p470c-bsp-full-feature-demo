@@ -17,25 +17,25 @@
 // ========== I2C BUS ==========
 #define ENABLE_I2C 1      // I2C bus (required for Touch/Audio/RTC)
 #define DEBUG_I2C 1       // Detailed I2C logs
-#define ENABLE_I2C_SCAN 0 // Scan I2C bus (DISABLED - interferes with GT911 reset)
+#define ENABLE_I2C_SCAN 0 // Scan I2C bus (DISABLED - interferes with device reset)
 
 // ========== AUDIO CODEC ==========
 #define ENABLE_AUDIO 0 // ES8311 audio codec
 #define DEBUG_AUDIO 0  // Detailed audio logs
 
 // ========== RTC ==========
-#define ENABLE_RTC 0         // RX8025T RTC
-#define DEBUG_RTC 0          // Detailed RTC logs
-#define ENABLE_RTC_TEST 0    // Test RTC read/write
-#define ENABLE_RTC_HW_TEST 0 // Hardware diagnostic
+#define ENABLE_RTC 1         // RX8025T RTC (direct init at 0x32)
+#define DEBUG_RTC 1          // Detailed RTC logs
+#define ENABLE_RTC_TEST 1    // Test RTC read/write
+#define ENABLE_RTC_HW_TEST 0 // Hardware diagnostic (advanced)
 
 // ========== DISPLAY ==========
 #define ENABLE_DISPLAY 1      // JD9165 MIPI DSI display (1024x600)
 #define DEBUG_DISPLAY 1       // Detailed display logs
-#define ENABLE_DISPLAY_TEST 0 // RGB test pattern (DISABLED - focus on touch)
+#define ENABLE_DISPLAY_TEST 0 // RGB test pattern (DISABLED)
 
 // ========== TOUCH ==========
-#define ENABLE_TOUCH 1      // GT911 capacitive touch
+#define ENABLE_TOUCH 1      // GT911 capacitive touch (direct init at 0x14/0x5D)
 #define DEBUG_TOUCH 1       // Detailed touch logs
 #define ENABLE_TOUCH_TEST 0 // Touch input test (DISABLED - only init)
 
