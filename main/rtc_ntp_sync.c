@@ -25,7 +25,7 @@ esp_err_t rtc_reset_to_default(void)
         .year = 0,      // RX8025T: 0 = year 2000
         .month = 1,     // January
         .day = 1,       // 1st
-        .weekday = 6,   // Saturday (2000-01-01 was a Saturday)
+        .wday = 6,      // Saturday (2000-01-01 was a Saturday)
         .hour = 0,
         .minute = 0,
         .second = 0
@@ -104,7 +104,7 @@ esp_err_t update_rtc_from_system_time(void)
         .year = timeinfo.tm_year - 100,  // tm_year is years since 1900, RTC uses years since 2000
         .month = timeinfo.tm_mon + 1,    // tm_mon is 0-11, RTC uses 1-12
         .day = timeinfo.tm_mday,
-        .weekday = timeinfo.tm_wday,     // Both use 0=Sunday
+        .wday = timeinfo.tm_wday,        // Both use 0=Sunday
         .hour = timeinfo.tm_hour,
         .minute = timeinfo.tm_min,
         .second = timeinfo.tm_sec
@@ -112,7 +112,7 @@ esp_err_t update_rtc_from_system_time(void)
     
     ESP_LOGI(TAG, "System time: 20%02d-%02d-%02d %02d:%02d:%02d (wday=%d)",
              rtc_time.year, rtc_time.month, rtc_time.day,
-             rtc_time.hour, rtc_time.minute, rtc_time.second, rtc_time.weekday);
+             rtc_time.hour, rtc_time.minute, rtc_time.second, rtc_time.wday);
     
     esp_err_t ret = rtc_rx8025t_set_time(&rtc_time);
     if (ret == ESP_OK) {
