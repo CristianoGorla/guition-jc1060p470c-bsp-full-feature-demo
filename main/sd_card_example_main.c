@@ -10,14 +10,11 @@
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 
-// Header del tuo progetto (Assicurati che esistano)
 #include "display_jd9165.h"
 #include "touch_gt911.h"
 
 static const char *TAG = "GUITION_MAIN";
 
-// Pinout Hardware Guition JC1060 [2, 3]
-#define C6_CHIP_PU_GPIO 54
 #define I2C_MASTER_SDA_IO 7
 #define I2C_MASTER_SCL_IO 8
 
@@ -25,15 +22,7 @@ void app_main(void)
 {
     esp_err_t ret;
 
-    // 1. Reset Hardware ESP32-C6 (Obbligatorio per sbloccare il bus SDIO) [2, 4]
-    ESP_LOGI(TAG, "Resetting ESP32-C6 co-processor...");
-    gpio_set_direction(C6_CHIP_PU_GPIO, GPIO_MODE_OUTPUT);
-    gpio_set_level(C6_CHIP_PU_GPIO, 0);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    gpio_set_level(C6_CHIP_PU_GPIO, 1);
-    vTaskDelay(pdMS_TO_TICKS(100));
-
-    // 2. Inizializzazione NVS (Necessaria per Wi-Fi e calibrazioni)
+    // 1. Inizializzazione NVS (Necessaria per Wi-Fi e calibrazioni)
     ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
@@ -41,44 +30,51 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    ESP_LOGI(TAG, "NVS initialized");
 
-    // 3. Inizializzazione Bus I2C (Pin 7 e 8 per Touch/RTC) [2]
+    // 2. Inizializzazione Bus I2C (Pin 7 e 8 per Touch/Codec/RTC)
     i2c_master_bus_config_t i2c_bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
         .scl_io_num = I2C_MASTER_SCL_IO,
         .sda_io_num = I2C_MASTER_SDA_IO,
         .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true, // Forza pull-up interni se gli esterni falliscono
+        .flags.enable_internal_pullup = true,
     };
     i2c_master_bus_handle_t bus_handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &bus_handle));
+    ESP_LOGI(TAG, "I2C bus initialized");
 
-    // 4. Inizializzazione Display JD9165 (MIPI DSI)
+    // 3. Inizializzazione Display JD9165 (MIPI DSI)
+    ESP_LOGI(TAG, "Initializing display...");
     init_jd9165_display();
+    ESP_LOGI(TAG, "Display ready");
 
-    // 5. Inizializzazione Touch GT911
+    // 4. Inizializzazione Touch GT911
+    ESP_LOGI(TAG, "Initializing touch...");
     init_touch_gt911(bus_handle);
+    ESP_LOGI(TAG, "Touch ready");
 
-    // 6. Montaggio SD Card (Slot 0) - Logica estratta dall'esempio standard [5]
-    ESP_LOGI(TAG, "Initializing SD card (Slot 0)");
+    // 5. Montaggio SD Card (Slot 0)
+    ESP_LOGI(TAG, "Initializing SD card (Slot 0)...");
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = 5,
-        .allocation_unit_size = 16 * 1024};
+        .allocation_unit_size = 16 * 1024
+    };
+    
     sdmmc_card_t *card;
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 
-    // WORKAROUND per IDF 5.5.3: se ESP-Hosted (Slot 1) è già attivo, non resettare l'host [1, 6]
+    // WORKAROUND per IDF 5.5.3: ESP-Hosted (Slot 1) è già attivo, non resettare host
 #if CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE && (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0))
-    host.init = NULL; // Impedisce il reset del controller SDMMC condiviso
+    host.init = NULL; // Impedisce reset del controller SDMMC condiviso
 #endif
 
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-    slot_config.width = 4; // JC1060 usa 4-line mode [7]
+    slot_config.width = 4; // 4-line mode
 
-    ESP_LOGI(TAG, "Mounting filesystem...");
     ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
 
     if (ret != ESP_OK)
@@ -87,13 +83,14 @@ void app_main(void)
     }
     else
     {
-        ESP_LOGI(TAG, "SD card mounted. Capacity: %llu MB", ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
+        ESP_LOGI(TAG, "SD card mounted. Capacity: %llu MB", 
+                 ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
     }
 
-    ESP_LOGI(TAG, "System up. Check logs for Wi-Fi Hosted status.");
+    ESP_LOGI(TAG, "=== System ready ===");
 
     while (1)
     {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(10000));
     }
 }
