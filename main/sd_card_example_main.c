@@ -1,10 +1,10 @@
 /*
  * SD Card + ESP-Hosted Example with Bootstrap Manager
  * 
- * v1.2.0-arbiter: Two-phase initialization with SDMMC arbiter
+ * v1.1.0-restored: Three-phase initialization (v1.0.0-beta sequence)
  * - Phase A: Power management (GPIO isolation)
- * - Phase B: WiFi Hosted (SDIO transport via arbiter)
- * - SD Card: On-demand via sdmmc_arbiter_request_sd_card()
+ * - Phase B: WiFi Hosted (SDIO transport)
+ * - Phase C: SD card (automatic mount after WiFi)
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -24,7 +24,7 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch.h"
 
-// Network includes (always needed for WiFi connection test types)
+// Network includes
 #include "esp_netif.h"
 #include "esp_wifi.h"
 
@@ -37,16 +37,15 @@
 #include "feature_flags.h"
 #include "i2c_utils.h"
 #include "esp_hosted_wifi.h"
-#include "bootstrap_manager.h"  // Coordinated initialization with arbiter
+#include "bootstrap_manager.h"
 
 #if ENABLE_WIFI && ENABLE_WIFI_CONNECT
-// Load WiFi credentials from wifi_config.h (gitignored)
 #include "wifi_config.h"
 #endif
 
 static const char *TAG = "GUITION_MAIN";
 
-// I2C Bus (shared: ES8311 + GT911 + RTC)
+// I2C Bus
 #define I2C_MASTER_SDA_IO 7
 #define I2C_MASTER_SCL_IO 8
 
@@ -169,7 +168,7 @@ void app_main(void)
     ESP_LOGI(TAG, "\n");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "   Guition JC1060P470C Initialization");
-    ESP_LOGI(TAG, "   v1.2.0-arbiter (SDMMC Arbiter)");
+    ESP_LOGI(TAG, "   v1.1.0-restored (Three-Phase)");
     ESP_LOGI(TAG, "========================================\n");
 
     // ========== 1. NVS ==========
@@ -186,7 +185,7 @@ void app_main(void)
     ESP_LOGI(TAG, "NVS disabled by feature flags\n");
 #endif
 
-    // ========== 2. I2C Bus (shared by all peripherals) ==========
+    // ========== 2. I2C Bus ==========
 #if ENABLE_I2C
     ESP_LOGI(TAG, "=== I2C Bus Initialization ===");
     i2c_master_bus_config_t i2c_bus_config = {
@@ -206,7 +205,7 @@ void app_main(void)
     i2c_master_bus_handle_t bus_handle = NULL;
 #endif
 
-    // ========== 3. Audio Codec (ES8311 - optional) ==========
+    // ========== 3. Audio Codec ==========
 #if ENABLE_AUDIO
     if (bus_handle) {
         LOG_AUDIO(TAG, "=== ES8311 Audio Codec ===");
@@ -214,29 +213,27 @@ void app_main(void)
         if (ret == ESP_OK) {
             LOG_AUDIO(TAG, "✓ ES8311 initialized (powered down)\n");
         } else {
-            ESP_LOGW(TAG, "ES8311 not responding (may not be populated)\n");
+            ESP_LOGW(TAG, "ES8311 not responding\n");
         }
     }
 #else
-    ESP_LOGI(TAG, "Audio codec disabled by feature flags\n");
+    ESP_LOGI(TAG, "Audio codec disabled\n");
 #endif
 
-    // ========== 4. RTC (RX8025T - direct init, no probe) ==========
+    // ========== 4. RTC ==========
 #if ENABLE_RTC
     if (bus_handle) {
         ESP_LOGI(TAG, "=== RTC Initialization ===");
-        LOG_RTC(TAG, "RTC driver will validate device at 0x32 (no pre-probe)");
+        LOG_RTC(TAG, "RTC driver will validate device at 0x32");
         
 #if ENABLE_RTC_HW_TEST
         rtc_hardware_test(bus_handle);
 #else
-        // Direct init - driver handles device detection via first read
         ret = rtc_rx8025t_init(bus_handle);
         if (ret == ESP_OK) {
-            LOG_RTC(TAG, "✓ RTC initialized successfully\n");
+            LOG_RTC(TAG, "✓ RTC initialized\n");
             
 #if ENABLE_RTC_TEST && !ENABLE_RTC_NTP_SYNC
-            // Read and display current time (skip if NTP sync test will run)
             rtc_time_t current_time;
             if (rtc_rx8025t_get_time(&current_time) == ESP_OK) {
                 LOG_RTC(TAG, "Current time: 20%02d-%02d-%02d %02d:%02d:%02d",
@@ -244,118 +241,100 @@ void app_main(void)
                         current_time.hour, current_time.minute, current_time.second);
             }
             
-            // Check power flags
             bool pon_flag, vlf_flag;
             if (rtc_rx8025t_check_power_on_flag(&pon_flag) == ESP_OK) {
-                LOG_RTC(TAG, "PON Flag: %s", pon_flag ? "SET (power was lost)" : "CLEAR");
+                LOG_RTC(TAG, "PON Flag: %s", pon_flag ? "SET" : "CLEAR");
             }
             if (rtc_rx8025t_check_voltage_low_flag(&vlf_flag) == ESP_OK) {
-                LOG_RTC(TAG, "VLF Flag: %s\n", vlf_flag ? "SET (voltage was low)" : "CLEAR");
+                LOG_RTC(TAG, "VLF Flag: %s\n", vlf_flag ? "SET" : "CLEAR");
             }
 #endif
         } else {
-            ESP_LOGW(TAG, "RTC not responding (may not be populated)\n");
+            ESP_LOGW(TAG, "RTC not responding\n");
         }
 #endif
     }
 #else
-    ESP_LOGI(TAG, "RTC disabled by feature flags\n");
+    ESP_LOGI(TAG, "RTC disabled\n");
 #endif
 
-    // ========== 5. Display (MIPI DSI JD9165) ==========
+    // ========== 5. Display ==========
 #if ENABLE_DISPLAY
     ESP_LOGI(TAG, "=== Display Initialization ===");
     panel_handle = init_jd9165_display();
     if (panel_handle) {
-        LOG_DISPLAY(TAG, "✓ Display ready (1024x600 MIPI DSI)\n");
+        LOG_DISPLAY(TAG, "✓ Display ready (1024x600)\n");
     } else {
-        ESP_LOGE(TAG, "✗ Display initialization failed!\n");
+        ESP_LOGE(TAG, "✗ Display failed!\n");
     }
 #else
-    ESP_LOGI(TAG, "Display disabled by feature flags\n");
+    ESP_LOGI(TAG, "Display disabled\n");
 #endif
 
-    // ========== 6. Touch Controller (GT911 - direct init, no probe) ==========
+    // ========== 6. Touch ==========
 #if ENABLE_TOUCH
     if (bus_handle) {
-        ESP_LOGI(TAG, "=== Touch Controller Initialization ===");
-        LOG_TOUCH(TAG, "GT911 driver will auto-reset and detect I2C address (0x14 or 0x5D)");
+        ESP_LOGI(TAG, "=== Touch Controller ===");
+        LOG_TOUCH(TAG, "GT911 will auto-detect I2C address");
         
         touch_handle = init_touch_gt911(bus_handle);
         
         if (touch_handle) {
-            LOG_TOUCH(TAG, "✓ Touch controller ready");
+            LOG_TOUCH(TAG, "✓ Touch ready");
             
-            // Verify which address GT911 responded at (after init)
             vTaskDelay(pdMS_TO_TICKS(100));
             esp_err_t ret14 = i2c_master_probe(bus_handle, 0x14, 100);
             esp_err_t ret5d = i2c_master_probe(bus_handle, 0x5D, 100);
             
             if (ret14 == ESP_OK) {
-                LOG_TOUCH(TAG, "GT911 active at 0x14 (INT=HIGH during reset)\n");
+                LOG_TOUCH(TAG, "GT911 at 0x14\n");
             } else if (ret5d == ESP_OK) {
-                LOG_TOUCH(TAG, "GT911 active at 0x5D (INT=LOW during reset)\n");
+                LOG_TOUCH(TAG, "GT911 at 0x5D\n");
             }
         } else {
-            ESP_LOGE(TAG, "✗ Touch initialization failed!\n");
+            ESP_LOGE(TAG, "✗ Touch failed!\n");
         }
-    } else {
-        ESP_LOGW(TAG, "Touch skipped (I2C not initialized)\n");
     }
 #else
-    ESP_LOGI(TAG, "Touch disabled by feature flags\n");
+    ESP_LOGI(TAG, "Touch disabled\n");
 #endif
 
-    // ========== 7. Bootstrap Manager (WiFi with SDMMC Arbiter) ==========
-    // Two-phase coordinated initialization:
-    //   Phase A: Power management (GPIO isolation, strapping)
-    //   Phase B: WiFi Hosted (SDIO transport via arbiter)
-    //   SD Card: Available on-demand via sdmmc_arbiter_request_sd_card()
-    
-    ESP_LOGI(TAG, "\n");
-    ESP_LOGI(TAG, "========================================");
+    // ========== 7. Bootstrap Manager ==========
+    ESP_LOGI(TAG, "\n========================================");
     ESP_LOGI(TAG, "   Starting Bootstrap Manager");
     ESP_LOGI(TAG, "========================================\n");
     
     bootstrap_manager_t bootstrap_mgr = {0};
     
 #if ENABLE_SD_CARD || ENABLE_WIFI
-    // Initialize bootstrap manager (spawns two tasks + arbiter)
     ret = bootstrap_manager_init(&bootstrap_mgr);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bootstrap manager init failed: %s", esp_err_to_name(ret));
-        ESP_LOGE(TAG, "Cannot continue without SD/WiFi - restarting in 5s...");
+        ESP_LOGE(TAG, "Bootstrap init failed: %s", esp_err_to_name(ret));
         vTaskDelay(pdMS_TO_TICKS(5000));
         esp_restart();
     }
     
-    // Wait for both phases to complete (30 second timeout)
     ret = bootstrap_manager_wait(&bootstrap_mgr, 30000);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "\n");
-        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "\n========================================");
         ESP_LOGI(TAG, "   Bootstrap Complete - System Ready");
         ESP_LOGI(TAG, "========================================\n");
         
-        // NOTE: SD card test temporarily disabled to isolate WiFi testing
-        // TODO: Re-enable after WiFi validation
-        /*
-        // Get SD card handle from bootstrap manager (switches to SD mode)
+        // Get SD card info
         sdmmc_card_t *card = bootstrap_manager_get_sd_card(&bootstrap_mgr);
         if (card) {
             ESP_LOGI(TAG, "SD Card: %s, Capacity: %llu MB",
                     card->cid.name,
                     ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
         }
-        */
         
 #if ENABLE_WIFI_CONNECT
-        // WiFi connection test (arbiter keeps WiFi mode active)
+        // WiFi connection test
         ESP_LOGI(TAG, "\n=== WiFi Connection Test ===");
         ESP_LOGI(TAG, "Connecting to: %s", WIFI_SSID);
         
         wifi_connect(WIFI_SSID, WIFI_PASSWORD);
-        ESP_LOGI(TAG, "Waiting for IP address (15s timeout)...");
+        ESP_LOGI(TAG, "Waiting for IP (15s)...");
         
         wait_for_ip();
         
@@ -365,53 +344,48 @@ void app_main(void)
             
             if (netif && esp_netif_get_ip_info(netif, &ip) == ESP_OK) {
                 ESP_LOGI(TAG, "✓ WiFi connected!");
-                ESP_LOGI(TAG, "   IP Address: " IPSTR, IP2STR(&ip.ip));
-                ESP_LOGI(TAG, "   Netmask:    " IPSTR, IP2STR(&ip.netmask));
-                ESP_LOGI(TAG, "   Gateway:    " IPSTR "\n", IP2STR(&ip.gw));
+                ESP_LOGI(TAG, "   IP: " IPSTR, IP2STR(&ip.ip));
+                ESP_LOGI(TAG, "   Netmask: " IPSTR, IP2STR(&ip.netmask));
+                ESP_LOGI(TAG, "   Gateway: " IPSTR "\n", IP2STR(&ip.gw));
                 
-                // Get signal strength (RSSI)
                 wifi_ap_record_t ap_info;
                 if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
                     ESP_LOGI(TAG, "   RSSI: %d dBm\n", ap_info.rssi);
                 }
                 
 #if ENABLE_RTC && ENABLE_RTC_NTP_SYNC
-                // RTC NTP Sync Test (requires WiFi connection)
                 rtc_ntp_sync_test();
 #endif
             }
         } else {
-            ESP_LOGW(TAG, "WiFi connection timeout\n");
+            ESP_LOGW(TAG, "WiFi timeout\n");
         }
 #elif ENABLE_WIFI
-        // Simple scan test (default)
+        // Simple scan
         ESP_LOGI(TAG, "\n=== WiFi Scan Test ===");
         if (do_wifi_scan_and_check(NULL)) {
             ESP_LOGI(TAG, "✓ WiFi scan successful\n");
         } else {
-            ESP_LOGW(TAG, "WiFi scan returned no networks\n");
+            ESP_LOGW(TAG, "No networks\n");
         }
 #endif
         
     } else if (ret == ESP_ERR_TIMEOUT) {
-        ESP_LOGE(TAG, "Bootstrap timeout! Check hardware connections.");
-        ESP_LOGE(TAG, "Restarting in 10 seconds...");
+        ESP_LOGE(TAG, "Bootstrap timeout!");
         vTaskDelay(pdMS_TO_TICKS(10000));
         esp_restart();
     } else {
-        ESP_LOGE(TAG, "Bootstrap failed! Error: %s", esp_err_to_name(ret));
-        ESP_LOGE(TAG, "Restarting in 10 seconds...");
+        ESP_LOGE(TAG, "Bootstrap failed: %s", esp_err_to_name(ret));
         vTaskDelay(pdMS_TO_TICKS(10000));
         esp_restart();
     }
 #else
-    ESP_LOGI(TAG, "Bootstrap manager skipped (SD and WiFi disabled)\n");
+    ESP_LOGI(TAG, "Bootstrap skipped\n");
 #endif
 
     // ========== System Ready ==========
-    ESP_LOGI(TAG, "\n");
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "   System Initialization Complete");
+    ESP_LOGI(TAG, "\n========================================");
+    ESP_LOGI(TAG, "   System Ready");
     ESP_LOGI(TAG, "========================================\n");
 
     // ========== Display Tests ==========
@@ -419,21 +393,21 @@ void app_main(void)
     if (panel_handle) {
         ESP_LOGI(TAG, "=== Display Test Sequence ===");
         
-        ESP_LOGI(TAG, "Test 1/4: RED fill");
+        ESP_LOGI(TAG, "Test 1/4: RED");
         test_display_fill_color(0xF800);
         vTaskDelay(pdMS_TO_TICKS(2000));
 
-        ESP_LOGI(TAG, "Test 2/4: GREEN fill");
+        ESP_LOGI(TAG, "Test 2/4: GREEN");
         test_display_fill_color(0x07E0);
         vTaskDelay(pdMS_TO_TICKS(2000));
 
-        ESP_LOGI(TAG, "Test 3/4: BLUE fill");
+        ESP_LOGI(TAG, "Test 3/4: BLUE");
         test_display_fill_color(0x001F);
         vTaskDelay(pdMS_TO_TICKS(2000));
 
         ESP_LOGI(TAG, "Test 4/4: RGB stripes");
         test_display_rgb_pattern();
-        ESP_LOGI(TAG, "Display tests complete\n");
+        ESP_LOGI(TAG, "Tests complete\n");
         
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
@@ -442,7 +416,7 @@ void app_main(void)
     // ========== Touch Test ==========
 #if ENABLE_TOUCH && ENABLE_TOUCH_TEST
     if (touch_handle) {
-        ESP_LOGI(TAG, "=== Touch Test (continuous) ===");
+        ESP_LOGI(TAG, "=== Touch Test ===");
         test_touch_read_loop();
     }
 #endif
