@@ -30,11 +30,11 @@ I (2272) GUITION_MAIN: Card: SU08G, Capacity: 7580 MB
 
 I (4431) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
 I (6841) RPC_WRAP: ESP Event: Station mode: Connected
-I (7885) esp_netif_handlers: sta ip: 192.168.188.88, mask: 255.255.255.0, gw: 192.168.188.1
+I (7885) esp_netif_handlers: sta ip: 10.0.0.100, mask: 255.255.255.0, gw: 10.0.0.1
 I (7885) GUITION_MAIN: ✓ WiFi connected!
-I (7885) GUITION_MAIN:    IP Address: 192.168.188.88
+I (7885) GUITION_MAIN:    IP Address: 10.0.0.100
 I (7890) GUITION_MAIN:    Netmask:    255.255.255.0
-I (7895) GUITION_MAIN:    Gateway:    192.168.188.1
+I (7895) GUITION_MAIN:    Gateway:    10.0.0.1
 I (7902) GUITION_MAIN:    RSSI: -78 dBm
 ```
 
@@ -51,7 +51,7 @@ E (2167) vfs_fat_sdmmc: sdmmc_card_init failed (0x107).
 E (2175) GUITION_MAIN: SD mount failed (0x107)
 
 I (6808) RPC_WRAP: ESP Event: Station mode: Connected
-I (7844) esp_netif_handlers: sta ip: 192.168.188.88
+I (7844) esp_netif_handlers: sta ip: 10.0.0.100
 I (7844) GUITION_MAIN: ✓ WiFi connected!
 ```
 
@@ -332,15 +332,15 @@ I (xxxx) os_wrapper_esp: GPIO [6] configured   // Interrupt pin (with fix)
 I (4430) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
 
 I (6430) GUITION_MAIN: === WiFi Connection Test ===
-I (6430) GUITION_MAIN: Connecting to: FRITZ!Box 7530 WL
+I (6430) GUITION_MAIN: Connecting to: GUITION_BETA_AP
 I (6449) H_API: esp_wifi_remote_connect
 I (6470) GUITION_MAIN: Waiting for IP address (15s timeout)...
 I (6836) RPC_WRAP: ESP Event: Station mode: Connected
-I (7868) esp_netif_handlers: sta ip: 192.168.188.88, mask: 255.255.255.0, gw: 192.168.188.1
+I (7868) esp_netif_handlers: sta ip: 10.0.0.100, mask: 255.255.255.0, gw: 10.0.0.1
 I (7868) GUITION_MAIN: ✓ WiFi connected!
-I (7868) GUITION_MAIN:    IP Address: 192.168.188.88
+I (7868) GUITION_MAIN:    IP Address: 10.0.0.100
 I (7873) GUITION_MAIN:    Netmask:    255.255.255.0
-I (7878) GUITION_MAIN:    Gateway:    192.168.188.1
+I (7878) GUITION_MAIN:    Gateway:    10.0.0.1
 I (7885) GUITION_MAIN:    RSSI: -81 dBm
 ```
 
@@ -745,15 +745,15 @@ I (4151) H_SDIO_DRV: Write thread started
 I (4431) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
 
 I (6431) GUITION_MAIN: === WiFi Connection Test ===
-I (6431) GUITION_MAIN: Connecting to: FRITZ!Box 7530 WL
+I (6431) GUITION_MAIN: Connecting to: GUITION_BETA_AP
 I (6450) H_API: esp_wifi_remote_connect
 I (6471) GUITION_MAIN: Waiting for IP address (15s timeout)...
 I (6841) RPC_WRAP: ESP Event: Station mode: Connected
-I (7885) esp_netif_handlers: sta ip: 192.168.188.88, mask: 255.255.255.0, gw: 192.168.188.1
+I (7885) esp_netif_handlers: sta ip: 10.0.0.100, mask: 255.255.255.0, gw: 10.0.0.1
 I (7885) GUITION_MAIN: ✓ WiFi connected!
-I (7885) GUITION_MAIN:    IP Address: 192.168.188.88
+I (7885) GUITION_MAIN:    IP Address: 10.0.0.100
 I (7890) GUITION_MAIN:    Netmask:    255.255.255.0
-I (7895) GUITION_MAIN:    Gateway:    192.168.188.1
+I (7895) GUITION_MAIN:    Gateway:    10.0.0.1
 I (7902) GUITION_MAIN:    RSSI: -78 dBm
 
 I (7903) GUITION_MAIN: ========================================
@@ -769,7 +769,7 @@ I (7914) GUITION_MAIN: ========================================
 - ✅ Touch GT911: 0x14 (TouchPad ID: 911)
 - ✅ SD Card: SU08G 7580 MB (SDMMC Slot 0)
 - ✅ WiFi: ESP-Hosted via ESP32-C6 (SDMMC Slot 1)
-- ✅ WiFi Connected: IP 192.168.188.88, RSSI -78 dBm
+- ✅ WiFi Connected: IP 10.0.0.100, RSSI -78 dBm
 
 **All peripherals initialized successfully with stable WiFi connection!**
 
