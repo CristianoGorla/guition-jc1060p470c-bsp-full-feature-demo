@@ -49,6 +49,7 @@ void app_main(void)
         .scl_io_num = I2C_MASTER_SCL_IO,
         .sda_io_num = I2C_MASTER_SDA_IO,
         .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true, // Forza pull-up interni se gli esterni falliscono
     };
     i2c_master_bus_handle_t bus_handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &bus_handle));
