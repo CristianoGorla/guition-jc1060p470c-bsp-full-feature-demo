@@ -7,26 +7,26 @@
  */
 
 // ========== SD CARD ==========
-#define ENABLE_SD_CARD 0 // SD card mount/unmount
-#define DEBUG_SD_CARD 0  // Log dettagliati SD card
+#define ENABLE_SD_CARD 1 // SD card mount (ABILITATO per WiFi)
+#define DEBUG_SD_CARD 1  // Log dettagliati SD card
 
 // ========== WIFI/ESP-HOSTED ==========
-#define ENABLE_WIFI 0 // ESP-Hosted WiFi (richiede SD)
-#define DEBUG_WIFI 0  // Log dettagliati WiFi
+#define ENABLE_WIFI 1 // ESP-Hosted WiFi (ABILITATO!)
+#define DEBUG_WIFI 1  // Log dettagliati WiFi
 
 // ========== I2C BUS ==========
 #define ENABLE_I2C 1      // I2C bus initialization
 #define DEBUG_I2C 1       // Log dettagliati I2C
-#define ENABLE_I2C_SCAN 1 // Scan bus I2C (ora con output pulito!)
+#define ENABLE_I2C_SCAN 1 // Scan bus I2C
 
 // ========== DISPLAY ==========
 #define ENABLE_DISPLAY 1      // JD9165 MIPI DSI display
 #define DEBUG_DISPLAY 0       // Log dettagliati display
-#define ENABLE_DISPLAY_TEST 0 // Test pattern RGB (disabilitato per vedere touch)
+#define ENABLE_DISPLAY_TEST 0 // Test pattern RGB
 
 // ========== TOUCH ==========
-#define ENABLE_TOUCH 1      // GT911 touch controller
-#define DEBUG_TOUCH 1       // Log dettagliati touch
+#define ENABLE_TOUCH 0      // GT911 touch (disabilitato per test WiFi)
+#define DEBUG_TOUCH 0       // Log dettagliati touch
 #define ENABLE_TOUCH_TEST 0 // Test touch input
 
 // ========== NVS ==========
