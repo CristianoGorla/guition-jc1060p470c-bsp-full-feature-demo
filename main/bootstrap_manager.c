@@ -1,8 +1,10 @@
 /*
- * Bootstrap Manager Implementation - Sequential Init
+ * Bootstrap Manager Implementation - v1.0.0-beta Sequence Restored
  * 
- * v1.0.0-beta proven sequence (no FreeRTOS tasks):
- * Phase A → Phase B → Phase C (blocking, deterministic)
+ * Working sequence from v1.0.0-beta:
+ * Phase A (Power) → Phase C (WiFi) → Phase B (SD)
+ * 
+ * Key: init_wifi() initializes SDMMC controller, then SD uses dummy init.
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -19,6 +21,7 @@
 
 // External functions
 extern esp_err_t sd_card_mount_safe(sdmmc_card_t **card);
+extern void init_wifi(void);  // From esp_hosted_wifi.c
 
 static const char *TAG = "BOOTSTRAP";
 
@@ -73,20 +76,48 @@ static esp_err_t bootstrap_power_sequence(void)
     ESP_LOGI(TAG, "[Phase A]   GPIO%d (SD_POWER_EN) → HIGH (SD powered)", GPIO_SD_POWER_EN);
     vTaskDelay(pdMS_TO_TICKS(50));
     
-    // C6 stays in reset until Phase C (WiFi needs it)
+    // Release C6 from reset (boots immediately)
+    gpio_set_level(GPIO_C6_CHIP_PU, 1);
+    ESP_LOGI(TAG, "[Phase A]   GPIO%d (C6_CHIP_PU) → HIGH (C6 released)", GPIO_C6_CHIP_PU);
+    vTaskDelay(pdMS_TO_TICKS(50));
     
     ESP_LOGI(TAG, "[Phase A] ✓ POWER_READY");
     return ESP_OK;
 }
 
 /**
- * Phase B: SD Card Mount (blocking)
+ * Phase C: WiFi Hosted Init
+ * 
+ * CRITICAL: This must run BEFORE SD mount!
+ * init_wifi() initializes the SDMMC controller for ESP-Hosted transport.
+ */
+static esp_err_t bootstrap_wifi_sequence(void)
+{
+    ESP_LOGI(TAG, "[Phase C] Starting WiFi transport...");
+    ESP_LOGI(TAG, "[Phase C] init_wifi() will initialize SDMMC controller");
+    
+    init_wifi();  // This initializes SDMMC controller for ESP-Hosted!
+    
+    // Wait for C6 firmware boot and SDMMC initialization
+    ESP_LOGI(TAG, "[Phase C] Waiting 2s for C6 firmware + SDMMC init...");
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    
+    ESP_LOGI(TAG, "[Phase C] ✓ WIFI_READY (SDMMC controller initialized)");
+    return ESP_OK;
+}
+
+/**
+ * Phase B: SD Card Mount
+ * 
+ * MUST run AFTER Phase C (WiFi)!
+ * SD uses dummy init because SDMMC controller is already initialized.
  */
 static esp_err_t bootstrap_sd_sequence(sdmmc_card_t **sd_card)
 {
     ESP_LOGI(TAG, "[Phase B] Starting SD card mount...");
+    ESP_LOGI(TAG, "[Phase B] Using dummy init (controller active from WiFi)");
     
-    // Mount SD card (controller not yet initialized by WiFi)
+    // Mount SD card (controller already initialized by init_wifi)
     esp_err_t ret = sd_card_mount_safe(sd_card);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "[Phase B] SD mount failed: %s", esp_err_to_name(ret));
@@ -94,58 +125,6 @@ static esp_err_t bootstrap_sd_sequence(sdmmc_card_t **sd_card)
     }
     
     ESP_LOGI(TAG, "[Phase B] ✓ SD_READY");
-    return ESP_OK;
-}
-
-/**
- * Phase C: WiFi Hosted Init (blocking)
- */
-static esp_err_t bootstrap_wifi_sequence(void)
-{
-    ESP_LOGI(TAG, "[Phase C] Starting WiFi Hosted init...");
-    
-    // Release C6 from reset
-    if (GPIO_C6_IO9_STRAPPING >= 0) {
-        if (gpio_get_level(GPIO_C6_IO9_STRAPPING) != 1) {
-            ESP_LOGE(TAG, "[Phase C] CRITICAL: C6_IO9 not high!");
-            return ESP_FAIL;
-        }
-    }
-    
-    gpio_set_level(GPIO_C6_CHIP_PU, 1);
-    ESP_LOGI(TAG, "[Phase C]   GPIO%d (C6_CHIP_PU) → HIGH (C6 released)", GPIO_C6_CHIP_PU);
-    
-    // Configure GPIO6 for handshake
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << GPIO_C6_IO2_HANDSHAKE),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&io_conf);
-    
-    // Wait for C6 firmware boot
-    ESP_LOGI(TAG, "[Phase C] Waiting for C6 firmware ready (GPIO%d)...", GPIO_C6_IO2_HANDSHAKE);
-    int timeout_count = 0;
-    while (timeout_count < (BOOTSTRAP_C6_BOOT_TIMEOUT_MS / 100)) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-        timeout_count++;
-    }
-    
-    if (timeout_count >= (BOOTSTRAP_C6_BOOT_TIMEOUT_MS / 100)) {
-        ESP_LOGW(TAG, "[Phase C] C6 handshake timeout (proceeding anyway)");
-    }
-    
-    // Request WiFi mode from arbiter
-    ESP_LOGI(TAG, "[Phase C] Requesting WiFi mode from arbiter...");
-    esp_err_t ret = sdmmc_arbiter_request_wifi(10000);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "[Phase C] WiFi mode request failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    ESP_LOGI(TAG, "[Phase C] ✓ HOSTED_READY");
     return ESP_OK;
 }
 
@@ -182,6 +161,7 @@ bool bootstrap_is_warm_boot(void)
  */
 void bootstrap_hard_reset(void)
 {
+    ESP_LOGW(TAG, "Warm boot detected, performing hard reset...");
     ESP_LOGW(TAG, "=== HARD RESET CYCLE ===");
     ESP_LOGW(TAG, "Forcing complete power-down...");
     
@@ -209,7 +189,9 @@ void bootstrap_hard_reset(void)
 }
 
 /**
- * Initialize bootstrap manager (SEQUENTIAL - no tasks)
+ * Initialize bootstrap manager
+ * 
+ * Sequence: Power → WiFi → SD (v1.0.0-beta proven order)
  */
 esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
 {
@@ -218,8 +200,8 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
     }
     
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Bootstrap Manager v1.1.0-sequential");
-    ESP_LOGI(TAG, "  Sequential Init: Power → SD → WiFi");
+    ESP_LOGI(TAG, "  Bootstrap Manager v1.1.0-restored");
+    ESP_LOGI(TAG, "  v1.0.0-beta Sequence: Power → WiFi → SD");
     ESP_LOGI(TAG, "========================================");
     
     manager->boot_timestamp_ms = esp_timer_get_time() / 1000;
@@ -235,28 +217,27 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
     // Detect warm boot
     manager->warm_boot_detected = bootstrap_is_warm_boot();
     if (manager->warm_boot_detected) {
-        ESP_LOGW(TAG, "Warm boot detected, performing hard reset...");
         bootstrap_hard_reset();
     }
     
-    // Phase A: Power sequencing
+    // Phase A: Power sequencing (C6 released immediately)
     ret = bootstrap_power_sequence();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Phase A failed: %s", esp_err_to_name(ret));
         return ret;
     }
     
-    // Phase B: SD mount
-    ret = bootstrap_sd_sequence(&manager->sd_card);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Phase B failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    
-    // Phase C: WiFi init
+    // Phase C: WiFi init (initializes SDMMC controller)
     ret = bootstrap_wifi_sequence();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Phase C failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Phase B: SD mount (uses dummy init)
+    ret = bootstrap_sd_sequence(&manager->sd_card);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Phase B failed: %s", esp_err_to_name(ret));
         return ret;
     }
     
@@ -264,8 +245,8 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  Bootstrap COMPLETE (%u ms)", elapsed_ms);
     ESP_LOGI(TAG, "  Phase A: Power ✓");
-    ESP_LOGI(TAG, "  Phase B: SD card ✓");
-    ESP_LOGI(TAG, "  Phase C: WiFi ✓");
+    ESP_LOGI(TAG, "  Phase C: WiFi ✓ (SDMMC initialized)");
+    ESP_LOGI(TAG, "  Phase B: SD card ✓ (dummy init)");
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
