@@ -15,9 +15,14 @@
 #define DEBUG_WIFI 1  // Log dettagliati WiFi
 
 // ========== I2C BUS ==========
-#define ENABLE_I2C 1      // I2C bus initialization (TEST CON SD+WIFI)
+#define ENABLE_I2C 1      // I2C bus initialization (FUNZIONA!)
 #define DEBUG_I2C 1       // Log dettagliati I2C
-#define ENABLE_I2C_SCAN 1 // Scan bus I2C (SENZA HALT)
+#define ENABLE_I2C_SCAN 1 // Scan bus I2C
+
+// ========== RTC ==========
+#define ENABLE_RTC 1      // RX8025T RTC (test)
+#define DEBUG_RTC 1       // Log dettagliati RTC
+#define ENABLE_RTC_TEST 1 // Test lettura/scrittura RTC
 
 // ========== DISPLAY ==========
 #define ENABLE_DISPLAY 0      // JD9165 MIPI DSI display (disabilitato per ora)
@@ -58,6 +63,15 @@
 #define LOG_I2C(tag, format, ...) ESP_LOGI(tag, format, ##__VA_ARGS__)
 #else
 #define LOG_I2C(tag, format, ...) \
+    do                            \
+    {                             \
+    } while (0)
+#endif
+
+#if DEBUG_RTC
+#define LOG_RTC(tag, format, ...) ESP_LOGI(tag, format, ##__VA_ARGS__)
+#else
+#define LOG_RTC(tag, format, ...) \
     do                            \
     {                             \
     } while (0)
