@@ -31,12 +31,15 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "   I2C BUS SCANNER");
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "Scanning I2C bus (0x00 - 0x7F)...");
+    ESP_LOGI(TAG, "Scanning I2C bus (0x08 - 0x77)...");
+    ESP_LOGI(TAG, "Note: 0x00-0x07 and 0x78-0x7F are reserved");
     ESP_LOGI(TAG, "");
 
     int devices_found = 0;
 
-    for (uint8_t addr = 0x00; addr <= 0x7F; addr++) {
+    // Scansiona solo indirizzi validi (0x08-0x77)
+    // Evita 0x00-0x07 (reserved) e 0x78-0x7F (reserved/10-bit addressing)
+    for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
         // Crea device temporaneo per testare
         i2c_device_config_t dev_cfg = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -48,11 +51,11 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
         esp_err_t ret = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
         
         if (ret == ESP_OK) {
-            // Prova a fare una lettura dummy
+            // Prova a fare una lettura dummy con timeout MOLTO breve
             uint8_t dummy_data;
-            ret = i2c_master_receive(dev_handle, &dummy_data, 1, 100);
+            ret = i2c_master_receive(dev_handle, &dummy_data, 1, 50); // 50ms timeout
             
-            // Rimuovi device temporaneo
+            // Rimuovi device temporaneo SUBITO
             i2c_master_bus_rm_device(dev_handle);
             
             if (ret == ESP_OK || ret == ESP_ERR_TIMEOUT) {
@@ -69,18 +72,27 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
                 }
                 
                 ESP_LOGI(TAG, "[0x%02X] FOUND: %s", addr, device_name);
+            } else if (ret != ESP_ERR_NOT_FOUND) {
+                // Errore diverso da "device not found" - possibile problema bus
+                ESP_LOGW(TAG, "[0x%02X] Error 0x%x (skipping remaining addresses)", addr, ret);
+                break; // Ferma scan se il bus ha problemi
             }
         }
         
-        // Piccolo delay per non sovraccaricare il bus
-        if (addr % 16 == 0) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
+        // Delay più lungo per dare tempo al bus di recuperare
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "Scan complete: %d device(s) found", devices_found);
     ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "");
+    
+    // Riepilogo devices trovati
+    ESP_LOGI(TAG, "Devices summary:");
+    ESP_LOGI(TAG, "  0x14 = GT911 Touch (alternate address, INT=HIGH during reset)");
+    ESP_LOGI(TAG, "  0x5D = GT911 Touch (default address, INT=LOW during reset)");
+    ESP_LOGI(TAG, "  0x18 = ES8311 Audio Codec");
     ESP_LOGI(TAG, "");
 }
