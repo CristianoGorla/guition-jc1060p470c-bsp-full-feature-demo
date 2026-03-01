@@ -24,6 +24,113 @@ This example does the following steps:
 
 This example supports SD (SDSC, SDHC, SDXC) cards and eMMC chips.
 
+---
+
+## 📊 System Status Overview
+
+### ✅ Hardware Components (All Working)
+
+| Component | Status | I2C Address | GPIO Pins | Feature Flag | Debug Flag |
+|-----------|--------|-------------|-----------|--------------|------------|
+| **I2C Bus** | ✅ Active | - | SDA=7, SCL=8 | `ENABLE_I2C=1` | `DEBUG_I2C=1` |
+| **ES8311 Audio** | ✅ Active | 0x18 | PA_CTRL=11 | `ENABLE_AUDIO=1` | `DEBUG_AUDIO=1` |
+| **RX8025T RTC** | ✅ Active | 0x32 | - | `ENABLE_RTC=1` | `DEBUG_RTC=1` |
+| **JD9165 Display** | ✅ Active | - | MIPI DSI (45-52) | `ENABLE_DISPLAY=1` | `DEBUG_DISPLAY=1` |
+| **GT911 Touch** | ✅ Active | 0x14 | RST=21, INT=22 | `ENABLE_TOUCH=1` | `DEBUG_TOUCH=1` |
+| **SD Card** | ✅ Active | - | Slot 0 (39-44), PWR=45 | `ENABLE_SD_CARD=1` | `DEBUG_SD_CARD=1` |
+| **WiFi ESP-Hosted** | ✅ Active | - | Slot 1 (14-19), RST=54 | `ENABLE_WIFI=1` | `DEBUG_WIFI=1` |
+| **NVS Flash** | ✅ Active | - | - | `ENABLE_NVS=1` | `DEBUG_NVS=0` |
+
+### 🧪 Advanced Features and Tests
+
+| Feature | Status | Flag | Requirements | Description |
+|---------|--------|------|--------------|-------------|
+| **WiFi Connection Test** | ✅ Available | `ENABLE_WIFI_CONNECT=1` | `wifi_config.h` | Connect to WiFi and display IP/RSSI |
+| **RTC Read/Write Test** | ✅ Active | `ENABLE_RTC_TEST=1` | - | Display current RTC time |
+| **RTC NTP Sync** | ⚙️ Available | `ENABLE_RTC_NTP_SYNC=0` | WiFi connected | Sync RTC with NTP server |
+| **RTC Hardware Test** | ⚙️ Available | `ENABLE_RTC_HW_TEST=0` | - | Advanced RTC diagnostics |
+| **Display RGB Test** | ⚙️ Available | `ENABLE_DISPLAY_TEST=0` | - | RGB test pattern |
+| **Touch Input Test** | ⚙️ Available | `ENABLE_TOUCH_TEST=0` | - | Continuous touch reading |
+| **I2C Bus Scan** | ❌ Disabled | `ENABLE_I2C_SCAN=0` | - | **DO NOT ENABLE** (interferes with devices) |
+
+### 📋 Expected Boot Log Output
+
+| Initialization Stage | Tag | Expected Output | Time |
+|---------------------|-----|-----------------|------|
+| **Boot Info** | `app_init` | App version, compile time, ESP-IDF | ~1.0s |
+| **I2C Bus** | `GUITION_MAIN` | ✓ I2C bus ready (SDA=GPIO7, SCL=GPIO8) | ~1.1s |
+| **ES8311 Audio** | `ES8311` | ✓ ES8311 initialized (Chip ID: 0x83) | ~1.3s |
+| **RTC** | `RX8025T` | ✓ RTC initialized, Current time | ~1.4s |
+| **Display** | `JD9165` | Display initialized (1024x600) | ~1.7s |
+| **Touch** | `GT911` | ✓ GT911 initialized (1024x600) | ~1.7s |
+| **SD Card** | `GUITION_MAIN` | ✓ SD card mounted, Capacity | ~2.3s |
+| **WiFi Init** | `wifi_hosted` | ✓ WiFi initialized (ESP-Hosted) | ~4.4s |
+| **WiFi Connect** | `GUITION_MAIN` | ✓ WiFi connected! IP, RSSI | ~7.9s |
+
+### ⚙️ Build Configuration
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| **ESP-IDF** | v5.5.3-dirty | Framework version |
+| **Target** | ESP32-P4 | Main chip |
+| **CPU Frequency** | 360 MHz | Clock speed |
+| **PSRAM** | 32 MB @ 200MHz | External RAM |
+| **Flash** | 16 MB @ 40MHz QIO | SPI flash |
+| **I2C Frequency** | 400 kHz | I2C bus speed |
+| **SDMMC Slot 0** | 4-bit @ 20MHz | SD card |
+| **SDMMC Slot 1** | 4-bit @ 40MHz | ESP-Hosted WiFi |
+
+### 🔄 Reset Behavior Comparison
+
+| Reset Method | Reliability | SD Card | WiFi | Recommended For |
+|--------------|-------------|---------|------|----------------|
+| **IDF Terminal Restart** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ **Development** |
+| **`idf.py monitor`** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ **Development** |
+| **Power Cycle (5s)** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ **Production** |
+| **Hardware Button** | ⭐⭐ | ⚠️ May fail | ✅ OK | ❌ Inconsistent |
+| **USB Disconnect** | ⭐ | ❌ Fails | ⚠️ May fail | ❌ Unreliable |
+
+**See [troubleshooting.md](troubleshooting.md) for detailed analysis of reset behavior and SD card `0x107` errors.**
+
+### 📁 Configuration Files
+
+| File | Purpose | Git Tracked | Notes |
+|------|---------|-------------|-------|
+| `main/feature_flags.h` | Enable/disable peripherals | ✅ Yes | Edit to configure features |
+| `main/wifi_config.h` | WiFi credentials | ❌ No (.gitignore) | Copy from `.example` |
+| `sdkconfig.defaults` | Build defaults | ✅ Yes | ESP-IDF configuration |
+| `CMakeLists.txt` | Build system | ✅ Yes | **Single `lwip` reference** |
+
+### ⚠️ Important Notes
+
+1. **I2C Scan Must Be Disabled**
+   - `ENABLE_I2C_SCAN=0` is required
+   - I2C scanning interferes with GT911 touch controller reset sequence
+   - Causes "clear bus failed" errors
+
+2. **WiFi Connection Requires Credentials**
+   - Create `main/wifi_config.h` from `wifi_config.h.example`
+   - File is gitignored for security
+   - Router must broadcast 2.4GHz (ESP32-C6 doesn't support 5GHz)
+
+3. **RTC NTP Sync Requires WiFi**
+   - Enable `ENABLE_WIFI_CONNECT=1` first
+   - Verify WiFi connection succeeds
+   - Then enable `ENABLE_RTC_NTP_SYNC=1`
+
+4. **Single lwIP Reference Required**
+   - CMakeLists.txt must have only ONE `lwip` in REQUIRES
+   - Duplicate causes WiFi instability and SD card errors
+   - Fixed in commit `bb2168c` (2026-03-01)
+
+5. **Reset Reliability**
+   - Use **IDF monitor** (`Ctrl+T, Ctrl+R`) for development
+   - Hardware button reset may cause SD card `0x107` errors
+   - This is **normal behavior** for embedded systems
+   - See [troubleshooting.md](troubleshooting.md) for complete explanation
+
+---
+
 ## Hardware
 
 This example requires an ESP32-P4 development board with an SD card slot and an SD card. On this board, the SD card slot is assigned to SDMMC Slot 0, while the on-board ESP32-C6 is connected to the ESP32-P4 on SDMMC Slot 1.
@@ -211,6 +318,27 @@ idf.py -p PORT flash monitor
 
 See the Getting Started Guide for full steps to configure and use ESP-IDF to build projects.
 
+### Recommended Development Workflow
+
+For most reliable development experience:
+
+1. **Flash and monitor:**
+   ```bash
+   idf.py flash monitor
+   ```
+
+2. **Reset using IDF monitor:**
+   - Press `Ctrl+T` then `Ctrl+R` to restart
+   - This provides clean initialization of all peripherals
+   - **Recommended over hardware button reset**
+
+3. **If using hardware button:**
+   - SD card may fail with `0x107` error (this is normal)
+   - Disconnect power for 5+ seconds
+   - Reconnect and use IDF monitor
+
+**See [troubleshooting.md](troubleshooting.md#system-reset-behavior-and-initialization-reliability) for complete reset behavior documentation.**
+
 ## Example output
 
 A Wi-Fi Scan is performed before and after accessing the SD Card. This shows that both SDMMC Slots work as expected.
@@ -292,6 +420,13 @@ Done
 
 Check connections between the card and the ESP32. For example, if you have disconnected GPIO2 to work around the flashing issue, connect it back and reset the ESP32 (using a button on the development board, or by pressing Ctrl-T Ctrl-R in IDF Monitor).
 
+**Common Causes:**
+- Hardware button reset (use IDF monitor restart instead)
+- USB disconnect/reconnect (power cycle for 5+ seconds)
+- Inconsistent hardware state after soft reset
+
+**See [troubleshooting.md](troubleshooting.md#system-reset-behavior-and-initialization-reliability) for complete analysis and solutions.**
+
 ### Card fails to initialize with `sdmmc_check_scr: send_scr returned 0xffffffff` error
 
 Connections between the card and the ESP32 are too long for the frequency used. Try using shorter connections, or try reducing the clock speed of SD interface.
@@ -320,3 +455,32 @@ If NTP synchronization fails:
 3. Firewall may block NTP (UDP port 123)
 4. Try alternative NTP server (edit `rtc_ntp_sync.c`)
 5. Increase timeout in `sync_time_from_ntp()` call
+
+### GT911 Touch Controller "clear bus failed" error
+
+If you see I2C errors during GT911 initialization:
+```
+E (6224) i2c.master: clear bus failed.
+E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
+```
+
+**Solution:** Disable I2C bus scan in `main/feature_flags.h`:
+```c
+#define ENABLE_I2C_SCAN 0  // Must be disabled
+```
+
+I2C scanning interferes with GT911's hardware reset sequence.
+
+**See [troubleshooting.md](troubleshooting.md#gt911-touch-controller-initialization-issues) for detailed explanation.**
+
+### For Detailed Diagnostics
+
+For comprehensive troubleshooting information, including:
+- Reset behavior analysis and comparison
+- SD card `0x107` error root causes
+- I2C device initialization best practices
+- WiFi/ESP-Hosted debugging
+- Complete system boot logs
+- Hardware diagnostic procedures
+
+**See [troubleshooting.md](troubleshooting.md) for the complete troubleshooting guide.**
