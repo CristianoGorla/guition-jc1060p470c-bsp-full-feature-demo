@@ -32,12 +32,12 @@
 // ========== DISPLAY ==========
 #define ENABLE_DISPLAY 1      // JD9165 MIPI DSI display (1024x600)
 #define DEBUG_DISPLAY 1       // Detailed display logs
-#define ENABLE_DISPLAY_TEST 1 // RGB test pattern
+#define ENABLE_DISPLAY_TEST 0 // RGB test pattern (DISABLED - focus on touch)
 
 // ========== TOUCH ==========
 #define ENABLE_TOUCH 1      // GT911 capacitive touch
 #define DEBUG_TOUCH 1       // Detailed touch logs
-#define ENABLE_TOUCH_TEST 0 // Touch input test (DISABLED - only probe addresses)
+#define ENABLE_TOUCH_TEST 0 // Touch input test (DISABLED - only init)
 
 // ========== NVS ==========
 #define ENABLE_NVS 1 // NVS Flash (required for some peripherals)
