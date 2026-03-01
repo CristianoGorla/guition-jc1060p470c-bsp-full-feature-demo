@@ -13,6 +13,7 @@
 #include "display_jd9165.h"
 #include "wifi_config.h"
 #include "touch_gt911.h"
+#include "driver/i2c_types.h"
 
 static i2c_master_bus_handle_t i2c_bus_handle;
 
@@ -38,7 +39,14 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(1000));
 
     // I2C su 7/8 (Audio/Touch/RTC) [4]
-    i2c_master_bus_config_t i2c_cfg = {.i2c_port = -1, .scl_io_num = 8, .sda_io_num = 7, .glitch_ignore_cnt = 7};
+    i2c_master_bus_config_t i2c_cfg = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_NUM_0,
+        .scl_io_num = 8,
+        .sda_io_num = 7,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c_bus_handle));
 
     // Video e Touch
