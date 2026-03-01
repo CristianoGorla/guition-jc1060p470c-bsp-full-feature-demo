@@ -23,6 +23,7 @@
 #include "driver/i2c_master.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch.h"
+#include "build_info.h"
 
 // Network includes
 #include "esp_netif.h"
@@ -169,6 +170,8 @@ void app_main(void)
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "   Guition JC1060P470C Initialization");
     ESP_LOGI(TAG, "   v1.1.0-restored (Three-Phase)");
+    ESP_LOGI(TAG, "   Build: %s", BUILD_GIT_COMMIT);
+    ESP_LOGI(TAG, "   Date: %s", BUILD_TIMESTAMP);
     ESP_LOGI(TAG, "========================================\n");
 
     // ========== 1. NVS ==========
