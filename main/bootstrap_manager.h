@@ -44,7 +44,7 @@ extern "C" {
  */
 #define BOOTSTRAP_POWER_STABILIZATION_MS    100   // VDD rail stabilization
 #define BOOTSTRAP_C6_BOOT_TIMEOUT_MS        5000  // Max time for C6 firmware load
-#define BOOTSTRAP_WIFI_LINK_STABILIZATION_MS 2000 // ESP-Hosted SDIO link establishment
+#define BOOTSTRAP_WIFI_LINK_STABILIZATION_MS 5000 // ESP-Hosted SDIO link establishment (increased from 2s)
 #define BOOTSTRAP_SD_MOUNT_TIMEOUT_MS       3000  // Max time for SD mount
 #define BOOTSTRAP_HARD_RESET_DELAY_MS       500   // Capacitor discharge time
 
