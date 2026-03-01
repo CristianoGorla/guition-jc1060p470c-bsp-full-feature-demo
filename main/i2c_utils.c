@@ -135,12 +135,13 @@ bool i2c_check_bus_health(i2c_master_bus_handle_t bus_handle)
     esp_log_level_set("i2c.master", ESP_LOG_NONE);
 
     // Test addresses for known devices on this board
-    const uint8_t test_addrs[] = {0x14, 0x18, 0x32};  // GT911, ES8311, RTC
-    const char *test_names[] = {"GT911", "ES8311", "RX8025T"};
+    const uint8_t test_addrs[] = {0x14, 0x5D, 0x18, 0x32};  // GT911 both addresses, ES8311, RTC
+    const char *test_names[] = {"GT911 (0x14)", "GT911 (0x5D)", "ES8311", "RX8025T"};
     const int num_tests = sizeof(test_addrs) / sizeof(test_addrs[0]);
     
     int successful_probes = 0;
     int failed_probes = 0;
+    bool gt911_both_respond = false;
     
     for (int i = 0; i < num_tests; i++) {
         esp_err_t ret = i2c_master_probe(bus_handle, test_addrs[i], 500);
@@ -148,6 +149,15 @@ bool i2c_check_bus_health(i2c_master_bus_handle_t bus_handle)
         if (ret == ESP_OK) {
             ESP_LOGI(TAG, "  [0x%02X] %s: ✓ RESPONDS", test_addrs[i], test_names[i]);
             successful_probes++;
+            
+            // Track if both GT911 addresses respond (means not initialized)
+            if (i < 2) {  // First two are GT911 addresses
+                static bool gt911_first = false;
+                if (gt911_first) {
+                    gt911_both_respond = true;
+                }
+                gt911_first = true;
+            }
         } else {
             ESP_LOGW(TAG, "  [0x%02X] %s: ✗ NO RESPONSE (0x%x)", 
                      test_addrs[i], test_names[i], ret);
@@ -164,16 +174,22 @@ bool i2c_check_bus_health(i2c_master_bus_handle_t bus_handle)
     ESP_LOGI(TAG, "  Successful probes: %d/%d", successful_probes, num_tests);
     ESP_LOGI(TAG, "  Failed probes: %d/%d", failed_probes, num_tests);
     
+    if (gt911_both_respond) {
+        ESP_LOGW(TAG, "  ⚠ GT911 responds to BOTH 0x14 and 0x5D");
+        ESP_LOGW(TAG, "  This indicates GT911 is NOT initialized (good for I2C test)");
+    }
+    
     bool is_healthy = (successful_probes > 0);  // At least one device must respond
     
     if (is_healthy) {
-        ESP_LOGI(TAG, "\n✓ I2C bus appears HEALTHY");
+        ESP_LOGI(TAG, "\n✓ I2C bus appears HEALTHY (%d devices responding)", successful_probes);
     } else {
         ESP_LOGE(TAG, "\n✗ I2C bus appears DEAD (no devices responding)");
         ESP_LOGE(TAG, "  Possible causes:");
         ESP_LOGE(TAG, "    1. Bus electrically shorted or stuck");
         ESP_LOGE(TAG, "    2. GPIO conflict with other peripheral");
         ESP_LOGE(TAG, "    3. Clock/power domain issue");
+        ESP_LOGE(TAG, "    4. SDA stuck LOW (check with GPIO probe)");
     }
     
     ESP_LOGI(TAG, "==========================================\n");
