@@ -15,15 +15,9 @@
 
 static const char *TAG = "GUITION_MAIN";
 
-#define I2C_MASTER_SDA_IO    7
-#define I2C_MASTER_SCL_IO    8
-#define SD_CARD_POWER_GPIO   GPIO_NUM_36  // MOSFET Q1 controlla TF_VCC
-
-// Dummy functions per workaround ESP-Hosted + SD Card Slot 0
-#if CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-static esp_err_t sdmmc_host_init_dummy(void) { return ESP_OK; }
-static esp_err_t sdmmc_host_deinit_dummy(void) { return ESP_OK; }
-#endif
+#define I2C_MASTER_SDA_IO 7
+#define I2C_MASTER_SCL_IO 8
+#define SD_CARD_POWER_GPIO GPIO_NUM_36 // MOSFET Q1 controlla TF_VCC
 
 static void sd_card_power_on(void)
 {
@@ -38,9 +32,9 @@ static void sd_card_power_on(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);
-    
-    gpio_set_level(SD_CARD_POWER_GPIO, 0);  // LOW = Power ON
-    vTaskDelay(pdMS_TO_TICKS(100));  // Stabilizzazione alimentazione
+
+    gpio_set_level(SD_CARD_POWER_GPIO, 0); // LOW = Power ON
+    vTaskDelay(pdMS_TO_TICKS(100));        // Stabilizzazione alimentazione
     ESP_LOGI(TAG, "SD Card power enabled via GPIO36");
 }
 
@@ -83,7 +77,7 @@ void app_main(void)
 
     // 5. Attiva alimentazione SD Card
     sd_card_power_on();
-    vTaskDelay(pdMS_TO_TICKS(50));  // Attesa stabilizzazione card
+    vTaskDelay(pdMS_TO_TICKS(50)); // Attesa stabilizzazione card
 
     // 6. Montaggio SD Card (Slot 0)
     ESP_LOGI(TAG, "Initializing SD card (Slot 0)...");
@@ -91,18 +85,10 @@ void app_main(void)
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = 5,
-        .allocation_unit_size = 16 * 1024
-    };
-    
+        .allocation_unit_size = 16 * 1024};
+
     sdmmc_card_t *card;
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-
-    // WORKAROUND per IDF 5.5.3: ESP-Hosted (Slot 1) è già attivo, non resettare host
-#if CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
-    host.init = &sdmmc_host_init_dummy;
-    host.deinit = &sdmmc_host_deinit_dummy;
-    ESP_LOGI(TAG, "Using dummy SDMMC host init/deinit for ESP-Hosted workaround");
-#endif
 
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
     slot_config.width = 4; // 4-line mode
@@ -118,7 +104,7 @@ void app_main(void)
     {
         ESP_LOGI(TAG, "SD card mounted successfully");
         ESP_LOGI(TAG, "Card name: %s", card->cid.name);
-        ESP_LOGI(TAG, "Capacity: %llu MB", 
+        ESP_LOGI(TAG, "Capacity: %llu MB",
                  ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
     }
 
