@@ -5,7 +5,21 @@
 
 static const char *TAG = "I2C_SCAN";
 
-// Known I2C device addresses
+// Known I2C device addresses to scan
+// ESP32-P4 ha problemi con full scan, scansiona solo range sicuri
+static const uint8_t scan_addresses[] = {
+    // Touch controllers
+    0x14, 0x5D, 0x38,
+    // Audio
+    0x18,
+    // RTC range
+    0x32, 0x51, 0x68,
+    // Sensors
+    0x48, 0x6F, 0x76, 0x77,
+    // Display
+    0x3C,
+};
+
 static const struct {
     uint8_t addr;
     const char *name;
@@ -15,7 +29,7 @@ static const struct {
     {0x38, "FT5x06 Touch"},
     {0x18, "ES8311 Audio Codec"},
     {0x32, "RX8025T RTC"},
-    {0x48, "ADS1015 ADC / PCF8574 I/O"},
+    {0x48, "ADS1015 ADC / PCF8574"},
     {0x51, "PCF8563 RTC / EEPROM"},
     {0x68, "MPU6050 / DS1307 RTC"},
     {0x6F, "BQ27220 Fuel Gauge"},
@@ -32,16 +46,17 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
     }
 
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "   I2C BUS SCANNER (Full Scan)");
+    ESP_LOGI(TAG, "   I2C BUS SCANNER");
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "Scanning I2C bus 0x08-0x77...");
+    ESP_LOGI(TAG, "Scanning known I2C addresses...");
+    ESP_LOGI(TAG, "Note: ESP32-P4 I2C has issues with full scan");
     ESP_LOGI(TAG, "");
 
     int devices_found = 0;
-    int errors_found = 0;
+    int num_addresses = sizeof(scan_addresses) / sizeof(scan_addresses[0]);
 
-    // Scansiona tutti gli indirizzi validi (0x08-0x77)
-    for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+    for (int idx = 0; idx < num_addresses; idx++) {
+        uint8_t addr = scan_addresses[idx];
         
         i2c_device_config_t dev_cfg = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -54,16 +69,15 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
         
         if (ret == ESP_OK) {
             uint8_t dummy_data;
-            ret = i2c_master_receive(dev_handle, &dummy_data, 1, 50);
+            ret = i2c_master_receive(dev_handle, &dummy_data, 1, 100);
             
             i2c_master_bus_rm_device(dev_handle);
             
             if (ret == ESP_OK || ret == ESP_ERR_TIMEOUT) {
-                // Device found!
                 devices_found++;
                 
-                // Cerca nome conosciuto
-                const char *device_name = NULL;
+                // Cerca nome
+                const char *device_name = "Unknown device";
                 for (int i = 0; i < sizeof(known_devices) / sizeof(known_devices[0]); i++) {
                     if (known_devices[i].addr == addr) {
                         device_name = known_devices[i].name;
@@ -71,35 +85,22 @@ void i2c_scan_bus(i2c_master_bus_handle_t bus_handle)
                     }
                 }
                 
-                if (device_name) {
-                    // Verde per dispositivi noti
-                    printf("\033[32m[0x%02X] ✓ %s\033[0m\n", addr, device_name);
-                } else {
-                    // Verde per dispositivi sconosciuti
-                    printf("\033[32m[0x%02X] ✓ Unknown device\033[0m\n", addr);
-                }
-                
-            } else if (ret == ESP_ERR_INVALID_STATE) {
-                // Errore INVALID_STATE (silenzioso - troppo rumore)
-                errors_found++;
-                
-            } else if (ret != ESP_ERR_NOT_FOUND) {
-                // Altri errori (rari)
-                errors_found++;
-                printf("\033[33m[0x%02X] ⚠ Error: 0x%x\033[0m\n", addr, ret);
+                printf("\033[32m[0x%02X] ✓ %s\033[0m\n", addr, device_name);
             }
-            // ESP_ERR_NOT_FOUND = nessun device (silenzioso)
         }
         
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(50)); // Delay più lungo per sicurezza
     }
 
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "========================================");
-    printf("\033[32mDevices found: %d\033[0m\n", devices_found);
-    if (errors_found > 0) {
-        printf("\033[33mErrors: %d (INVALID_STATE - bus recovery issues)\033[0m\n", errors_found);
-    }
+    printf("\033[32mDevices found: %d / %d addresses scanned\033[0m\n", devices_found, num_addresses);
     ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "");
+    
+    ESP_LOGI(TAG, "Board devices:");
+    ESP_LOGI(TAG, "  0x14 = GT911 Touch (this board config)");
+    ESP_LOGI(TAG, "  0x18 = ES8311 Audio Codec");
+    ESP_LOGI(TAG, "  0x32 = RX8025T RTC");
     ESP_LOGI(TAG, "");
 }
