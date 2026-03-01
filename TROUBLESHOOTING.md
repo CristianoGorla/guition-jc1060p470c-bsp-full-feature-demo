@@ -446,12 +446,15 @@ GPIO54 - ESP32-C6 reset
 **Build:** `9f39778` (lwip duplicate fixed)
 
 ```
-I (1120) GUITION_MAIN: ========================================
-I (1126) GUITION_MAIN:    Guition JC1060P470C Initialization
-I (1132) GUITION_MAIN: ========================================
+I (990) app_init: App version:      9f39778
+I (995) app_init: Compile time:     Mar  1 2026 20:12:03
 
-I (1141) GUITION_MAIN: === I2C Bus Initialization ===
-I (1142) GUITION_MAIN: ✓ I2C bus ready (SDA=GPIO7, SCL=GPIO8)
+I (1136) GUITION_MAIN: ========================================
+I (1142) GUITION_MAIN:    Guition JC1060P470C Initialization
+I (1148) GUITION_MAIN: ========================================
+
+I (1157) GUITION_MAIN: === I2C Bus Initialization ===
+I (1158) GUITION_MAIN: ✓ I2C bus ready (SDA=GPIO7, SCL=GPIO8)
 
 I (1164) GUITION_MAIN: === ES8311 Audio Codec ===
 I (1168) ES8311: Initializing ES8311 audio codec...
