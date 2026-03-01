@@ -16,19 +16,17 @@
 #include "touch_gt911.h"
 #include "feature_flags.h"
 #include "i2c_utils.h"
-#include "hw_init.h"  // <-- Hardware reset sequences
+#include "hw_init.h"
 
 static const char *TAG = "GUITION_MAIN";
 
 #define I2C_MASTER_SDA_IO 7
 #define I2C_MASTER_SCL_IO 8
 
-// Handle globali per display e touch
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static esp_lcd_touch_handle_t touch_handle = NULL;
 
 #if ENABLE_SD_CARD
-// Workaround per ESP-Hosted
 #ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
 static esp_err_t sdmmc_host_init_dummy(void) 
 { 
@@ -42,10 +40,9 @@ static esp_err_t sdmmc_host_deinit_dummy(void)
     return ESP_OK; 
 }
 #endif
-#endif // ENABLE_SD_CARD
+#endif
 
 #if ENABLE_DISPLAY && ENABLE_DISPLAY_TEST
-// Test RAW Display: riempie schermo di colore
 void test_display_fill_color(uint16_t color)
 {
     if (!panel_handle) {
@@ -78,7 +75,6 @@ void test_display_fill_color(uint16_t color)
     LOG_DISPLAY(TAG, "Display fill complete");
 }
 
-// Test RAW Display: pattern RGB
 void test_display_rgb_pattern(void)
 {
     if (!panel_handle) {
@@ -124,10 +120,9 @@ void test_display_rgb_pattern(void)
     free(line_buffer);
     LOG_DISPLAY(TAG, "RGB pattern complete");
 }
-#endif // ENABLE_DISPLAY && ENABLE_DISPLAY_TEST
+#endif
 
 #if ENABLE_TOUCH && ENABLE_TOUCH_TEST
-// Test RAW Touch
 void test_touch_read_loop(void)
 {
     if (!touch_handle) {
@@ -154,7 +149,7 @@ void test_touch_read_loop(void)
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
-#endif // ENABLE_TOUCH && ENABLE_TOUCH_TEST
+#endif
 
 void app_main(void)
 {
@@ -174,7 +169,7 @@ void app_main(void)
     ESP_LOGI(TAG, "NVS disabled by feature flags");
 #endif
 
-    // ========== 2. SD Card ==========
+    // ========== 2. SD Card (NO HW RESET PRIMA!) ==========
 #if ENABLE_SD_CARD
     LOG_SD(TAG, "Initializing SD card (Slot 0 - forced)...");
 
@@ -226,7 +221,6 @@ void app_main(void)
 
     sdmmc_card_t *card;
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    // FIX CRITICO: Forza slot 0 (ESP-Hosted usa slot 1 per C6)
     host.slot = SDMMC_HOST_SLOT_0;
     LOG_SD(TAG, "Forced host.slot = SDMMC_HOST_SLOT_0 (fix for ESP-Hosted)");
 
@@ -252,10 +246,15 @@ void app_main(void)
 sd_failed:
 #else
     ESP_LOGI(TAG, "SD card disabled by feature flags");
-#endif // ENABLE_SD_CARD
+#endif
 
-    // ========== 3. Hardware Reset (PRIMA dell'I2C) ==========
+    // ========== 3. Hardware Reset (DOPO SD, PRIMA I2C) ==========
+#if ENABLE_I2C || ENABLE_DISPLAY || ENABLE_TOUCH
+    ESP_LOGI(TAG, "Running hardware reset for peripherals (GT911/ES8311/RTC)...");
     hw_reset_all_peripherals();
+#else
+    ESP_LOGI(TAG, "Hardware reset skipped (no I2C/Display/Touch enabled)");
+#endif
 
     // ========== 4. I2C Bus ==========
 #if ENABLE_I2C
@@ -299,7 +298,7 @@ sd_failed:
     }
 #endif
 
-    // ========== 7. Touch (NON RAGGIUNTO) ==========
+    // ========== 7. Touch ==========
 #if ENABLE_TOUCH
     if (bus_handle) {
         LOG_TOUCH(TAG, "Initializing touch...");
@@ -314,7 +313,6 @@ sd_failed:
 
     ESP_LOGI(TAG, "=== System ready ===");
 
-    // ========== TEST SEQUENZA ==========
     vTaskDelay(pdMS_TO_TICKS(500));
 
 #if ENABLE_DISPLAY && ENABLE_DISPLAY_TEST
@@ -340,7 +338,6 @@ sd_failed:
     test_touch_read_loop();
 #endif
 
-    // Idle loop
     while (1)
     {
         vTaskDelay(pdMS_TO_TICKS(10000));
