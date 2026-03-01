@@ -9,9 +9,10 @@
 
 static const char *TAG = "GT911";
 
-#define GT911_RST_GPIO         GPIO_NUM_22
-#define GT911_INT_GPIO         GPIO_NUM_21
-#define GT911_I2C_ADDRESS      0x14  // Confermato da I2C scan (INT=HIGH durante reset)
+// Pin definitions from schematic (Guition JC1060P470C_I_W_Y)
+#define GT911_RST_GPIO         GPIO_NUM_19  // TOUCHRST
+#define GT911_INT_GPIO         GPIO_NUM_20  // TOUCHINT
+#define GT911_I2C_ADDRESS      0x14  // Address with INT=HIGH during reset
 
 esp_lcd_touch_handle_t init_touch_gt911(i2c_master_bus_handle_t i2c_bus)
 {
