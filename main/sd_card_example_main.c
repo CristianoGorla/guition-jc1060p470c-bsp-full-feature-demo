@@ -176,7 +176,7 @@ void app_main(void)
 
     // ========== 2. SD Card ==========
 #if ENABLE_SD_CARD
-    LOG_SD(TAG, "Initializing SD card (Slot %d)...", CONFIG_EXAMPLE_SDMMC_SLOT);
+    LOG_SD(TAG, "Initializing SD card (Slot 0 - forced)...");
 
 #ifdef CONFIG_EXAMPLE_PIN_CARD_POWER_RESET
     gpio_config_t pwr_io_conf = {
@@ -188,7 +188,7 @@ void app_main(void)
     };
     gpio_config(&pwr_io_conf);
     gpio_set_level(CONFIG_EXAMPLE_PIN_CARD_POWER_RESET, 0);
-    vTaskDelay(pdMS_TO_TICKS(250));  // AUMENTATO: 100ms → 250ms
+    vTaskDelay(pdMS_TO_TICKS(250));
     LOG_SD(TAG, "SD Card power enabled via GPIO%d (waited 250ms)", CONFIG_EXAMPLE_PIN_CARD_POWER_RESET);
 #endif
 
@@ -215,7 +215,7 @@ void app_main(void)
         goto sd_failed;
     }
     LOG_SD(TAG, "Slot 0 initialized successfully");
-    vTaskDelay(pdMS_TO_TICKS(100));  // NUOVO: Attendi dopo slot init
+    vTaskDelay(pdMS_TO_TICKS(100));
 #endif
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
@@ -226,7 +226,9 @@ void app_main(void)
 
     sdmmc_card_t *card;
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    host.slot = CONFIG_EXAMPLE_SDMMC_SLOT;
+    // FIX CRITICO: Forza slot 0 (ESP-Hosted usa slot 1 per C6)
+    host.slot = SDMMC_HOST_SLOT_0;
+    LOG_SD(TAG, "Forced host.slot = SDMMC_HOST_SLOT_0 (fix for ESP-Hosted)");
 
 #ifdef CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE
     host.init = &sdmmc_host_init_dummy;
@@ -241,7 +243,7 @@ void app_main(void)
     }
     else
     {
-        LOG_SD(TAG, "SD card mounted successfully");
+        LOG_SD(TAG, "✓ SD card mounted successfully");
         LOG_SD(TAG, "Card name: %s", card->cid.name);
         LOG_SD(TAG, "Capacity: %llu MB",
                  ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
@@ -285,13 +287,12 @@ sd_failed:
     // ========== 6. I2C SCAN ==========
 #if ENABLE_I2C && ENABLE_I2C_SCAN
     if (bus_handle) {
-        vTaskDelay(pdMS_TO_TICKS(500)); // Attendi stabilizzazione
+        vTaskDelay(pdMS_TO_TICKS(500));
         i2c_scan_bus(bus_handle);
         
         ESP_LOGI(TAG, "I2C scan complete. System halted.");
         ESP_LOGI(TAG, "Check the devices found above before continuing.");
         
-        // HALT QUI - Non proseguire
         while (1) {
             vTaskDelay(pdMS_TO_TICKS(10000));
         }
