@@ -1,4 +1,3 @@
-
 menu "Guition JC1060P470C Board Configuration"
 
     menu "Hardware Peripherals"
@@ -474,5 +473,134 @@ menu "Guition JC1060P470C Board Configuration"
                 Useful for development and debugging.
 
     endmenu # Application Features
+
+    menu "LVGL Graphics Library Configuration"
+
+        config BSP_ENABLE_LVGL
+            bool "Enable LVGL Graphics Library"
+            default n
+            depends on BSP_ENABLE_DISPLAY
+            help
+                Enable LVGL (Light and Versatile Graphics Library) v9.2.2
+                for creating rich graphical user interfaces.
+                
+        menu "LVGL Display Configuration"
+            visible if BSP_ENABLE_LVGL
+            
+            config BSP_LVGL_BUFFER_LINES
+                int "Display buffer size (lines)"
+                default 100
+                range 10 300
+                help
+                    Number of display lines for LVGL draw buffer.
+                    Higher values = smoother rendering but more memory usage.
+                    Recommended: 100 lines = ~246KB per buffer at 1024x600 RGB565.
+                    
+            config BSP_LVGL_DOUBLE_BUFFER
+                bool "Enable double buffering"
+                default y
+                help
+                    Use two buffers for smoother rendering without tearing.
+                    Requires 2x memory but eliminates visual artifacts.
+                    
+            config BSP_LVGL_USE_DMA_BUFFER
+                bool "Use DMA-capable buffers"
+                default y
+                help
+                    Allocate buffers in DMA-capable memory for faster transfers.
+                    Recommended for best display performance.
+                    
+            config BSP_LVGL_USE_SPIRAM_BUFFER
+                bool "Use SPIRAM for buffers"
+                default n
+                help
+                    Allocate LVGL buffers in external SPIRAM instead of internal RAM.
+                    Saves internal memory but may reduce performance.
+                    
+            config BSP_LVGL_ENABLE_SW_ROTATE
+                bool "Enable software rotation"
+                default y
+                help
+                    Enable runtime display rotation support.
+                    Allows changing orientation without rebuilding.
+                    
+            choice BSP_LVGL_ROTATION
+                prompt "Initial display rotation"
+                default BSP_LVGL_ROTATION_0
+                depends on BSP_LVGL_ENABLE_SW_ROTATE
+                help
+                    Set the initial display orientation on startup.
+                
+                config BSP_LVGL_ROTATION_0
+                    bool "0 degrees (Landscape)"
+                config BSP_LVGL_ROTATION_90
+                    bool "90 degrees (Portrait)"
+                config BSP_LVGL_ROTATION_180
+                    bool "180 degrees (Landscape inverted)"
+                config BSP_LVGL_ROTATION_270
+                    bool "270 degrees (Portrait inverted)"
+            endchoice
+            
+            config BSP_LVGL_ROTATION_DEGREE
+                int
+                default 0 if BSP_LVGL_ROTATION_0
+                default 90 if BSP_LVGL_ROTATION_90
+                default 180 if BSP_LVGL_ROTATION_180
+                default 270 if BSP_LVGL_ROTATION_270
+        endmenu
+        
+        menu "LVGL Touch Configuration"
+            visible if BSP_ENABLE_LVGL && BSP_ENABLE_TOUCH
+            
+            config BSP_LVGL_TOUCH_ENABLE
+                bool "Enable touch input for LVGL"
+                default y
+                help
+                    Integrate GT911 touch controller with LVGL for interactive UIs.
+        endmenu
+        
+        menu "LVGL Demo Applications"
+            visible if BSP_ENABLE_LVGL
+            
+            config BSP_LVGL_ENABLE_DEMO
+                bool "Enable LVGL demo at startup"
+                default n
+                help
+                    Automatically run an LVGL demo application on boot.
+                    Useful for testing display and touch functionality.
+                    
+            choice BSP_LVGL_DEMO_TYPE
+                prompt "Demo type"
+                default BSP_LVGL_DEMO_SIMPLE
+                depends on BSP_LVGL_ENABLE_DEMO
+                help
+                    Select which demo application to run on startup.
+                
+                config BSP_LVGL_DEMO_SIMPLE
+                    bool "Simple test screen"
+                    help
+                        Basic test screen showing display and touch functionality.
+                        Minimal memory usage, good for initial testing.
+                        
+                config BSP_LVGL_DEMO_WIDGETS
+                    bool "LVGL Widgets demo"
+                    help
+                        Comprehensive demo showing all LVGL widgets and styles.
+                        Requires more memory but showcases full LVGL capabilities.
+                        
+                config BSP_LVGL_DEMO_BENCHMARK
+                    bool "LVGL Benchmark"
+                    help
+                        Performance benchmark measuring rendering speed and FPS.
+                        Useful for optimization and hardware validation.
+                        
+                config BSP_LVGL_DEMO_STRESS
+                    bool "LVGL Stress test"
+                    help
+                        Stress test with many animations and objects.
+                        Tests system stability under heavy graphics load.
+            endchoice
+        endmenu
+    endmenu # LVGL Graphics Library Configuration
 
 endmenu # Guition JC1060P470C Board Configuration
