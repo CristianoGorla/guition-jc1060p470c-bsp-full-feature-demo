@@ -13,6 +13,19 @@ CONFIG_BSP_ENABLE_SDCARD=y
 # === System ===
 CONFIG_IDF_TARGET="esp32p4"
 
+# === Flash Configuration ===
+# Board uses Boya 16MB flash - requires explicit config
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+CONFIG_ESPTOOLPY_HEADER_FLASHSIZE_UPDATE=y
+CONFIG_SPI_FLASH_BYPASS_BLOCK_ERASE_CHECK=y
+CONFIG_SPI_FLASH_BYPASS_CHIP_DRIVER_SELECTION=n
+
+# === Chip Revision ===
+# Target ESP32-P4 v1.3
+CONFIG_ESP_REV_MIN_FULL=103
+CONFIG_ESP_REV_MIN=103
+
 # === NVS ===
 CONFIG_NVS_ENCRYPTION=n
 
@@ -67,14 +80,19 @@ CONFIG_LWIP_LOCAL_HOSTNAME="guition-jc1060"
 CONFIG_LWIP_NETIF_LOOPBACK=y
 CONFIG_LWIP_LOOPBACK_MAX_PBUFS=8
 
+# === SDMMC Power Control Configuration ===
+# CRITICAL: Different slots use different power sources
+# - Slot 0 (SD card): Uses internal LDO for VDDPST_5
+# - Slot 1 (WiFi): Uses external power (BSP GPIO control)
+CONFIG_SDMMC_HOST_POWER_CONTROL_SLOT_0=y
+CONFIG_SDMMC_HOST_POWER_CONTROL_SLOT_1=n
+
 # === ESP-Hosted (WiFi) ===
 CONFIG_ESP_HOSTED_TRANSPORT_SDIO=y
 CONFIG_ESP_HOSTED_TRANSPORT_UART=n
 CONFIG_ESP_HOSTED_TRANSPORT_SPI=n
 
-# CRITICAL FIX: Disable internal LDO for SDIO power control
-# Board uses external power via GPIO36 (MOSFET for SD) and LDO for C6
-# This prevents "acquire LDO channel failed: channel:109" error
+# ESP-Hosted SDIO (Slot 1) - External power via BSP GPIO
 CONFIG_ESP_HOSTED_SD_PWR_CTRL_LDO_INTERNAL_IO=n
 
 # === WiFi Configuration ===
