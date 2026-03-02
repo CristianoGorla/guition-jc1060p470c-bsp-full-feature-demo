@@ -38,7 +38,8 @@ static const char *TAG = "BSP";
  * 
  * Hard reset is NOT needed for:
  * - ESP_RST_POWERON: Already clean state
- * - ESP_RST_SW: IDF monitor restart (clean software reset)
+ * - ESP_RST_SW: Software reset via esp_restart()
+ * - ESP_RST_USB_UART: IDF monitor restart (Ctrl+T, Ctrl+R)
  * - ESP_RST_DEEPSLEEP: Controlled wake from sleep
  * 
  * @return true if hard reset is needed, false otherwise
@@ -53,7 +54,12 @@ static bool bsp_needs_hard_reset(void)
             return false;
             
         case ESP_RST_SW:
-            ESP_LOGI(TAG, "[RESET] Software reset (IDF monitor restart) - no hard reset needed");
+            ESP_LOGI(TAG, "[RESET] Software reset (esp_restart) - no hard reset needed");
+            ESP_LOGI(TAG, "[RESET] ESP-Hosted will reset C6 during init_wifi()");
+            return false;
+            
+        case 11:  // ESP_RST_USB_UART (IDF monitor Ctrl+T, Ctrl+R)
+            ESP_LOGI(TAG, "[RESET] USB-UART reset (IDF monitor) - no hard reset needed");
             ESP_LOGI(TAG, "[RESET] ESP-Hosted will reset C6 during init_wifi()");
             return false;
             
@@ -76,7 +82,7 @@ static bool bsp_needs_hard_reset(void)
             return true;
             
         default:
-            ESP_LOGW(TAG, "[RESET] Unknown reset reason (%d) - performing hard reset", reason);
+            ESP_LOGW(TAG, "[RESET] Unknown reset reason (%d) - performing hard reset for safety", reason);
             return true;
     }
 }
@@ -89,7 +95,8 @@ static bool bsp_needs_hard_reset(void)
  * 
  * NOT performed on:
  * - Power-on reset (already clean)
- * - Software reset (IDF monitor restart is clean)
+ * - Software reset (esp_restart is clean)
+ * - USB-UART reset (IDF monitor restart is clean)
  * - Deep sleep wake (controlled wake)
  */
 static void bsp_hard_reset(void)
