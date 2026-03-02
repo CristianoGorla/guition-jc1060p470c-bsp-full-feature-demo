@@ -1,0 +1,184 @@
+menu "Guition JC1060P470C Board Configuration"
+
+    menu "Hardware Peripherals"
+
+        config BSP_ENABLE_DISPLAY
+            bool "Enable JD9165 MIPI-DSI Display"
+            default y
+            select SPIRAM_SPEED_200M
+            select CACHE_L2_CACHE_256KB
+            help
+                Enable the JD9165 1024x600 MIPI-DSI display controller.
+                This option automatically configures SPIRAM to 200MHz and
+                L2 cache to 256KB as required for optimal display performance.
+                
+                Hardware:
+                - Controller: JD9165
+                - Resolution: 1024x600
+                - Interface: MIPI DSI 2-lane @ 750Mbps
+                - Pixel Clock: 51.2MHz
+                - Backlight: PWM on GPIO 23
+
+        config BSP_ENABLE_I2C_BUS
+            bool "Enable I2C Bus"
+            default y
+            help
+                Enable the I2C bus (GPIO7=SDA, GPIO8=SCL @ 400kHz).
+                This is required for touch controller, audio codec, and RTC.
+                The I2C bus is shared by multiple peripherals.
+
+        config BSP_ENABLE_TOUCH
+            bool "Enable GT911 Touch Controller"
+            default y
+            depends on BSP_ENABLE_I2C_BUS
+            help
+                Enable the GT911 capacitive touch controller.
+                Requires I2C bus to be enabled.
+                
+                Hardware:
+                - Controller: GT911
+                - I2C Address: 0x14 (forced via reset sequence)
+                - Reset GPIO: 21
+                - Interrupt GPIO: 22
+                - Max Touch Points: 5
+                - Resolution: 1024x600
+
+        config BSP_ENABLE_AUDIO
+            bool "Enable ES8311 Audio Codec + NS4150 Amplifier"
+            default y
+            depends on BSP_ENABLE_I2C_BUS
+            help
+                Enable the ES8311 audio codec and NS4150 power amplifier
+                for audio input/output. Requires I2C bus to be enabled.
+                
+                Hardware:
+                - Codec: ES8311 (I2C address 0x18)
+                - Amplifier: NS4150 (GPIO 11 enable)
+                - I2S Interface:
+                  - MCLK: GPIO 9
+                  - BCLK: GPIO 13
+                  - WS: GPIO 12
+                  - DOUT: GPIO 10
+
+        config BSP_ENABLE_RTC
+            bool "Enable RX8025T RTC"
+            default y
+            depends on BSP_ENABLE_I2C_BUS
+            help
+                Enable the RX8025T real-time clock module.
+                Requires I2C bus to be enabled.
+                
+                Hardware:
+                - Controller: RX8025T
+                - I2C Address: 0x32
+                - Interrupt GPIO: 0
+                - Crystal: 32.768 kHz
+                - Temperature Compensated: Yes
+
+    endmenu # Hardware Peripherals
+
+    menu "SD Card Configuration"
+
+        config BSP_ENABLE_SDCARD
+            bool "Enable SD Card"
+            default y
+            help
+                Enable SD Card support on SDIO Slot 0.
+                The SD card is powered via GPIO 36 (external MOSFET).
+
+        config BSP_SDMMC_SLOT
+            int "SD/MMC slot to use"
+            depends on BSP_ENABLE_SDCARD
+            default 0
+            range 0 0
+            help
+                Select the slot to use for SD Card.
+                For ESP32-P4 Guition board, only Slot 0 is available.
+                Slot 1 is reserved for ESP-Hosted WiFi.
+
+        choice BSP_SDMMC_BUS_WIDTH
+            prompt "SD/MMC bus width"
+            depends on BSP_ENABLE_SDCARD
+            default BSP_SDMMC_BUS_WIDTH_4
+            help
+                Select the bus width of SD interface.
+                4-bit mode provides better performance.
+
+            config BSP_SDMMC_BUS_WIDTH_4
+                bool "4 lines (D0 - D3)"
+
+            config BSP_SDMMC_BUS_WIDTH_1
+                bool "1 line (D0)"
+        endchoice
+
+        config BSP_PIN_CMD
+            int
+            depends on BSP_ENABLE_SDCARD
+            default 44
+            help
+                CMD GPIO for SD Card (fixed on ESP32-P4)
+
+        config BSP_PIN_CLK
+            int
+            depends on BSP_ENABLE_SDCARD
+            default 43
+            help
+                CLK GPIO for SD Card (fixed on ESP32-P4)
+
+        config BSP_PIN_D0
+            int
+            depends on BSP_ENABLE_SDCARD
+            default 39
+            help
+                D0 GPIO for SD Card (fixed on ESP32-P4)
+
+        config BSP_PIN_D1
+            int
+            depends on BSP_ENABLE_SDCARD && BSP_SDMMC_BUS_WIDTH_4
+            default 40
+            help
+                D1 GPIO for SD Card (fixed on ESP32-P4)
+
+        config BSP_PIN_D2
+            int
+            depends on BSP_ENABLE_SDCARD && BSP_SDMMC_BUS_WIDTH_4
+            default 41
+            help
+                D2 GPIO for SD Card (fixed on ESP32-P4)
+
+        config BSP_PIN_D3
+            int
+            depends on BSP_ENABLE_SDCARD && BSP_SDMMC_BUS_WIDTH_4
+            default 42
+            help
+                D3 GPIO for SD Card (fixed on ESP32-P4)
+
+        config BSP_PIN_SD_POWER_EN
+            int
+            depends on BSP_ENABLE_SDCARD
+            default 36
+            help
+                GPIO to control SD Card power (external MOSFET).
+                Active HIGH to power on the SD card.
+
+    endmenu # SD Card Configuration
+
+    menu "WiFi Configuration (ESP-Hosted)"
+
+        config BSP_ENABLE_WIFI
+            bool "Enable WiFi (ESP-Hosted)"
+            default y
+            help
+                Enable WiFi using ESP-Hosted on SDIO Slot 1.
+                The ESP32-C6 WiFi co-processor is connected via SDIO.
+
+        config BSP_WIFI_SDIO_SLOT
+            int
+            depends on BSP_ENABLE_WIFI
+            default 1
+            help
+                SDIO Slot for ESP-Hosted WiFi (Slot 1 on Guition board)
+
+    endmenu # WiFi Configuration
+
+endmenu # Guition JC1060P470C Board Configuration
