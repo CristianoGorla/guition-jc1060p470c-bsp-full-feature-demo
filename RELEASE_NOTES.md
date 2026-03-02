@@ -90,8 +90,8 @@ ENABLE_I2C_SCAN 0      // DISABLED (required)
 ### 📦 Installation
 
 ```bash
-git clone https://github.com/CristianoGorla/host_sdcard_with_hosted.git
-cd host_sdcard_with_hosted
+git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
+cd guition-jc1060p470c-bsp-full-feature-demo
 git checkout v1.0.0-beta
 
 # Configure WiFi credentials (optional)
@@ -188,10 +188,10 @@ Unlicense - See LICENSE file for details
 ## Next Release: v1.1.0-dev
 
 **Expected:** TBD  
-**Focus:** LVGL UI integration, advanced features
+**Focus:** Bootstrap Manager, external peripherals, testing suite
 
 Development continues on `main` branch with version `1.1.0-dev`.
 
 ---
 
-**Full Changelog:** [v1.0.0-beta](https://github.com/CristianoGorla/host_sdcard_with_hosted/releases/tag/v1.0.0-beta)
+**Full Changelog:** [v1.0.0-beta](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/releases/tag/v1.0.0-beta)
