@@ -7,11 +7,6 @@
 #include "sdmmc_cmd.h"
 #include "esp_idf_version.h"
 #include "sdkconfig.h"
-// RIMOSSO: include LDO header per slot 0
-// #if SOC_SDMMC_IO_POWER_EXTERNAL
-// #include "sd_pwr_ctrl_by_on_chip_ldo.h"
-// #endif
-#include "sd_card_example_common.h"
 #include "sd_card_functions.h"
 
 #if CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE && (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0))

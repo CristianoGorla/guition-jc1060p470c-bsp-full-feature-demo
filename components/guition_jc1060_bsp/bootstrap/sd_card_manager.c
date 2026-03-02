@@ -14,7 +14,6 @@
 #include "driver/sdmmc_host.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-#include "feature_flags.h"
 
 static const char *TAG = "SD_MANAGER";
 
@@ -53,7 +52,7 @@ static bool g_is_mounted = false;
  */
 static esp_err_t sdmmc_host_init_dummy(void)
 {
-    LOG_SD(TAG, "Skipping sdmmc_host_init (controller already initialized by WiFi)");
+    ESP_LOGI(TAG, "Skipping sdmmc_host_init (controller already initialized by WiFi)");
     return ESP_OK;
 }
 
@@ -64,7 +63,7 @@ static esp_err_t sdmmc_host_init_dummy(void)
  */
 static esp_err_t sdmmc_host_deinit_dummy(void)
 {
-    LOG_SD(TAG, "Skipping sdmmc_host_deinit (keep controller active for WiFi)");
+    ESP_LOGI(TAG, "Skipping sdmmc_host_deinit (keep controller active for WiFi)");
     return ESP_OK;
 }
 
@@ -84,7 +83,7 @@ static void sd_card_enable_pullups(void)
         CONFIG_BSP_PIN_CLK
     };
     
-    LOG_SD(TAG, "Enabling pull-ups on SDMMC pins (GPIO39-44)...");
+    ESP_LOGI(TAG, "Enabling pull-ups on SDMMC pins (GPIO39-44)...");
     
     for (int i = 0; i < sizeof(sdmmc_pins) / sizeof(sdmmc_pins[0]); i++) {
         gpio_pullup_en(sdmmc_pins[i]);
@@ -101,11 +100,11 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         return ESP_OK;
     }
     
-    LOG_SD(TAG, "=== SD Card Mount (Phase B - after WiFi) ===");
+    ESP_LOGI(TAG, "=== SD Card Mount (Phase B - after WiFi) ===");
     
     // Step 1: Enable SD card power (managed by BSP Phase A, already on)
     // Note: BSP Phase A already powered up SD card via GPIO 36
-    LOG_SD(TAG, "SD Card power already enabled by BSP Phase A (GPIO%d)", CONFIG_BSP_PIN_SD_POWER_EN);
+    ESP_LOGI(TAG, "SD Card power already enabled by BSP Phase A (GPIO%d)", CONFIG_BSP_PIN_SD_POWER_EN);
     
     // Step 2: Enable pull-ups BEFORE mount
     sd_card_enable_pullups();
@@ -125,7 +124,7 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
     };
     
     // Step 4: Init slot only (host already initialized by WiFi)
-    LOG_SD(TAG, "Initializing SDMMC Slot 0 (host already active)...");
+    ESP_LOGI(TAG, "Initializing SDMMC Slot 0 (host already active)...");
     esp_err_t ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Slot init failed: %s (0x%x)", esp_err_to_name(ret), ret);
@@ -146,7 +145,7 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
     host.deinit = &sdmmc_host_deinit_dummy; // Skip host deinit (keep active)
     
     // Step 7: Mount filesystem
-    LOG_SD(TAG, "Mounting FAT filesystem (using dummy host init)...");
+    ESP_LOGI(TAG, "Mounting FAT filesystem (using dummy host init)...");
     ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &g_sd_card);
     
     if (ret == ESP_OK) {
@@ -154,9 +153,9 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         if (out_card) {
             *out_card = g_sd_card;
         }
-        LOG_SD(TAG, "✓ SD card mounted successfully");
-        LOG_SD(TAG, "   Card: %s", g_sd_card->cid.name);
-        LOG_SD(TAG, "   Capacity: %llu MB\n",
+        ESP_LOGI(TAG, "✓ SD card mounted successfully");
+        ESP_LOGI(TAG, "   Card: %s", g_sd_card->cid.name);
+        ESP_LOGI(TAG, "   Capacity: %llu MB\n",
                 ((uint64_t)g_sd_card->csd.capacity) * g_sd_card->csd.sector_size / (1024 * 1024));
         return ESP_OK;
     } else {
@@ -172,13 +171,13 @@ esp_err_t sd_card_unmount(void)
         return ESP_OK;
     }
     
-    LOG_SD(TAG, "Unmounting SD card...");
+    ESP_LOGI(TAG, "Unmounting SD card...");
     esp_err_t ret = esp_vfs_fat_sdcard_unmount("/sdcard", g_sd_card);
     
     if (ret == ESP_OK) {
         g_is_mounted = false;
         g_sd_card = NULL;
-        LOG_SD(TAG, "✓ SD card unmounted");
+        ESP_LOGI(TAG, "✓ SD card unmounted");
     } else {
         ESP_LOGE(TAG, "Unmount failed: %s (0x%x)", esp_err_to_name(ret), ret);
     }

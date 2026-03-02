@@ -5,9 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_hosted_wifi.h"
-#include "esp_log.h"
 #include "sdkconfig.h"
-#include "feature_flags.h"
 
 static const char *TAG = "wifi_hosted";
 static EventGroupHandle_t wifi_event_group = NULL;
@@ -31,14 +29,14 @@ static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *da
 esp_err_t wifi_hosted_init_transport(void)
 {
     if (transport_initialized) {
-        LOG_WIFI(TAG, "WiFi Hosted transport already initialized");
+        ESP_LOGI(TAG, "WiFi Hosted transport already initialized");
         return ESP_OK;
     }
     
-    LOG_WIFI(TAG, "=== WiFi Hosted Transport Init (Phase B) ===");
+    ESP_LOGI(TAG, "=== WiFi Hosted Transport Init (Phase B) ===");
     
     // Step 1: Initialize TCP/IP stack
-    LOG_WIFI(TAG, "Initializing netif...");
+    ESP_LOGI(TAG, "Initializing netif...");
     esp_err_t ret = esp_netif_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "netif init failed: %s", esp_err_to_name(ret));
@@ -46,7 +44,7 @@ esp_err_t wifi_hosted_init_transport(void)
     }
     
     // Step 2: Create event loop
-    LOG_WIFI(TAG, "Creating event loop...");
+    ESP_LOGI(TAG, "Creating event loop...");
     ret = esp_event_loop_create_default();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         // ESP_ERR_INVALID_STATE means loop already exists (OK)
@@ -55,7 +53,7 @@ esp_err_t wifi_hosted_init_transport(void)
     }
     
     // Step 3: Create default WiFi station netif
-    LOG_WIFI(TAG, "Creating default WiFi STA netif...");
+    ESP_LOGI(TAG, "Creating default WiFi STA netif...");
     esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
     if (!sta_netif) {
         ESP_LOGE(TAG, "Failed to create WiFi STA netif");
@@ -63,7 +61,7 @@ esp_err_t wifi_hosted_init_transport(void)
     }
     
     // Step 4: Register IP event handler
-    LOG_WIFI(TAG, "Registering IP event handler...");
+    ESP_LOGI(TAG, "Registering IP event handler...");
     if (!wifi_event_group) {
         wifi_event_group = xEventGroupCreate();
     }
@@ -75,7 +73,7 @@ esp_err_t wifi_hosted_init_transport(void)
     }
     
     transport_initialized = true;
-    LOG_WIFI(TAG, "✓ WiFi Hosted transport initialized\n");
+    ESP_LOGI(TAG, "✓ WiFi Hosted transport initialized\n");
     
     // NOTE: At this point, ESP-Hosted SDIO transport is active.
     // The SDMMC controller is configured for Slot 1 (C6 communication).
@@ -86,10 +84,10 @@ esp_err_t wifi_hosted_init_transport(void)
 
 esp_err_t wifi_hosted_deinit_transport(void)
 {
-    LOG_WIFI(TAG, "=== WiFi Hosted Transport Deinit ===");
+    ESP_LOGI(TAG, "=== WiFi Hosted Transport Deinit ===");
     
     if (!transport_initialized) {
-        LOG_WIFI(TAG, "Transport not initialized, nothing to deinit");
+        ESP_LOGI(TAG, "Transport not initialized, nothing to deinit");
         return ESP_OK;
     }
     
@@ -97,13 +95,13 @@ esp_err_t wifi_hosted_deinit_transport(void)
     
     // Stop WiFi if started
     if (wifi_started) {
-        LOG_WIFI(TAG, "Stopping WiFi...");
+        ESP_LOGI(TAG, "Stopping WiFi...");
         ret = esp_wifi_stop();
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "WiFi stop failed: %s", esp_err_to_name(ret));
         }
         
-        LOG_WIFI(TAG, "Deinitializing WiFi driver...");
+        ESP_LOGI(TAG, "Deinitializing WiFi driver...");
         ret = esp_wifi_deinit();
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "WiFi deinit failed: %s", esp_err_to_name(ret));
@@ -113,7 +111,7 @@ esp_err_t wifi_hosted_deinit_transport(void)
     
     // Unregister event handler
     if (ip_event_handler) {
-        LOG_WIFI(TAG, "Unregistering event handler...");
+        ESP_LOGI(TAG, "Unregistering event handler...");
         ret = esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ip_event_handler);
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "Event handler unregister failed: %s", esp_err_to_name(ret));
@@ -130,14 +128,14 @@ esp_err_t wifi_hosted_deinit_transport(void)
     // Note: We don't destroy netif or event loop as they may be used by other components
     
     transport_initialized = false;
-    LOG_WIFI(TAG, "✓ WiFi Hosted transport deinitialized\n");
+    ESP_LOGI(TAG, "✓ WiFi Hosted transport deinitialized\n");
     
     return ESP_OK;
 }
 
 void init_wifi(void)
 {
-    LOG_WIFI(TAG, "=== WiFi Stack Initialization ===");
+    ESP_LOGI(TAG, "=== WiFi Stack Initialization ===");
     
     // If transport not initialized yet, do it now
     if (!transport_initialized) {
@@ -174,7 +172,7 @@ void init_wifi(void)
     ESP_LOGI(TAG, "C6 firmware should be ready, proceeding with WiFi init");
     
     // Initialize WiFi stack (this triggers ESP-Hosted SDIO init)
-    LOG_WIFI(TAG, "Initializing WiFi driver...");
+    ESP_LOGI(TAG, "Initializing WiFi driver...");
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t ret = esp_wifi_init(&cfg);
     if (ret != ESP_OK) {
@@ -182,14 +180,14 @@ void init_wifi(void)
         return;
     }
     
-    LOG_WIFI(TAG, "Setting WiFi mode to STA...");
+    ESP_LOGI(TAG, "Setting WiFi mode to STA...");
     ret = esp_wifi_set_mode(WIFI_MODE_STA);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Set mode failed: %s", esp_err_to_name(ret));
         return;
     }
     
-    LOG_WIFI(TAG, "Starting WiFi...");
+    ESP_LOGI(TAG, "Starting WiFi...");
     ret = esp_wifi_start();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "WiFi start failed: %s", esp_err_to_name(ret));
@@ -197,7 +195,7 @@ void init_wifi(void)
     }
     
     wifi_started = true;
-    LOG_WIFI(TAG, "✓ WiFi stack initialized\n");
+    ESP_LOGI(TAG, "✓ WiFi stack initialized\n");
 }
 
 bool check_if_already_has_ip(void)
