@@ -257,7 +257,7 @@ Look for these log lines:
 - **ESP32-P4 TRM**: Chapter on GPIO Matrix and MIPI DSI  
 - **JD9165 Datasheet**: MIPI DSI 2-lane configuration
 - **ESP-IDF I2C Driver**: `components/driver/i2c/i2c_master.c`
-- **Issue**: [CristianoGorla/host_sdcard_with_hosted](https://github.com/CristianoGorla/host_sdcard_with_hosted)
+- **Repository**: [CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo)
 
 ## Credits
 
