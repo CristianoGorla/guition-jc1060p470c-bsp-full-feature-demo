@@ -7,6 +7,7 @@
 **Date Fixed:** 2026-03-01 23:17 CET
 
 **Symptoms:**
+
 ```
 E (12662) H_API: ESP-Hosted link not yet up
 ESP-ROM:esp32p4-eco2-20240710
@@ -15,6 +16,7 @@ rst:0xc (SW_CPU_RESET),boot:0x1c (SPI_FAST_FLASH_BOOT)
 ```
 
 The system enters an infinite restart loop:
+
 1. Bootstrap completes successfully (all three phases)
 2. System reports "ESP-Hosted link not yet up" ~5 seconds after Phase B completion
 3. Automatic restart triggered
@@ -38,7 +40,7 @@ Before Fix:
 
 After Fix:
 ├─ T+7.63s: Phase B calls wifi_hosted_init_transport()
-├─ T+7.67s: Transport init returns ESP_OK  
+├─ T+7.67s: Transport init returns ESP_OK
 ├─ T+7.67s: Wait 2000ms for SDIO link stabilization (NEW)
 ├─ T+9.67s: Phase B signals HOSTED_READY (delayed)
 ├─ T+9.67s: Phase C proceeds with SD mount
@@ -65,7 +67,7 @@ if (ret != ESP_OK) {
 ESP_LOGI(TAG, "[Phase B] WiFi Hosted transport configured");
 
 // CRITICAL FIX: Wait for ESP-Hosted link to stabilize
-ESP_LOGI(TAG, "[Phase B] Waiting %dms for SDIO link stabilization...", 
+ESP_LOGI(TAG, "[Phase B] Waiting %dms for SDIO link stabilization...",
          BOOTSTRAP_WIFI_LINK_STABILIZATION_MS);
 vTaskDelay(pdMS_TO_TICKS(BOOTSTRAP_WIFI_LINK_STABILIZATION_MS));
 
@@ -75,12 +77,14 @@ xEventGroupSetBits(manager->event_group, BOOTSTRAP_HOSTED_READY_BIT);
 ```
 
 **Configuration:**
+
 ```c
 // In bootstrap_manager.h:
 #define BOOTSTRAP_WIFI_LINK_STABILIZATION_MS 2000  // ESP-Hosted SDIO link establishment
 ```
 
 **Expected Boot Log (After Fix):**
+
 ```
 I (7628) BOOTSTRAP: [Phase B] C6 handshake timeout (proceeding anyway)
 I (7628) BOOTSTRAP: [Phase B] Initializing ESP-Hosted SDIO transport...
@@ -102,7 +106,7 @@ I (9668) BOOTSTRAP: [Phase B] WiFi Manager task exiting
 
 - ESP-Hosted SDIO slave (ESP32-C6) needs time to:
   1. Complete its own internal initialization (~500ms)
-  2. Establish stable SDIO clock sync (~300ms)  
+  2. Establish stable SDIO clock sync (~300ms)
   3. Initialize DMA buffers (~200ms)
   4. Register interrupt handlers (~100ms)
   5. Sync master/slave state machine (~900ms)
@@ -126,14 +130,14 @@ The system initialization reliability depends on the type of reset performed. Th
 
 ### Reset Types Comparison
 
-| Reset Type | SD Card | WiFi | I2C Devices | Recommendation |
-|------------|---------|------|-------------|----------------|
-| **IDF Terminal Restart** | ✅ OK | ✅ OK | ✅ OK | **✅ Recommended for development** |
-| **Flash/Monitor** | ✅ OK | ✅ OK | ✅ OK | **✅ Best for development** |
-| **Hardware Button** | ⚠️ May fail (0x107) | ✅ Usually OK | ✅ OK | ⚠️ Inconsistent |
-| **USB Disconnect/Reconnect** | ❌ Often fails | ⚠️ May timeout | ✅ OK | ❌ Unreliable |
-| **Software Reset** | ❌ Often fails | ⚠️ May timeout | ✅ OK | ❌ Not recommended |
-| **Power Cycle (5+ sec)** | ✅ OK | ✅ OK | ✅ OK | ✅ Most reliable |
+| Reset Type                   | SD Card             | WiFi           | I2C Devices | Recommendation                     |
+| ---------------------------- | ------------------- | -------------- | ----------- | ---------------------------------- |
+| **IDF Terminal Restart**     | ✅ OK               | ✅ OK          | ✅ OK       | **✅ Recommended for development** |
+| **Flash/Monitor**            | ✅ OK               | ✅ OK          | ✅ OK       | **✅ Best for development**        |
+| **Hardware Button**          | ⚠️ May fail (0x107) | ✅ Usually OK  | ✅ OK       | ⚠️ Inconsistent                    |
+| **USB Disconnect/Reconnect** | ❌ Often fails      | ⚠️ May timeout | ✅ OK       | ❌ Unreliable                      |
+| **Software Reset**           | ❌ Often fails      | ⚠️ May timeout | ✅ OK       | ❌ Not recommended                 |
+| **Power Cycle (5+ sec)**     | ✅ OK               | ✅ OK          | ✅ OK       | ✅ Most reliable                   |
 
 ### Example Boot Logs
 
@@ -154,6 +158,7 @@ I (7902) GUITION_MAIN:    RSSI: -78 dBm
 ```
 
 **Success Indicators:**
+
 - SD card mounts successfully
 - WiFi connects and obtains IP address
 - Connection time: ~1.4 seconds from connect to IP ready
@@ -171,6 +176,7 @@ I (7844) GUITION_MAIN: ✓ WiFi connected!
 ```
 
 **Partial Success:**
+
 - SD card fails with `0x107` (timeout waiting for card response)
 - WiFi still works (sometimes)
 - This is a **hardware state issue**, not a code bug
@@ -187,6 +193,7 @@ W (21445) GUITION_MAIN: WiFi connection timeout
 ```
 
 **Complete Failure:**
+
 - SD card fails with `0x107`
 - WiFi disconnects immediately or times out
 - Power glitch causes inconsistent hardware state
@@ -225,17 +232,20 @@ W (21445) GUITION_MAIN: WiFi connection timeout
 ### Technical Details: Error 0x107
 
 **SDMMC Error Code 0x107:**
+
 ```c
 #define ESP_ERR_TIMEOUT 0x107  // Operation timed out
 ```
 
 **What it means:**
+
 - SD card not responding to OCR (Operating Conditions Register) command
 - Card may be in wrong state from previous initialization
 - SDMMC controller waiting for response that never comes
 - **This is a hardware state issue, not a code bug**
 
 **Why it happens after hardware reset:**
+
 1. SD card powered up but in unknown state
 2. Previous SDMMC transaction may be incomplete
 3. Card expects different command sequence
@@ -246,6 +256,7 @@ W (21445) GUITION_MAIN: WiFi connection timeout
 #### For Development
 
 **✅ Recommended:**
+
 ```bash
 # Use IDF monitor with auto-restart
 idf.py flash monitor
@@ -255,6 +266,7 @@ idf.py flash monitor
 ```
 
 **❌ Avoid:**
+
 - Hardware reset button during development
 - USB disconnect/reconnect
 - Software `esp_restart()` without proper peripheral deinit
@@ -262,6 +274,7 @@ idf.py flash monitor
 #### For Production/Testing
 
 **✅ Recommended:**
+
 ```bash
 # Full power cycle
 1. Disconnect power
@@ -270,6 +283,7 @@ idf.py flash monitor
 ```
 
 **✅ Alternative:**
+
 ```bash
 # Use IDF monitor for consistent behavior
 idf.py monitor
@@ -284,17 +298,17 @@ If you must use hardware reset button, you can add recovery logic:
 // In sd_card_example_main.c
 #if ENABLE_SD_CARD
     esp_err_t sd_ret = init_sd_card(&card);
-    
+
     if (sd_ret == ESP_ERR_TIMEOUT) {
         ESP_LOGW(TAG, "SD card timeout (0x107), performing power cycle...");
-        
+
         // Power cycle SD card slot
         gpio_set_level(GPIO_NUM_45, 0);  // Power OFF
         vTaskDelay(pdMS_TO_TICKS(500));   // Wait for capacitors to discharge
-        
+
         gpio_set_level(GPIO_NUM_45, 1);  // Power ON
         vTaskDelay(pdMS_TO_TICKS(250));   // Stabilization
-        
+
         // Retry initialization
         sd_ret = init_sd_card(&card);
     }
@@ -333,12 +347,14 @@ If you must use hardware reset button, you can add recovery logic:
 **Your code is working correctly!** ✅
 
 The initialization issues with hardware button reset and USB disconnect are:
+
 - ✅ **Expected behavior** for complex embedded systems
 - ✅ **Normal** for systems with multiple power domains
 - ✅ **Standard** in embedded development
 - ✅ **Handled properly** by development tools (IDF monitor)
 
 **For reliable operation:**
+
 - Development: Use `idf.py monitor` + Ctrl+T,Ctrl+R
 - Testing: Full power cycle (5+ seconds)
 - Production: Proper power sequencing circuit (if needed)
@@ -350,6 +366,7 @@ The initialization issues with hardware button reset and USB disconnect are:
 ### Problem: GT911 Fails with "clear bus failed" Error
 
 **Symptoms:**
+
 ```
 E (6224) i2c.master: clear bus failed.
 E (6224) i2c.master: s_i2c_transaction_start(686): reset hardware failed
@@ -365,11 +382,13 @@ The GT911 touch controller requires a specific hardware reset sequence to config
 Disable I2C bus scanning before GT911 initialization.
 
 In `feature_flags.h`:
+
 ```c
 #define ENABLE_I2C_SCAN 0  // Disable I2C scan before device init
 ```
 
 **Why This Works:**
+
 1. GT911 uses a specific reset sequence to lock its I2C address
 2. The address (0x14 vs 0x5D) is determined by the INT pin state during reset
 3. I2C scan operations send probe commands that wake the chip prematurely
@@ -377,6 +396,7 @@ In `feature_flags.h`:
 5. Disabling scan allows the driver to execute a clean reset
 
 **Successful Output:**
+
 ```
 I (1686) GT911: I2C address initialization procedure skipped - using default GT9xx setup
 I (1713) GT911: TouchPad_ID:0x39,0x31,0x31
@@ -409,17 +429,20 @@ Debug (unused)      GPIO 9  →   JP1 Pin 18  External header only
 ### Configuration Required
 
 In `sdkconfig.defaults`:
+
 ```
 CONFIG_ESP_HOSTED_DATA_READY_GPIO=6
 CONFIG_ESP_HOSTED_RESETPIN_GPIO=54
 ```
 
 **Why GPIO6 Matters:**
+
 - Without interrupt configuration, ESP-Hosted uses polling mode (less efficient)
 - With GPIO6 configured, the C6 can wake the P4 when data is ready
 - Improves WiFi/BLE performance and reduces power consumption
 
 **Expected Boot Log:**
+
 ```
 I (2287) os_wrapper_esp: GPIO [54] configured  // Reset pin
 I (xxxx) os_wrapper_esp: GPIO [6] configured   // Interrupt pin (with fix)
@@ -432,6 +455,7 @@ I (xxxx) os_wrapper_esp: GPIO [6] configured   // Interrupt pin (with fix)
 ### Successful WiFi Connection Test
 
 **Configuration:**
+
 ```c
 // feature_flags.h
 #define ENABLE_WIFI 1
@@ -443,6 +467,7 @@ I (xxxx) os_wrapper_esp: GPIO [6] configured   // Interrupt pin (with fix)
 ```
 
 **Successful Connection Log:**
+
 ```
 I (4430) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
 
@@ -460,12 +485,14 @@ I (7885) GUITION_MAIN:    RSSI: -81 dBm
 ```
 
 **Key Timestamps:**
+
 - **T+6430ms**: Connection initiated
 - **T+6836ms**: Connected event (406ms connection time)
 - **T+7868ms**: IP address assigned via DHCP (1032ms DHCP negotiation)
 - **Total**: ~1.4 seconds from connect to IP ready
 
 **Signal Strength (RSSI):**
+
 ```
 -30 to -50 dBm: Excellent
 -50 to -70 dBm: Good
@@ -486,12 +513,14 @@ I (7885) GUITION_MAIN:    RSSI: -81 dBm
 Apply the same philosophy as GT911 - let the driver validate device presence during initialization.
 
 **Why No Pre-Probe:**
+
 1. `i2c_master_probe()` can interfere with device state
 2. Driver's first register read is a "gentle" detection method
 3. Consistent pattern across all I2C devices (GT911, RTC, ES8311)
 4. Cleaner code with less redundant I2C transactions
 
 **Implementation:**
+
 ```c
 // ❌ OLD: Pre-probe before init
 ret = i2c_master_probe(bus_handle, 0x32, 500);
@@ -509,6 +538,7 @@ if (ret == ESP_OK) {
 ```
 
 **Successful Output:**
+
 ```
 I (1300) RX8025T: Initializing RX8025T RTC...
 I (1304) RX8025T: I2C Address: 0x32
@@ -531,6 +561,7 @@ I (1336) GUITION_MAIN: ✓ RTC initialized successfully
 Synchronize RTC time with internet time servers when WiFi is available.
 
 **Configuration:**
+
 ```c
 // feature_flags.h
 #define ENABLE_RTC 1
@@ -539,18 +570,21 @@ Synchronize RTC time with internet time servers when WiFi is available.
 ```
 
 **Test Workflow (4 Steps):**
+
 1. **Step 1/4**: Read current RTC time
 2. **Step 2/4**: Reset RTC to default time (2000-01-01 00:00:00)
 3. **Step 3/4**: Synchronize with NTP server (pool.ntp.org)
 4. **Step 4/4**: Update RTC with network time
 
 **Implementation Files:**
+
 - `rtc_ntp_sync.h` - API declarations
 - `rtc_ntp_sync.c` - SNTP sync implementation
 - Uses **lwIP SNTP** (ESP-IDF v5.5+)
 - Timezone: **CET (UTC+1)** with automatic DST
 
 **Expected Output:**
+
 ```
 I (7869) RTC_NTP: ========================================
 I (7870) RTC_NTP:    RTC NTP Sync Test
@@ -578,6 +612,7 @@ I (8465) RTC_NTP: ========================================
 ```
 
 **Use Cases:**
+
 - Initial RTC setup on first boot
 - Periodic time synchronization when WiFi is available
 - Recovery from RTC power loss (PON/VLF flags set)
@@ -593,6 +628,7 @@ I (8465) RTC_NTP: ========================================
 Validate device presence by reading chip ID register, not by pre-probing.
 
 **Implementation:**
+
 ```c
 // ❌ OLD: Pre-probe before init
 ret = i2c_master_probe(bus_handle, 0x18, 500);
@@ -608,6 +644,7 @@ if (ret == ESP_OK) {
 ```
 
 **Successful Output:**
+
 ```
 I (1148) GUITION_MAIN: === ES8311 Audio Codec ===
 I (1152) ES8311: Initializing ES8311 audio codec...
@@ -622,17 +659,20 @@ I (1283) GUITION_MAIN: ✓ ES8311 initialized (powered down)
 ```
 
 **Hardware Configuration:**
+
 - I2C Address: 0x18 (7-bit)
 - PA Power Amplifier: GPIO11 (NS4150B enable, active HIGH)
 - Expected Chip ID: 0x83
 
 **For Full Audio:**
 This driver only performs I2C initialization. For audio playback/recording:
+
 ```bash
 idf.py add-dependency "espressif/esp_codec_dev^1.5.4"
 ```
 
 Official BSP provides:
+
 - I2S data interface
 - Volume control
 - Sample rate config
@@ -648,6 +688,7 @@ Official BSP provides:
 **Date Fixed:** 2026-03-01 20:12 CET
 
 **Symptoms:**
+
 - WiFi connection instability (timeouts, disconnects)
 - SD card random failures (`0x107` errors)
 - Non-deterministic behavior (sometimes works, sometimes fails)
@@ -658,14 +699,15 @@ The `lwip` component was listed **twice** in the CMakeLists.txt REQUIRES directi
 
 ```cmake
 # ❌ BROKEN: lwip appears twice
-REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs 
-         esp_wifi esp_event esp_netif lwip esp_hosted 
+REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs
+         esp_wifi esp_event esp_netif lwip esp_hosted
          esp_lcd nvs_flash lwip)
          ^^^^              ^^^^^
       First time      Second time (ERROR!)
 ```
 
 **Why This Breaks:**
+
 1. Duplicate linking causes symbol conflicts in the networking stack
 2. lwIP initialization may occur twice or in wrong order
 3. Memory layout becomes non-deterministic
@@ -677,8 +719,8 @@ Remove the duplicate `lwip` entry:
 
 ```cmake
 # ✅ FIXED: lwip appears only once
-REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs 
-         esp_wifi esp_event esp_netif lwip esp_hosted 
+REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs
+         esp_wifi esp_event esp_netif lwip esp_hosted
          esp_lcd nvs_flash)
          ^^^^^
       Only once (correct!)
@@ -687,6 +729,7 @@ REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs
 **Commit:** `9f39778d7d2a9eee4205f138f3aae2f140c20fd5`
 
 **After Fix:**
+
 - ✅ WiFi connection stable and reliable
 - ✅ SD card initialization consistent
 - ✅ NTP sync works correctly
@@ -701,12 +744,14 @@ When adding SNTP support (which requires `lwip`), always check that `lwip` isn't
 ## Complete Hardware Pinout
 
 ### I2C Bus (Shared)
+
 ```
 GPIO7  - SDA (all I2C devices)
 GPIO8  - SCL (all I2C devices)
 ```
 
 ### I2C Devices
+
 ```
 0x14 - GT911 Touch (INT=HIGH config)
 0x18 - ES8311 Audio Codec
@@ -714,6 +759,7 @@ GPIO8  - SCL (all I2C devices)
 ```
 
 ### GT911 Touch Controller
+
 ```
 GPIO7  - SDA
 GPIO8  - SCL
@@ -722,6 +768,7 @@ GPIO22 - INT (interrupt, determines I2C address)
 ```
 
 ### ES8311 Audio Codec
+
 ```
 GPIO7  - SDA
 GPIO8  - SCL
@@ -729,11 +776,13 @@ GPIO11 - PA_CTRL (power amplifier enable)
 ```
 
 ### Display JD9165 (MIPI DSI)
+
 ```
 GPIO45-52 - MIPI DSI interface (dedicated)
 ```
 
 ### SDMMC Slot 0 (SD Card)
+
 ```
 GPIO43 - CLK
 GPIO44 - CMD
@@ -745,6 +794,7 @@ GPIO45 - Power enable
 ```
 
 ### SDMMC Slot 1 (ESP-Hosted WiFi/BLE)
+
 ```
 GPIO18 - CLK
 GPIO19 - CMD
@@ -760,6 +810,7 @@ GPIO54 - ESP32-C6 reset
 ## Complete Initialization Sequence (Final)
 
 **Optimized Boot Order:**
+
 ```
 1. NVS Flash Init
 2. I2C Bus Init (GPIO7/8 @ 400kHz)
@@ -777,6 +828,7 @@ GPIO54 - ESP32-C6 reset
 ```
 
 **Key Principles:**
+
 1. No I2C scan before device initialization
 2. Each driver validates device presence internally
 3. Direct init without pre-probe
@@ -792,25 +844,25 @@ GPIO54 - ESP32-C6 reset
 
 ### Updated Expected Boot Timing (After SDIO Link Fix)
 
-| Event | Time | Description |
-|-------|------|-------------|
-| **Bootstrap Start** | T+1.87s | Three-phase init begins |
-| **Warm Boot Detection** | T+1.89s | Detects reset reason (typically 3 = SW_CPU_RESET) |
-| **Hard Reset Cycle** | T+1.90s | Forces GPIO54/36 LOW for 500ms to clear hardware state |
-| **Phase A Start** | T+2.43s | Power Manager begins GPIO isolation |
-| **Rail Stabilization** | T+2.43-2.56s | 100ms wait for power rails |
-| **Power-On Sequence** | T+2.56s | SD powered, C6 released from reset |
-| **Phase A Complete** | T+2.61s | POWER_READY signaled |
-| **Phase B Start** | T+2.61s | WiFi Manager starts |
-| **GPIO6 Handshake** | T+2.62-7.63s | Wait for C6 firmware ready (5s timeout) |
-| **Phase B Timeout** | T+7.63s | C6 handshake timeout (proceeds anyway) |
-| **ESP-Hosted Init** | T+7.63-7.67s | SDIO transport configuration |
-| **Link Stabilization** | T+7.67-9.67s | **2000ms wait for SDIO link (NEW)** |
-| **Phase B Complete** | T+9.67s | HOSTED_READY signaled |
-| **Phase C Start** | T+9.67s | SD Manager starts |
-| **SD Card Mount** | T+9.69-10.02s | Filesystem mount (~330ms) |
-| **Phase C Complete** | T+10.02s | SD_READY signaled |
-| **Bootstrap Complete** | T+10.02s | All three phases done |
+| Event                   | Time          | Description                                            |
+| ----------------------- | ------------- | ------------------------------------------------------ |
+| **Bootstrap Start**     | T+1.87s       | Three-phase init begins                                |
+| **Warm Boot Detection** | T+1.89s       | Detects reset reason (typically 3 = SW_CPU_RESET)      |
+| **Hard Reset Cycle**    | T+1.90s       | Forces GPIO54/36 LOW for 500ms to clear hardware state |
+| **Phase A Start**       | T+2.43s       | Power Manager begins GPIO isolation                    |
+| **Rail Stabilization**  | T+2.43-2.56s  | 100ms wait for power rails                             |
+| **Power-On Sequence**   | T+2.56s       | SD powered, C6 released from reset                     |
+| **Phase A Complete**    | T+2.61s       | POWER_READY signaled                                   |
+| **Phase B Start**       | T+2.61s       | WiFi Manager starts                                    |
+| **GPIO6 Handshake**     | T+2.62-7.63s  | Wait for C6 firmware ready (5s timeout)                |
+| **Phase B Timeout**     | T+7.63s       | C6 handshake timeout (proceeds anyway)                 |
+| **ESP-Hosted Init**     | T+7.63-7.67s  | SDIO transport configuration                           |
+| **Link Stabilization**  | T+7.67-9.67s  | **2000ms wait for SDIO link (NEW)**                    |
+| **Phase B Complete**    | T+9.67s       | HOSTED_READY signaled                                  |
+| **Phase C Start**       | T+9.67s       | SD Manager starts                                      |
+| **SD Card Mount**       | T+9.69-10.02s | Filesystem mount (~330ms)                              |
+| **Phase C Complete**    | T+10.02s      | SD_READY signaled                                      |
+| **Bootstrap Complete**  | T+10.02s      | All three phases done                                  |
 
 **Note:** The 2-second link stabilization delay in Phase B is critical to prevent the "ESP-Hosted link not yet up" error that previously caused restart loops.
 
@@ -908,6 +960,7 @@ I (7914) GUITION_MAIN: ========================================
 ```
 
 **Summary:**
+
 - ✅ I2C Bus: GPIO7/8 @ 400kHz
 - ✅ ES8311 Audio: 0x18 (Chip ID: 0x83)
 - ✅ RTC RX8025T: 0x32 (time valid)
@@ -924,6 +977,7 @@ I (7914) GUITION_MAIN: ========================================
 ## Feature Flags Configuration
 
 **Working Configuration for Full System:**
+
 ```c
 #define ENABLE_I2C 1           // Required for I2C devices
 #define ENABLE_I2C_SCAN 0      // ❌ MUST BE DISABLED
@@ -958,6 +1012,7 @@ I (7914) GUITION_MAIN: ========================================
 Earlier troubleshooting showed concerns about MIPI DSI display initialization corrupting the I2C bus. **This is NOT the case.**
 
 **Evidence:**
+
 - Display uses dedicated MIPI DSI interface (GPIO 45-52)
 - I2C uses separate GPIO7/8 pins
 - Display initialization completes successfully without I2C errors
