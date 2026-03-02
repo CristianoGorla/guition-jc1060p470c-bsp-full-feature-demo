@@ -66,16 +66,70 @@ i2c_master_bus_handle_t g_i2c_bus_handle = NULL;
  * 
  * Determines whether we need to perform a hard reset based on the reset reason.
  * 
- * Hard reset is needed for:
- * - ESP_RST_PANIC: System crash (need clean state)
- * - ESP_RST_INT_WDT / ESP_RST_TASK_WDT: Watchdog timeout (likely hung state)
- * - ESP_RST_BROWNOUT: Power glitch (uncertain hardware state)
+ * === HARD RESET IS NEEDED FOR ===
+ * These reset reasons indicate uncertain hardware state that requires power cycling:
  * 
- * Hard reset is NOT needed for:
- * - ESP_RST_POWERON: Already clean state
- * - ESP_RST_SW: Software reset via esp_restart()
- * - ESP_RST_USB_UART: IDF monitor restart (Ctrl+T, Ctrl+R)
- * - ESP_RST_DEEPSLEEP: Controlled wake from sleep
+ * - ESP_RST_PANIC (0x03): System crash/exception
+ *   Hardware may be in inconsistent state, peripherals may be hung
+ *   → Need complete power cycle to ensure clean state
+ * 
+ * - ESP_RST_INT_WDT / ESP_RST_TASK_WDT / ESP_RST_WDT (0x05-0x06):
+ *   Watchdog timeout indicates software hang, hardware may be stuck
+ *   → Need power cycle to break any hardware deadlock
+ * 
+ * - ESP_RST_BROWNOUT (0x04): Power supply glitch/undervoltage
+ *   Hardware state is uncertain after power instability
+ *   → Need controlled power cycle to re-establish stable state
+ * 
+ * === HARD RESET IS NOT NEEDED FOR ===
+ * These reset reasons guarantee clean hardware state:
+ * 
+ * - ESP_RST_POWERON (0x01): Cold boot / USB cable reconnection
+ *   Hardware is already in clean power-on state
+ *   Boot ROM → Bootloader → App is deterministic
+ *   Test case: Disconnect/reconnect USB cable
+ *   Log: "[RESET] Cold boot (power-on reset) - no hard reset needed"
+ * 
+ * - ESP_RST_SW (0x0C): Software reset via esp_restart()
+ *   Clean software-initiated reset, hardware state is controlled
+ *   ROM bootloader re-initializes all peripherals
+ *   Test case: Call esp_restart() in code
+ *   Log: "[RESET] Software reset (esp_restart) - no hard reset needed"
+ * 
+ * - ESP_RST_USB_UART (0x0B / 11): VSCode IDF Monitor reset (Ctrl+T, Ctrl+R)
+ *   Clean reset triggered by VSCode ESP-IDF extension
+ *   USB-JTAG bridge resets the chip via RESET pin
+ *   Hardware state is deterministic (same as power-on)
+ *   Test case: Press Ctrl+T then Ctrl+R in VSCode terminal
+ *   Log: "[RESET] USB-UART reset (IDF monitor) - no hard reset needed"
+ *   NOTE: This is a CHIP reset, not just a USB disconnect!
+ * 
+ * - ESP_RST_DEEPSLEEP (0x05): Wake from deep sleep
+ *   Controlled wake from low-power mode, RTC domain preserved
+ *   Peripherals were cleanly shut down before sleep
+ *   Test case: Enter deep sleep and wake via timer/GPIO
+ *   Log: "[RESET] Wake from deep sleep - no hard reset needed"
+ * 
+ * === HARDWARE OWNERSHIP NOTES ===
+ * BSP Phase A manages ONLY the SD card power domain:
+ * - GPIO36 (SD_POWER_EN): Controlled by BSP for hard reset
+ * 
+ * Other hardware is owned by drivers and NOT reset by BSP:
+ * - GPIO54 (C6_RESET): Owned exclusively by ESP-Hosted driver
+ * - GPIO18 (SDIO_CLK): Owned by SDMMC host driver
+ * - C6 strapping (IO9): Hardware pull-ups, not software controlled
+ * 
+ * === RESET SEQUENCE TIMING ===
+ * Hard reset (when needed):
+ * 1. Cut SD card power (GPIO36 LOW)
+ * 2. Wait CONFIG_BSP_HARD_RESET_DISCHARGE_MS (default 500ms) for capacitor discharge
+ * 3. Power stabilization happens in Phase A main sequence
+ * 
+ * Normal boot (no hard reset):
+ * 1. Isolate SD card (GPIO36 LOW)
+ * 2. Wait CONFIG_BSP_POWER_STABILIZATION_MS (default 100ms)
+ * 3. Power on SD card (GPIO36 HIGH)
+ * 4. Wait SD_POWER_DELAY_MS (50ms) before SDMMC operations
  * 
  * @return true if hard reset is needed, false otherwise
  */
@@ -97,7 +151,7 @@ static bool bsp_needs_hard_reset(void)
             ESP_LOGI(TAG, "[RESET] ESP-Hosted will manage C6 reset during init_wifi()");
             return false;
             
-        case 11:  // ESP_RST_USB_UART (IDF monitor Ctrl+T, Ctrl+R)
+        case 11:  // ESP_RST_USB_UART (VSCode IDF Monitor Ctrl+T, Ctrl+R)
             ESP_LOGI(TAG, "[RESET] USB-UART reset (IDF monitor) - no hard reset needed");
             ESP_LOGI(TAG, "[RESET] ESP-Hosted will manage C6 reset during init_wifi()");
             return false;
@@ -132,14 +186,13 @@ static bool bsp_needs_hard_reset(void)
  * Forces complete power-down of SD Card to ensure clean state after
  * crashes, watchdog timeouts, or power glitches.
  * 
- * NOTE: 
- * - GPIO54 (C6 reset) is NOT managed by BSP - ESP-Hosted owns it exclusively.
- * - GPIO18 (SDIO CLK) is NOT managed by BSP - SDMMC driver owns it.
+ * SCOPE: SD Card power domain only (GPIO36)
+ * NOT managed: C6 reset (GPIO54), SDIO CLK (GPIO18) - owned by drivers
  * 
  * NOT performed on:
  * - Power-on reset (already clean)
  * - Software reset (esp_restart is clean)
- * - USB-UART reset (IDF monitor restart is clean)
+ * - USB-UART reset (VSCode IDF monitor is clean)
  * - Deep sleep wake (controlled wake)
  */
 static void bsp_hard_reset(void)
@@ -180,10 +233,16 @@ static void bsp_hard_reset(void)
  * 2. Power isolation (SD unpowered)
  * 3. Controlled power-on (SD card)
  * 
- * NOTES:
- * - GPIO54 (C6 reset) is NEVER touched by BSP - ESP-Hosted owns it exclusively
- * - GPIO18 (SDIO CLK) is NEVER touched by BSP - SDMMC driver owns it
- * - C6 strapping (IO9) must be handled by hardware pull-ups, not software
+ * HARDWARE OWNERSHIP:
+ * - BSP manages: GPIO36 (SD card power)
+ * - ESP-Hosted manages: GPIO54 (C6 reset), GPIO18 (SDIO CLK)
+ * - Hardware manages: C6 strapping (IO9 pull-ups)
+ * 
+ * RESET BEHAVIOR:
+ * - Cold boot (USB reconnect): No hard reset, direct to power sequence
+ * - VSCode reset (Ctrl+T, R): No hard reset, clean chip reset
+ * - Software reset: No hard reset, ROM bootloader handles cleanup
+ * - Crash/watchdog: Hard reset with 500ms capacitor discharge
  */
 static esp_err_t bsp_phase_a_power_manager(void)
 {
