@@ -30,4 +30,4 @@ include_directories(${CMAKE_BINARY_DIR})
 # "Trim" the build. Include the minimal set of components, main, and anything it depends on.
 idf_build_set_property(MINIMAL_BUILD ON)
 
-project(sd_card)
+project(guition-jc1060p470c-bsp-full-feature-demo)
