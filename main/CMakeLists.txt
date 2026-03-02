@@ -3,13 +3,6 @@
 idf_component_register(
     SRCS 
         "main.c"
-        "bootstrap_manager.c"
-        "rtc_ntp_sync.c"
-        "rtc_test.c"
-        "esp_hosted_wifi.c"
-        "sd_card_manager.c"
-        "sd_card_functions.c"
-        "sdmmc_arbiter.c"
     INCLUDE_DIRS 
         "."
         "${CMAKE_CURRENT_BINARY_DIR}"
