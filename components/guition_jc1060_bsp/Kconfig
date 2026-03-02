@@ -9,6 +9,26 @@ menu "Graphics Configuration"
         help
           Enable LVGL graphics library for JD9165 display (1024x600)
 
+    config LVGL_USE_ESP_LVGL_PORT
+        bool "Use esp_lvgl_port (recommended)"
+        default y
+        depends on BSP_ENABLE_LVGL
+        help
+          Use Espressif's official LVGL port package.
+          Provides optimized display/touch integration, automatic
+          tick management, and buffer allocation.
+
+    config LVGL_ENABLE_PPA
+        bool "Enable PPA (Pixel Processing Accelerator)"
+        default y
+        depends on BSP_ENABLE_LVGL
+        help
+          Enable ESP32-P4 PPA hardware accelerator for:
+          - Software rotation (90/180/270 degrees)
+          - Scaling operations
+          - Color format conversion
+          Required for display rotation without performance penalty.
+
     config LVGL_DOUBLE_BUFFER_PSRAM
         bool "Double buffering in PSRAM (required for 200MHz)"
         default y
@@ -32,4 +52,28 @@ menu "Graphics Configuration"
         depends on BSP_ENABLE_LVGL
         help
           JD9165 display height
+
+    choice LVGL_DISP_ROTATION
+        prompt "Display rotation"
+        default LVGL_DISP_ROTATION_0
+        depends on BSP_ENABLE_LVGL && LVGL_ENABLE_PPA
+        help
+          Rotate display using PPA hardware acceleration
+
+        config LVGL_DISP_ROTATION_0
+            bool "0° (Landscape)"
+        config LVGL_DISP_ROTATION_90
+            bool "90° (Portrait)"
+        config LVGL_DISP_ROTATION_180
+            bool "180° (Landscape inverted)"
+        config LVGL_DISP_ROTATION_270
+            bool "270° (Portrait inverted)"
+    endchoice
+
+    config LVGL_DISP_ROTATION_DEGREES
+        int
+        default 0 if LVGL_DISP_ROTATION_0
+        default 90 if LVGL_DISP_ROTATION_90
+        default 180 if LVGL_DISP_ROTATION_180
+        default 270 if LVGL_DISP_ROTATION_270
 endmenu
