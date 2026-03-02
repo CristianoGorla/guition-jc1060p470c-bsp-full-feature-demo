@@ -79,15 +79,17 @@ CONFIG_FATFS_CODEPAGE_850=y
 # === LWIP (Network Stack) ===
 CONFIG_LWIP_LOCAL_HOSTNAME="guition-jc1060"
 CONFIG_LWIP_NETIF_LOOPBACK=y
-CONFIG_LWIP_LOOPBACK_MAX_PBUFS=8
+CONFIG_LOOPBACK_MAX_PBUFS=8
+
+# === SD/MMC Power Control ===
+# CRITICAL: Disable internal LDO for both SD card and WiFi
+# Board uses external power control via BSP GPIO (MOSFET for SD, LDO for C6)
+CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO=n
 
 # === ESP-Hosted (WiFi) ===
 CONFIG_ESP_HOSTED_TRANSPORT_SDIO=y
 CONFIG_ESP_HOSTED_TRANSPORT_UART=n
 CONFIG_ESP_HOSTED_TRANSPORT_SPI=n
-
-# CRITICAL: Disable internal LDO for ESP-Hosted SDIO
-# Board uses external power control via BSP GPIO for both SD and WiFi
 CONFIG_ESP_HOSTED_SD_PWR_CTRL_LDO_INTERNAL_IO=n
 
 # === WiFi Configuration ===
