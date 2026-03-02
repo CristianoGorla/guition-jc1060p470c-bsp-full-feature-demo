@@ -1,6 +1,6 @@
 /*
  * Guition JC1060P470C Board Support Package - Implementation
- * Phase A: Power Manager
+ * Phase A: Power Manager + Phase D: Peripheral Drivers
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -9,20 +9,41 @@
 #include "bsp_board.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
+#include "driver/i2c_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_sleep.h"
 #include "sdkconfig.h"
 
+/* Include driver headers */
+#ifdef CONFIG_BSP_ENABLE_DISPLAY
+#include "../drivers/jd9165_bsp.h"
+#endif
+#ifdef CONFIG_BSP_ENABLE_TOUCH
+#include "../drivers/gt911_bsp.h"
+#endif
+#ifdef CONFIG_BSP_ENABLE_AUDIO
+#include "../drivers/es8311_bsp.h"
+#endif
+#ifdef CONFIG_BSP_ENABLE_RTC
+#include "../drivers/rx8025t_bsp.h"
+#endif
+
 static const char *TAG = "BSP";
 
 /* Hardware Pin Definitions (from Guition JC1060P470C V1.0 schematics) */
 #define SD_POWER_EN_PIN         36  /* SD Card Power Enable (active HIGH) */
+#define I2C_MASTER_SCL_IO       GPIO_NUM_8
+#define I2C_MASTER_SDA_IO       GPIO_NUM_3
+#define I2C_MASTER_FREQ_HZ      400000
 
 /* Timing Constants */
 #define HARD_RESET_DISCHARGE_MS 500  /* Capacitor discharge time */
 #define POWER_STABILIZATION_MS  100  /* Power rail stabilization delay */
 #define SD_POWER_DELAY_MS        50  /* Delay after SD power on */
+
+/* Global I2C bus handle (shared by all I2C peripherals) */
+i2c_master_bus_handle_t g_i2c_bus_handle = NULL;
 
 /**
  * @brief Check if hard reset is needed
@@ -189,20 +210,120 @@ static esp_err_t bsp_phase_a_power_manager(void)
 }
 
 /**
+ * @brief Initialize I2C bus (shared by touch, audio codec, RTC)
+ */
+static esp_err_t bsp_i2c_bus_init(void)
+{
+#if defined(CONFIG_BSP_ENABLE_TOUCH) || defined(CONFIG_BSP_ENABLE_AUDIO) || defined(CONFIG_BSP_ENABLE_RTC)
+    ESP_LOGI(TAG, "[I2C] Initializing I2C bus (SCL=%d, SDA=%d, %d Hz)",
+             I2C_MASTER_SCL_IO, I2C_MASTER_SDA_IO, I2C_MASTER_FREQ_HZ);
+
+    i2c_master_bus_config_t bus_config = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_NUM_0,
+        .scl_io_num = I2C_MASTER_SCL_IO,
+        .sda_io_num = I2C_MASTER_SDA_IO,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+
+    esp_err_t ret = i2c_new_master_bus(&bus_config, &g_i2c_bus_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "[I2C] Failed to initialize I2C bus: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "[I2C] ✓ Bus initialized");
+#else
+    ESP_LOGI(TAG, "[I2C] Skipped (no I2C peripherals enabled in menuconfig)");
+#endif
+    return ESP_OK;
+}
+
+/**
+ * @brief Phase D: Initialize peripheral drivers
+ */
+static esp_err_t bsp_phase_d_peripheral_drivers(void)
+{
+    ESP_LOGI(TAG, "[PHASE D] Peripheral Drivers initialization...");
+
+    /* Initialize I2C bus first (shared by multiple peripherals) */
+    esp_err_t ret = bsp_i2c_bus_init();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+#ifdef CONFIG_BSP_ENABLE_DISPLAY
+    ESP_LOGI(TAG, "[PHASE D] Initializing display...");
+    esp_lcd_panel_handle_t display = bsp_display_init();
+    if (display == NULL) {
+        ESP_LOGE(TAG, "[PHASE D] Display initialization failed");
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "[PHASE D] ✓ Display ready");
+#endif
+
+#ifdef CONFIG_BSP_ENABLE_TOUCH
+    ESP_LOGI(TAG, "[PHASE D] Initializing touch controller...");
+    esp_lcd_touch_handle_t touch = bsp_touch_init();
+    if (touch == NULL) {
+        ESP_LOGE(TAG, "[PHASE D] Touch initialization failed");
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "[PHASE D] ✓ Touch ready");
+#endif
+
+#ifdef CONFIG_BSP_ENABLE_AUDIO
+    ESP_LOGI(TAG, "[PHASE D] Initializing audio system...");
+    bsp_audio_config_t audio_cfg = BSP_AUDIO_DEFAULT_CONFIG();
+    ret = bsp_audio_init(&audio_cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "[PHASE D] Audio initialization failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    ESP_LOGI(TAG, "[PHASE D] ✓ Audio ready");
+#endif
+
+#ifdef CONFIG_BSP_ENABLE_RTC
+    ESP_LOGI(TAG, "[PHASE D] Initializing RTC...");
+    ret = bsp_rtc_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "[PHASE D] RTC initialization failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    ESP_LOGI(TAG, "[PHASE D] ✓ RTC ready");
+#endif
+
+    ESP_LOGI(TAG, "[PHASE D] ✓ All enabled peripherals initialized");
+    return ESP_OK;
+}
+
+/**
  * @brief Initialize Board Support Package
  * 
- * Entry point for BSP initialization. Currently implements Phase A only.
+ * Entry point for BSP initialization. Implements:
+ * - Phase A: Power Manager (always)
+ * - Phase D: Peripheral Drivers (conditional on Kconfig)
  */
 esp_err_t bsp_board_init(void)
 {
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Guition BSP v1.1.0-dev");
+    ESP_LOGI(TAG, "  Guition BSP v1.2.0-dev");
     ESP_LOGI(TAG, "  Phase A: Power Manager");
+    ESP_LOGI(TAG, "  Phase D: Peripheral Drivers");
     ESP_LOGI(TAG, "========================================");
     
+    /* Phase A: Power Manager (always executed) */
     esp_err_t ret = bsp_phase_a_power_manager();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Phase A failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    /* Phase D: Peripheral Drivers (conditional on Kconfig) */
+    ret = bsp_phase_d_peripheral_drivers();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Phase D failed: %s", esp_err_to_name(ret));
         return ret;
     }
     
@@ -218,5 +339,9 @@ esp_err_t bsp_board_init(void)
  */
 void bsp_board_deinit(void)
 {
+    if (g_i2c_bus_handle != NULL) {
+        i2c_del_master_bus(g_i2c_bus_handle);
+        g_i2c_bus_handle = NULL;
+    }
     ESP_LOGI(TAG, "BSP deinitialized");
 }

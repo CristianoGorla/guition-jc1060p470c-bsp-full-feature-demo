@@ -1,17 +1,17 @@
-# Guition JC1060P470C BSP Component Build Configuration
-
 idf_component_register(
-    SRCS "src/bsp_board.c"
-    INCLUDE_DIRS "include"
-    REQUIRES 
-        esp_lcd
-        sdmmc
-        fatfs
-        lwip
-        esp_netif
-        esp_hosted
-    PRIV_REQUIRES 
+    SRCS 
+        "src/bsp_board.c"
+        "drivers/jd9165_bsp.c"
+        "drivers/gt911_bsp.c"
+        "drivers/es8311_bsp.c"
+        "drivers/rx8025t_bsp.c"
+    INCLUDE_DIRS 
+        "include"
+        "drivers"
+    REQUIRES
         driver
-        esp_driver_gpio
-        esp_driver_i2c
+        esp_lcd
+        esp_lcd_touch_gt911
+        esp_lcd_jd9165
+        freertos
 )
