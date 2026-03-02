@@ -27,13 +27,13 @@
 #include "esp_netif.h"
 #include "esp_wifi.h"
 
+// Bootstrap and utilities
 #include "rtc_test.h"
 #include "rtc_ntp_sync.h"
-#include "feature_flags.h"
 #include "esp_hosted_wifi.h"
 #include "bootstrap_manager.h"
 
-#if ENABLE_WIFI && ENABLE_WIFI_CONNECT
+#ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
 #include "wifi_config.h"
 #endif
 
@@ -43,8 +43,7 @@ static const char *TAG = "GUITION_MAIN";
  * @brief Main application entry point
  * 
  * This function demonstrates the simplified initialization flow after
- * Step 4 refactoring. All hardware driver initialization is now handled
- * by the BSP component via bsp_board_init().
+ * Step 5 refactoring. All hardware and bootstrap code is now in the BSP.
  * 
  * Application Flow:
  * 1. BSP initialization (Phase A: Power, Phase D: Drivers)
@@ -59,7 +58,7 @@ void app_main(void)
     ESP_LOGI(TAG, "\n");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "   Guition JC1060P470C Initialization");
-    ESP_LOGI(TAG, "   v1.2.0-dev (Step 4 Refactored)");
+    ESP_LOGI(TAG, "   v1.3.0-dev (Step 5 Complete)");
     ESP_LOGI(TAG, "   Build: %s", BUILD_GIT_COMMIT);
     ESP_LOGI(TAG, "   Date: %s", BUILD_TIMESTAMP);
     ESP_LOGI(TAG, "========================================\n");
@@ -83,7 +82,7 @@ void app_main(void)
     // ========================================
     // NVS Initialization
     // ========================================
-#if ENABLE_NVS
+#ifdef CONFIG_APP_ENABLE_NVS
     ESP_LOGI(TAG, "=== NVS Initialization ===");
     ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
@@ -94,7 +93,7 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "✓ NVS initialized\n");
 #else
-    ESP_LOGI(TAG, "NVS disabled by feature flags\n");
+    ESP_LOGI(TAG, "NVS disabled by Kconfig\n");
 #endif
 
     // ========================================
@@ -110,7 +109,7 @@ void app_main(void)
     
     bootstrap_manager_t bootstrap_mgr = {0};
     
-#if ENABLE_SD_CARD || ENABLE_WIFI
+#if defined(CONFIG_BSP_ENABLE_SDCARD) || defined(CONFIG_BSP_ENABLE_WIFI)
     ret = bootstrap_manager_init(&bootstrap_mgr);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Bootstrap init failed: %s", esp_err_to_name(ret));
@@ -133,7 +132,7 @@ void app_main(void)
                     ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
         }
         
-#if ENABLE_WIFI_CONNECT
+#ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
         // WiFi connection test
         ESP_LOGI(TAG, "=== WiFi Connection Test ===");
         ESP_LOGI(TAG, "Connecting to: %s", WIFI_SSID);
@@ -158,7 +157,7 @@ void app_main(void)
                     ESP_LOGI(TAG, "   RSSI: %d dBm\n", ap_info.rssi);
                 }
                 
-#if ENABLE_RTC && ENABLE_RTC_NTP_SYNC
+#if defined(CONFIG_BSP_ENABLE_RTC) && defined(CONFIG_APP_ENABLE_RTC_NTP_SYNC)
                 ESP_LOGI(TAG, "=== RTC NTP Sync Test ===");
                 rtc_ntp_sync_test();
 #endif
@@ -166,7 +165,7 @@ void app_main(void)
         } else {
             ESP_LOGW(TAG, "WiFi connection timeout\n");
         }
-#elif ENABLE_WIFI
+#elif defined(CONFIG_BSP_ENABLE_WIFI)
         // Simple WiFi scan test
         ESP_LOGI(TAG, "=== WiFi Scan Test ===");
         if (do_wifi_scan_and_check(NULL)) {
@@ -210,10 +209,10 @@ void app_main(void)
 #ifdef CONFIG_BSP_ENABLE_RTC
     ESP_LOGI(TAG, "  ✓ RTC: RX8025T");
 #endif
-#if ENABLE_WIFI
+#ifdef CONFIG_BSP_ENABLE_WIFI
     ESP_LOGI(TAG, "  ✓ WiFi: ESP-Hosted");
 #endif
-#if ENABLE_SD_CARD
+#ifdef CONFIG_BSP_ENABLE_SDCARD
     ESP_LOGI(TAG, "  ✓ SD Card: SDMMC");
 #endif
     ESP_LOGI(TAG, "");
