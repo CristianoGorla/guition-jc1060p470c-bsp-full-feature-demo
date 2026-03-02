@@ -1,6 +1,6 @@
 menu "Guition JC1060 BSP Configuration"
 
-    config BSP_ENABLE_DISPLAY_JD9165
+    config BSP_ENABLE_DISPLAY
         bool "Enable JD9165 MIPI-DSI Display"
         default y
         select SPIRAM_SPEED_200M
@@ -9,37 +9,69 @@ menu "Guition JC1060 BSP Configuration"
             Enable the JD9165 1024x600 MIPI-DSI display controller.
             This option automatically configures SPIRAM to 200MHz and
             L2 cache to 256KB as required for optimal display performance.
+            
+            Hardware:
+            - Controller: JD9165
+            - Resolution: 1024x600
+            - Interface: MIPI DSI 2-lane @ 750Mbps
+            - Pixel Clock: 51.2MHz
+            - Backlight: PWM on GPIO 23
 
-    config BSP_ENABLE_I2C
+    config BSP_ENABLE_I2C_BUS
         bool "Enable I2C Bus"
         default y
         help
-            Enable the I2C bus (GPIO7=SDA, GPIO8=SCL).
+            Enable the I2C bus (GPIO3=SDA, GPIO8=SCL @ 400kHz).
             This is required for touch controller, audio codec, and RTC.
+            The I2C bus is shared by multiple peripherals.
 
     config BSP_ENABLE_TOUCH
         bool "Enable GT911 Touch Controller"
         default y
-        depends on BSP_ENABLE_I2C
+        depends on BSP_ENABLE_I2C_BUS
         help
             Enable the GT911 capacitive touch controller.
             Requires I2C bus to be enabled.
+            
+            Hardware:
+            - Controller: GT911
+            - I2C Address: 0x14 (forced via reset sequence)
+            - Reset GPIO: 21
+            - Interrupt GPIO: 22
+            - Max Touch Points: 5
+            - Resolution: 1024x600
 
     config BSP_ENABLE_AUDIO
-        bool "Enable ES8311 Audio Codec"
+        bool "Enable ES8311 Audio Codec + NS4150 Amplifier"
         default y
-        depends on BSP_ENABLE_I2C
+        depends on BSP_ENABLE_I2C_BUS
         help
-            Enable the ES8311 audio codec for audio input/output.
-            Requires I2C bus to be enabled.
+            Enable the ES8311 audio codec and NS4150 power amplifier
+            for audio input/output. Requires I2C bus to be enabled.
+            
+            Hardware:
+            - Codec: ES8311 (I2C address 0x18)
+            - Amplifier: NS4150 (GPIO 11 enable)
+            - I2S Interface:
+              - MCLK: GPIO 9
+              - BCLK: GPIO 13
+              - WS: GPIO 12
+              - DOUT: GPIO 10
 
     config BSP_ENABLE_RTC
         bool "Enable RX8025T RTC"
         default y
-        depends on BSP_ENABLE_I2C
+        depends on BSP_ENABLE_I2C_BUS
         help
             Enable the RX8025T real-time clock module.
             Requires I2C bus to be enabled.
+            
+            Hardware:
+            - Controller: RX8025T
+            - I2C Address: 0x32
+            - Interrupt GPIO: 0
+            - Crystal: 32.768 kHz
+            - Temperature Compensated: Yes
 
     config BSP_ENABLE_SDIO
         bool "Enable SDIO Controller"
