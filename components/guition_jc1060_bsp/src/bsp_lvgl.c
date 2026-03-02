@@ -10,8 +10,8 @@
 #ifdef CONFIG_BSP_ENABLE_LVGL
 
 #include "bsp_lvgl.h"
-#include "bsp_display.h"
-#include "bsp_touch.h"
+#include "jd9165_bsp.h"
+#include "gt911_bsp.h"
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
