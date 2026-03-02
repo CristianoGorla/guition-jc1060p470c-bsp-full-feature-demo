@@ -1,11 +1,6 @@
 /*
  * Guition JC1060P470C BSP - Full Feature Demo
- * 
- * Main application entry point for ESP32-P4 board initialization
- * and feature demonstration.
- * 
- * Copyright (c) 2026 Cristiano Gorla
- * SPDX-License-Identifier: Unlicense
+ * Copyright (c) 2026 Cristiano Gorla | SPDX-License-Identifier: Unlicense
  */
 
 #include <string.h>
@@ -22,12 +17,8 @@
 #include "esp_lcd_touch.h"
 #include "build_info.h"
 #include "bsp_board.h"
-
-// Network includes
 #include "esp_netif.h"
 #include "esp_wifi.h"
-
-// Bootstrap and utilities
 #include "rtc_test.h"
 #include "rtc_ntp_sync.h"
 #include "esp_hosted_wifi.h"
@@ -37,213 +28,104 @@
 #include "wifi_config.h"
 #endif
 
-// LVGL test UI
 #ifdef CONFIG_BSP_ENABLE_LVGL
-extern void lvgl_create_test_ui(void);
+#include "lvgl.h"
+
+static void lvgl_create_test_ui(void)
+{
+    lv_obj_t *scr = lv_scr_act();
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0x003366), 0);
+    
+    lv_obj_t *label = lv_label_create(scr);
+    lv_label_set_text(label, 
+        "LVGL v9.2.2 Ready!\n"
+        "Display: JD9165 (1024x600)\n"
+        "Touch: GT911 (I2C 0x14)\n"
+        "Memory: PSRAM 32MB @ 200MHz"
+    );
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, -80);
+    
+    lv_obj_t *btn = lv_btn_create(scr);
+    lv_obj_set_size(btn, 300, 100);
+    lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -80);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFF6600), LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFF9933), LV_STATE_PRESSED);
+    
+    lv_obj_t *btn_label = lv_label_create(btn);
+    lv_label_set_text(btn_label, "Touch Test");
+    lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_28, 0);
+    lv_obj_center(btn_label);
+    
+    lv_obj_t *version_label = lv_label_create(scr);
+    lv_label_set_text_fmt(version_label, "ESP32-P4 | BSP v1.3.0 | LVGL v%d.%d.%d",
+                          LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
+    lv_obj_set_style_text_color(version_label, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(version_label, &lv_font_montserrat_14, 0);
+    lv_obj_align(version_label, LV_ALIGN_BOTTOM_LEFT, 10, -10);
+}
 #endif
 
 static const char *TAG = "GUITION_MAIN";
 
-/**
- * @brief Main application entry point
- * 
- * This function demonstrates the simplified initialization flow after
- * Step 5 refactoring. All hardware and bootstrap code is now in the BSP.
- * 
- * Application Flow:
- * 1. BSP initialization (Phase A: Power, Phase D: Drivers + LVGL)
- * 2. NVS initialization (for WiFi/BT)
- * 3. Bootstrap manager (Phase C: WiFi, Phase B: SD Card)
- * 4. LVGL test UI (if enabled)
- * 5. Application-level features and tests
- */
 void app_main(void)
 {
     esp_err_t ret;
 
-    ESP_LOGI(TAG, "\n");
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "   Guition JC1060P470C Initialization");
-    ESP_LOGI(TAG, "   v1.3.0-dev (Step 5 Complete)");
-    ESP_LOGI(TAG, "   Build: %s", BUILD_GIT_COMMIT);
-    ESP_LOGI(TAG, "   Date: %s", BUILD_TIMESTAMP);
+    ESP_LOGI(TAG, "\n========================================");
+    ESP_LOGI(TAG, "   Guition JC1060P470C Init");
+    ESP_LOGI(TAG, "   v1.3.0-dev | Build: %s", BUILD_GIT_COMMIT);
     ESP_LOGI(TAG, "========================================\n");
 
-    // ========================================
-    // BSP Initialization (Phase A + Phase D)
-    // ========================================
-    // This single call handles:
-    // - Phase A: Power Manager (SD card power sequencing)
-    // - Phase D: Peripheral Drivers (display, touch, audio, RTC, LVGL)
-    //   (conditional on Kconfig settings)
     ret = bsp_board_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "BSP initialization failed: %s", esp_err_to_name(ret));
-        ESP_LOGE(TAG, "Cannot continue - hardware not ready");
+        ESP_LOGE(TAG, "BSP init failed: %s", esp_err_to_name(ret));
         return;
     }
-    
-    ESP_LOGI(TAG, "✓ Hardware initialization complete\n");
+    ESP_LOGI(TAG, "✓ Hardware ready\n");
 
-    // ========================================
-    // LVGL Test UI (after BSP init)
-    // ========================================
 #ifdef CONFIG_BSP_ENABLE_LVGL
     ESP_LOGI(TAG, "=== LVGL Test UI ===");
     lvgl_create_test_ui();
-    ESP_LOGI(TAG, "✓ LVGL UI displayed\n");
+    ESP_LOGI(TAG, "✓ UI displayed\n");
 #endif
 
-    // ========================================
-    // NVS Initialization
-    // ========================================
 #ifdef CONFIG_APP_ENABLE_NVS
-    ESP_LOGI(TAG, "=== NVS Initialization ===");
+    ESP_LOGI(TAG, "=== NVS Init ===");
     ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    {
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "✓ NVS initialized\n");
-#else
-    ESP_LOGI(TAG, "NVS disabled by Kconfig\n");
+    ESP_LOGI(TAG, "✓ NVS ready\n");
 #endif
 
-    // ========================================
-    // Bootstrap Manager (Phase C + Phase B)
-    // ========================================
-    // Handles:
-    // - Phase C: WiFi initialization (ESP-Hosted)
-    // - Phase B: SD Card mounting
-    ESP_LOGI(TAG, "\n========================================");
-    ESP_LOGI(TAG, "   Starting Bootstrap Manager");
-    ESP_LOGI(TAG, "   Phase C: WiFi + Phase B: SD Card");
-    ESP_LOGI(TAG, "========================================\n");
-    
     bootstrap_manager_t bootstrap_mgr = {0};
     
 #if defined(CONFIG_BSP_ENABLE_SDCARD) || defined(CONFIG_BSP_ENABLE_WIFI)
     ret = bootstrap_manager_init(&bootstrap_mgr);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bootstrap init failed: %s", esp_err_to_name(ret));
-        ESP_LOGE(TAG, "Retrying in 5 seconds...");
+        ESP_LOGE(TAG, "Bootstrap init failed");
         vTaskDelay(pdMS_TO_TICKS(5000));
         esp_restart();
     }
     
     ret = bootstrap_manager_wait(&bootstrap_mgr, 30000);
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "\n========================================");
-        ESP_LOGI(TAG, "   Bootstrap Complete - System Ready");
-        ESP_LOGI(TAG, "========================================\n");
-        
-        // Display SD card info if available
-        sdmmc_card_t *card = bootstrap_manager_get_sd_card(&bootstrap_mgr);
-        if (card) {
-            ESP_LOGI(TAG, "SD Card: %s", card->cid.name);
-            ESP_LOGI(TAG, "Capacity: %llu MB\n",
-                    ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
-        }
-        
-#ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
-        // WiFi connection test
-        ESP_LOGI(TAG, "=== WiFi Connection Test ===");
-        ESP_LOGI(TAG, "Connecting to: %s", WIFI_SSID);
-        
-        wifi_connect(WIFI_SSID, WIFI_PASSWORD);
-        ESP_LOGI(TAG, "Waiting for IP address (15s timeout)...");
-        
-        wait_for_ip();
-        
-        if (check_if_already_has_ip()) {
-            esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-            esp_netif_ip_info_t ip;
-            
-            if (netif && esp_netif_get_ip_info(netif, &ip) == ESP_OK) {
-                ESP_LOGI(TAG, "✓ WiFi connected!");
-                ESP_LOGI(TAG, "   IP: " IPSTR, IP2STR(&ip.ip));
-                ESP_LOGI(TAG, "   Netmask: " IPSTR, IP2STR(&ip.netmask));
-                ESP_LOGI(TAG, "   Gateway: " IPSTR, IP2STR(&ip.gw));
-                
-                wifi_ap_record_t ap_info;
-                if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-                    ESP_LOGI(TAG, "   RSSI: %d dBm\n", ap_info.rssi);
-                }
-                
-#if defined(CONFIG_BSP_ENABLE_RTC) && defined(CONFIG_APP_ENABLE_RTC_NTP_SYNC)
-                ESP_LOGI(TAG, "=== RTC NTP Sync Test ===");
-                rtc_ntp_sync_test();
-#endif
-            }
-        } else {
-            ESP_LOGW(TAG, "WiFi connection timeout\n");
-        }
-#elif defined(CONFIG_BSP_ENABLE_WIFI)
-        // Simple WiFi scan test
-        ESP_LOGI(TAG, "=== WiFi Scan Test ===");
-        if (do_wifi_scan_and_check(NULL)) {
-            ESP_LOGI(TAG, "✓ WiFi scan successful\n");
-        } else {
-            ESP_LOGW(TAG, "No networks found\n");
-        }
-#endif
-        
-    } else if (ret == ESP_ERR_TIMEOUT) {
-        ESP_LOGE(TAG, "Bootstrap timeout!");
-        ESP_LOGE(TAG, "WiFi or SD card initialization took too long");
-        vTaskDelay(pdMS_TO_TICKS(10000));
-        esp_restart();
-    } else {
-        ESP_LOGE(TAG, "Bootstrap failed: %s", esp_err_to_name(ret));
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Bootstrap timeout/failed");
         vTaskDelay(pdMS_TO_TICKS(10000));
         esp_restart();
     }
-#else
-    ESP_LOGI(TAG, "Bootstrap manager disabled (no WiFi/SD card enabled)\n");
 #endif
 
-    // ========================================
-    // Application Features
-    // ========================================
-    ESP_LOGI(TAG, "\n========================================");
-    ESP_LOGI(TAG, "   Application Ready");
-    ESP_LOGI(TAG, "========================================\n");
-    
-    ESP_LOGI(TAG, "System fully initialized:");
-#ifdef CONFIG_BSP_ENABLE_DISPLAY
-    ESP_LOGI(TAG, "  ✓ Display: JD9165 (1024x600)");
-#endif
-#ifdef CONFIG_BSP_ENABLE_TOUCH
-    ESP_LOGI(TAG, "  ✓ Touch: GT911");
-#endif
-#ifdef CONFIG_BSP_ENABLE_AUDIO
-    ESP_LOGI(TAG, "  ✓ Audio: ES8311 + NS4150");
-#endif
-#ifdef CONFIG_BSP_ENABLE_RTC
-    ESP_LOGI(TAG, "  ✓ RTC: RX8025T");
-#endif
-#ifdef CONFIG_BSP_ENABLE_WIFI
-    ESP_LOGI(TAG, "  ✓ WiFi: ESP-Hosted");
-#endif
-#ifdef CONFIG_BSP_ENABLE_SDCARD
-    ESP_LOGI(TAG, "  ✓ SD Card: SDMMC");
-#endif
-#ifdef CONFIG_BSP_ENABLE_LVGL
-    ESP_LOGI(TAG, "  ✓ LVGL: v9.2.2 (1024x600 PSRAM)");
-#endif
-    ESP_LOGI(TAG, "");
-    
+    ESP_LOGI(TAG, "\n=== System Ready ===");
     ESP_LOGI(TAG, "Entering main loop...\n");
     
-    // Main application loop
-    while (1)
-    {
+    while (1) {
         vTaskDelay(pdMS_TO_TICKS(10000));
-        
-        // Periodic status log
-        ESP_LOGI(TAG, "System running... (uptime: %lu seconds)", 
-                 xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
+        ESP_LOGI(TAG, "Uptime: %lu s", xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
     }
 }
