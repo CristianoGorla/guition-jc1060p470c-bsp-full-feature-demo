@@ -29,4 +29,5 @@ idf_component_register(
         fatfs
         esp_timer
         esp_wifi
+        lwip
 )
