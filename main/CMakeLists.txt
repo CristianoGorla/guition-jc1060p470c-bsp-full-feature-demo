@@ -4,11 +4,6 @@ idf_component_register(
     SRCS 
         "main.c"
         "bootstrap_manager.c"
-        "display_jd9165.c"
-        "touch_gt911.c"
-        "i2c_utils.c"
-        "es8311_audio.c"
-        "rtc_rx8025t.c"
         "rtc_ntp_sync.c"
         "rtc_test.c"
         "esp_hosted_wifi.c"
@@ -24,8 +19,11 @@ idf_component_register(
         esp_netif
         esp_event
         esp_wifi
+        fatfs
+        driver
     PRIV_REQUIRES
         esp_timer
+        sdmmc
 )
 
 # Generate build info AFTER component registration to avoid early evaluation issues
