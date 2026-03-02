@@ -1,30 +1,5 @@
 # Main application component
 
-# Generate build timestamp
-string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%d %H:%M:%S" UTC)
-
-# Get git commit hash
-if(NOT DEFINED ENV{BUILD_GIT_COMMIT})
-    execute_process(
-        COMMAND git log -1 --format=%h
-        OUTPUT_VARIABLE BUILD_GIT_COMMIT
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-    if(NOT BUILD_GIT_COMMIT)
-        set(BUILD_GIT_COMMIT "unknown")
-    endif()
-else()
-    set(BUILD_GIT_COMMIT $ENV{BUILD_GIT_COMMIT})
-endif()
-
-# Generate build_info.h from template
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/build_info.h.in
-    ${CMAKE_CURRENT_BINARY_DIR}/build_info.h
-    @ONLY
-)
-
 idf_component_register(
     SRCS 
         "main.c"
@@ -49,4 +24,26 @@ idf_component_register(
         nvs_flash
         esp_netif
         esp_event
+)
+
+# Generate build info AFTER component registration to avoid early evaluation issues
+string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%d %H:%M:%S" UTC)
+
+if(NOT DEFINED BUILD_GIT_COMMIT)
+    execute_process(
+        COMMAND git log -1 --format=%h
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE BUILD_GIT_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT BUILD_GIT_COMMIT)
+        set(BUILD_GIT_COMMIT "unknown")
+    endif()
+endif()
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/build_info.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/build_info.h
+    @ONLY
 )
