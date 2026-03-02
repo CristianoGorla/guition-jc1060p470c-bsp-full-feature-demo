@@ -1,13 +1,13 @@
 /*
  * Guition JC1060P470C Board Support Package
- * 
- * Public BSP interface for hardware initialization and configuration.
+ * Hardware Abstraction Layer
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
  */
 
-#pragma once
+#ifndef BSP_BOARD_H
+#define BSP_BOARD_H
 
 #include "esp_err.h"
 
@@ -16,17 +16,28 @@ extern "C" {
 #endif
 
 /**
- * @brief Initialize the Guition JC1060P470C board hardware
+ * @brief Initialize the board support package
  * 
- * This function initializes all enabled hardware components based on
- * the Kconfig configuration (CONFIG_BSP_ENABLE_*).
+ * Performs Phase A (Power Manager) initialization:
+ * - Deterministic hard reset sequence
+ * - GPIO 18 strapping guard for ESP32-C6 boot mode
+ * - Power rail stabilization
  * 
  * @return
- *     - ESP_OK on success
- *     - ESP_FAIL on failure
+ *     - ESP_OK: Success
+ *     - ESP_ERR_*: Failure
  */
 esp_err_t bsp_board_init(void);
+
+/**
+ * @brief Deinitialize the board support package
+ * 
+ * Cleanup resources allocated during initialization.
+ */
+void bsp_board_deinit(void);
 
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* BSP_BOARD_H */
