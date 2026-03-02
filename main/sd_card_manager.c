@@ -22,27 +22,27 @@ static const char *TAG = "SD_MANAGER";
 static sdmmc_card_t *g_sd_card = NULL;
 static bool g_is_mounted = false;
 
-// Pin definitions (from sdkconfig)
-#ifndef CONFIG_EXAMPLE_PIN_CLK
-#define CONFIG_EXAMPLE_PIN_CLK 43
+// Pin definitions from BSP Kconfig (with fallback defaults)
+#ifndef CONFIG_BSP_PIN_CLK
+#define CONFIG_BSP_PIN_CLK 43
 #endif
-#ifndef CONFIG_EXAMPLE_PIN_CMD
-#define CONFIG_EXAMPLE_PIN_CMD 44
+#ifndef CONFIG_BSP_PIN_CMD
+#define CONFIG_BSP_PIN_CMD 44
 #endif
-#ifndef CONFIG_EXAMPLE_PIN_D0
-#define CONFIG_EXAMPLE_PIN_D0 39
+#ifndef CONFIG_BSP_PIN_D0
+#define CONFIG_BSP_PIN_D0 39
 #endif
-#ifndef CONFIG_EXAMPLE_PIN_D1
-#define CONFIG_EXAMPLE_PIN_D1 40
+#ifndef CONFIG_BSP_PIN_D1
+#define CONFIG_BSP_PIN_D1 40
 #endif
-#ifndef CONFIG_EXAMPLE_PIN_D2
-#define CONFIG_EXAMPLE_PIN_D2 41
+#ifndef CONFIG_BSP_PIN_D2
+#define CONFIG_BSP_PIN_D2 41
 #endif
-#ifndef CONFIG_EXAMPLE_PIN_D3
-#define CONFIG_EXAMPLE_PIN_D3 42
+#ifndef CONFIG_BSP_PIN_D3
+#define CONFIG_BSP_PIN_D3 42
 #endif
-#ifndef CONFIG_EXAMPLE_PIN_CARD_POWER_RESET
-#define CONFIG_EXAMPLE_PIN_CARD_POWER_RESET 36
+#ifndef CONFIG_BSP_PIN_SD_POWER_EN
+#define CONFIG_BSP_PIN_SD_POWER_EN 36
 #endif
 
 /**
@@ -76,12 +76,12 @@ static esp_err_t sdmmc_host_deinit_dummy(void)
 static void sd_card_enable_pullups(void)
 {
     const int sdmmc_pins[] = {
-        CONFIG_EXAMPLE_PIN_D0,
-        CONFIG_EXAMPLE_PIN_D1,
-        CONFIG_EXAMPLE_PIN_D2,
-        CONFIG_EXAMPLE_PIN_D3,
-        CONFIG_EXAMPLE_PIN_CMD,
-        CONFIG_EXAMPLE_PIN_CLK
+        CONFIG_BSP_PIN_D0,
+        CONFIG_BSP_PIN_D1,
+        CONFIG_BSP_PIN_D2,
+        CONFIG_BSP_PIN_D3,
+        CONFIG_BSP_PIN_CMD,
+        CONFIG_BSP_PIN_CLK
     };
     
     LOG_SD(TAG, "Enabling pull-ups on SDMMC pins (GPIO39-44)...");
@@ -103,32 +103,21 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
     
     LOG_SD(TAG, "=== SD Card Mount (Phase B - after WiFi) ===");
     
-    // Step 1: Enable SD card power (if controllable)
-#ifdef CONFIG_EXAMPLE_PIN_CARD_POWER_RESET
-    gpio_config_t pwr_io_conf = {
-        .pin_bit_mask = (1ULL << CONFIG_EXAMPLE_PIN_CARD_POWER_RESET),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&pwr_io_conf);
-    gpio_set_level(CONFIG_EXAMPLE_PIN_CARD_POWER_RESET, 1);  // Power on
-    vTaskDelay(pdMS_TO_TICKS(250));
-    LOG_SD(TAG, "SD Card power enabled (GPIO%d)", CONFIG_EXAMPLE_PIN_CARD_POWER_RESET);
-#endif
+    // Step 1: Enable SD card power (managed by BSP Phase A, already on)
+    // Note: BSP Phase A already powered up SD card via GPIO 36
+    LOG_SD(TAG, "SD Card power already enabled by BSP Phase A (GPIO%d)", CONFIG_BSP_PIN_SD_POWER_EN);
     
     // Step 2: Enable pull-ups BEFORE mount
     sd_card_enable_pullups();
     
     // Step 3: Configure Slot 0 pins
     sdmmc_slot_config_t slot_config = {
-        .clk = CONFIG_EXAMPLE_PIN_CLK,
-        .cmd = CONFIG_EXAMPLE_PIN_CMD,
-        .d0 = CONFIG_EXAMPLE_PIN_D0,
-        .d1 = CONFIG_EXAMPLE_PIN_D1,
-        .d2 = CONFIG_EXAMPLE_PIN_D2,
-        .d3 = CONFIG_EXAMPLE_PIN_D3,
+        .clk = CONFIG_BSP_PIN_CLK,
+        .cmd = CONFIG_BSP_PIN_CMD,
+        .d0 = CONFIG_BSP_PIN_D0,
+        .d1 = CONFIG_BSP_PIN_D1,
+        .d2 = CONFIG_BSP_PIN_D2,
+        .d3 = CONFIG_BSP_PIN_D3,
         .cd = SDMMC_SLOT_NO_CD,
         .wp = SDMMC_SLOT_NO_WP,
         .width = 4,
