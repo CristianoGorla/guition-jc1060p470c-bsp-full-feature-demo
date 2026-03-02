@@ -478,7 +478,7 @@ menu "Guition JC1060P470C Board Configuration"
 
         config BSP_ENABLE_LVGL
             bool "Enable LVGL Graphics Library"
-            default n
+            default y
             depends on BSP_ENABLE_DISPLAY
             help
                 Enable LVGL (Light and Versatile Graphics Library) v9.2.2
@@ -564,7 +564,7 @@ menu "Guition JC1060P470C Board Configuration"
             
             config BSP_LVGL_ENABLE_DEMO
                 bool "Enable LVGL demo at startup"
-                default n
+                default y
                 help
                     Automatically run an LVGL demo application on boot.
                     Useful for testing display and touch functionality.
