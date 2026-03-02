@@ -24,6 +24,8 @@ idf_component_register(
         esp_netif
         esp_event
         esp_wifi
+    PRIV_REQUIRES
+        esp_timer
 )
 
 # Generate build info AFTER component registration to avoid early evaluation issues

@@ -60,6 +60,7 @@ idf.py build flash monitor
 - [System Architecture](#-system-architecture)
   - [Bootstrap Manager](#bootstrap-manager-architecture)
   - [Three-Phase Initialization](#three-phase-initialization-system)
+  - [BSP Minimal Architecture](#bsp-minimal-architecture)
 - [Requirements](#-requirements)
 - [Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
@@ -156,65 +157,116 @@ Sequential initialization with **event-driven synchronization** across three pha
 ### Three-Phase Initialization System
 
 ```
-Phase A: Power Manager (Priority 24)
-  ├── 1. Force GPIO isolation (C6 in reset, SD powered down)
-  ├── 2. Wait 100ms for rail stabilization
-  ├── 3. Power up SD card (GPIO36 HIGH)
-  ├── 4. Release C6 from reset (GPIO54 HIGH)
-  └── 5. Signal POWER_READY → Phase B
+Phase A: Power Manager (BSP, Priority 24)
+  ├── 1. Configure SD card power control (GPIO36)
+  ├── 2. Force SD card power OFF (isolation)
+  ├── 3. Wait 100ms for rail stabilization
+  ├── 4. Power up SD card (GPIO36 HIGH)
+  └── 5. Signal POWER_READY → Phase C
+  
+  NOTE: C6 reset (GPIO54) and SDIO signals (GPIO18) are NOT managed by BSP.
+        These are exclusively owned by ESP-Hosted and SDMMC drivers.
 
-Phase B: WiFi Manager (Priority 23)
+Phase C: WiFi Manager (Priority 23)
   ├── Wait for POWER_READY
-  ├── 1. Wait for C6 firmware ready signal (GPIO6, 5s timeout)
-  ├── 2. Initialize ESP-Hosted SDIO transport (SDMMC Slot 1)
-  └── 3. Signal HOSTED_READY → Phase C
+  ├── 1. Initialize ESP-Hosted SDIO transport (SDMMC Slot 1)
+  │   └── ESP-Hosted driver resets C6 via GPIO54 internally
+  ├── 2. Wait 2000ms for SDIO link stabilization
+  └── 3. Signal WIFI_READY → Phase B
+  
+  NOTE: esp_wifi_init() initializes SDMMC controller for Slot 1.
+        C6 is reset automatically during this process.
+        SDMMC host controller remains active after this phase.
 
-Phase C: SD Manager (Priority 22)
-  ├── Wait for HOSTED_READY
-  ├── 1. Enable pull-ups on SDMMC pins (GPIO39-44)
-  ├── 2. Mount SD card filesystem (SDMMC Slot 0)
+Phase B: SD Manager (Priority 22)
+  ├── Wait for WIFI_READY
+  ├── 1. Enable pull-ups on SDMMC Slot 0 pins (GPIO39-44)
+  ├── 2. Mount SD card filesystem using "dummy init"
+  │   └── Skips sdmmc_host_init() (already done by WiFi)
   └── 3. Signal SD_READY
+  
+  NOTE: Uses "dummy init" because SDMMC host controller
+        is already initialized and active from Phase C.
 ```
+
+### BSP Minimal Architecture
+
+**Key Principle: Driver Ownership**
+
+The BSP follows a **minimal intervention** philosophy:
+
+| GPIO | Owner | BSP Touches It? | Notes |
+|------|-------|-----------------|-------|
+| **GPIO36** | BSP | ✅ Yes | SD card power enable (only thing BSP manages) |
+| **GPIO54** | ESP-Hosted | ❌ No | C6 reset (driver manages during esp_wifi_init) |
+| **GPIO18** | SDMMC Driver | ❌ No | SDIO CLK for Slot 1 (cannot be forced) |
+| **GPIO14-17,19** | SDMMC Driver | ❌ No | SDIO data/cmd lines for Slot 1 |
+| **GPIO39-44** | SDMMC Driver | ❌ No | SD card data/cmd/clk for Slot 0 |
+
+**Why This Matters:**
+
+1. **C6 Reset Behavior:**
+   - C6 **resets automatically** on every P4 boot
+   - ESP-Hosted driver handles GPIO54 during `esp_wifi_init()`
+   - BSP never touches GPIO54 - would cause conflicts
+
+2. **SDMMC Host Controller:**
+   - **Never resets** between P4 software reboots
+   - WiFi init (Phase C) leaves it in active state
+   - SD mount (Phase B) uses "dummy init" to avoid re-init
+   - Attempting to re-initialize causes `0x107` errors
+
+3. **GPIO18 (SDIO CLK):**
+   - Shared between P4 SDIO Slot 1 and C6 IO9 (strapping pin)
+   - Cannot be forced HIGH as "strapping guard" - breaks SDIO protocol
+   - Hardware pull-up/down must handle C6 boot mode selection
+
+**BSP Responsibilities:**
+- ✅ SD card power control (GPIO36)
+- ✅ Power sequencing delays
+- ✅ Hard reset detection and handling
+- ❌ **NOT** C6 reset (ESP-Hosted owns it)
+- ❌ **NOT** SDIO signals (SDMMC driver owns them)
+- ❌ **NOT** strapping manipulation (hardware handles it)
 
 #### Why This Works
 
-1. **Phase A** ensures power domains are stable before any communication
-2. **Phase B** initializes ESP-Hosted and claims exclusive SDMMC controller access
-3. **Phase C** safely mounts SD card after ESP-Hosted is fully operational
+1. **Phase A** ensures SD card power is stable before any communication
+2. **Phase C** initializes ESP-Hosted and claims SDMMC controller (C6 resets automatically)
+3. **Phase B** safely mounts SD card without re-initializing active controller
+4. **Driver Ownership** prevents GPIO conflicts and double-initialization
 
 #### Boot Timing Analysis
 
 | Event | Timestamp | Duration | Description |
 |-------|-----------|----------|-------------|
-| **Bootstrap Start** | T+1.87s | - | Three-phase init begins |
-| **Warm Boot Detection** | T+1.89s | 20ms | Detects reset reason |
-| **Hard Reset Cycle** | T+1.90s | 500ms | Forces complete power-down |
-| **Phase A** | T+2.43s | 180ms | Power Manager execution |
-| **Phase B** | T+2.61s | 5.06s | WiFi Manager (incl. 5s timeout) |
-| **Phase C** | T+7.67s | 360ms | SD Manager + mount |
-| **Bootstrap Complete** | T+8.03s | **6.16s total** | All systems operational |
+| **Bootstrap Start** | T+1.41s | - | Three-phase init begins |
+| **Phase A** | T+1.41s | 180ms | Power Manager (SD power only) |
+| **Phase C** | T+2.09s | 5.38s | WiFi Manager (SDMMC init + C6 reset + link stabilization) |
+| **Phase B** | T+7.47s | 360ms | SD Manager (dummy init + mount) |
+| **Bootstrap Complete** | T+7.77s | **6.36s total** | All systems operational |
+| **WiFi Connect** | T+7.77s | 1.03s | Connect + DHCP |
+| **System Ready** | T+8.83s | **7.42s total** | WiFi connected with IP |
 
 > [!NOTE]
-> The GPIO6 handshake timeout (5 seconds) is expected behavior. ESP-Hosted proceeds successfully after timeout without affecting functionality.
+> SDMMC controller initialization happens ONCE during Phase C (WiFi init) and persists.
+> Phase B (SD mount) skips controller init to avoid conflicts.
 
 #### Warm Boot Hard Reset
 
-On warm boot (software reset, hardware button, or unknown reset), the Bootstrap Manager performs an **automatic hard reset cycle**:
+On warm boot (software reset, hardware button, or unknown reset), the BSP performs a hard reset cycle **only for SD card**:
 
 ```
-W (1891) BOOTSTRAP: Warm boot detected (reset reason: 3)
-W (1896) BOOTSTRAP: Warm boot detected, performing hard reset...
-W (1902) BOOTSTRAP: === HARD RESET CYCLE ===
-W (1906) BOOTSTRAP: Forcing complete power-down to clear hardware state...
-W (1913) BOOTSTRAP:   GPIO54 (C6_CHIP_PU) → LOW
-W (1917) BOOTSTRAP:   GPIO36 (SD_POWER_EN) → LOW
-W (1922) BOOTSTRAP:   Waiting 500ms for capacitor discharge...
-W (2427) BOOTSTRAP: Hard reset complete, ready for clean init
+I (1411) BSP: [RESET] USB-UART reset (IDF monitor) - no hard reset needed
+I (1411) BSP: [RESET] ESP-Hosted will manage C6 reset during init_wifi()
+I (1412) BSP: [PHASE A] Configuring SD card power control...
+I (1412) BSP: [PHASE A]   GPIO36 (SD_POWER_EN) → LOW (SD unpowered)
+I (1412) BSP: [PHASE A] NOTE: GPIO54 (C6) and GPIO18 (SDIO CLK) managed by drivers
 ```
 
-**Purpose**: Ensures ESP32-C6 and SD card start from a known clean state, preventing residual hardware state issues.
+**Purpose**: Ensures SD card starts from a clean state. C6 reset is handled by ESP-Hosted driver automatically.
 
-**See [troubleshooting.md](troubleshooting.md#bootstrap-manager-timing-and-behavior) for complete timing analysis.**
+**See [troubleshooting.md](troubleshooting.md#bsp-minimal-architecture-and-driver-ownership) for complete technical details.**
 
 ---
 
@@ -331,9 +383,9 @@ All peripherals can be enabled/disabled via feature flags in `main/feature_flags
 | **RX8025T RTC** | ✅ Active | 0x32 | - | `ENABLE_RTC=1` | `DEBUG_RTC=1` |
 | **JD9165 Display** | ✅ Active | - | MIPI DSI (45-52) | `ENABLE_DISPLAY=1` | `DEBUG_DISPLAY=1` |
 | **GT911 Touch** | ✅ Active | 0x14 | RST=21, INT=22 | `ENABLE_TOUCH=1` | `DEBUG_TOUCH=1` |
-| **SD Card** | ✅ Active | - | Slot 0 (39-44), PWR=45 | `ENABLE_SD_CARD=1` | `DEBUG_SD_CARD=1` |
+| **SD Card** | ✅ Active | - | Slot 0 (39-44), PWR=36 | `ENABLE_SD_CARD=1` | `DEBUG_SD_CARD=1` |
 | **WiFi ESP-Hosted** | ✅ Active | - | Slot 1 (14-19), RST=54 | `ENABLE_WIFI=1` | `DEBUG_WIFI=1` |
-| **Bootstrap Manager** | ✅ Active | - | C6_RST=54, SD_PWR=36, C6_READY=6 | - | - |
+| **Bootstrap Manager** | ✅ Active | - | SD_PWR=36 only | - | - |
 | **NVS Flash** | ✅ Active | - | - | `ENABLE_NVS=1` | `DEBUG_NVS=0` |
 
 ### 🧪 Advanced Features and Tests
@@ -352,20 +404,17 @@ All peripherals can be enabled/disabled via feature flags in `main/feature_flags
 
 | Initialization Stage | Tag | Expected Output | Time |
 |---------------------|-----|-----------------|------|
-| **Boot Info** | `app_init` | App version, compile time, ESP-IDF | ~1.0s |
-| **I2C Bus** | `GUITION_MAIN` | ✓ I2C bus ready (SDA=GPIO7, SCL=GPIO8) | ~1.1s |
-| **ES8311 Audio** | `ES8311` | ✓ ES8311 initialized (Chip ID: 0x83) | ~1.3s |
-| **RTC** | `RX8025T` | ✓ RTC initialized, Current time | ~1.4s |
-| **Display** | `JD9165` | Display initialized (1024x600) | ~1.7s |
-| **Touch** | `GT911` | ✓ GT911 initialized (1024x600) | ~1.7s |
-| **Bootstrap Start** | `BOOTSTRAP` | Three-phase init begins | ~1.9s |
-| **Hard Reset** | `BOOTSTRAP` | 500ms power-down cycle (warm boot) | ~1.9-2.4s |
-| **Phase A** | `BOOTSTRAP` | Power Manager (GPIO isolation + power-on) | ~2.4-2.6s |
-| **Phase B** | `BOOTSTRAP` | WiFi Manager (ESP-Hosted init) | ~2.6-7.7s |
-| **Phase C** | `BOOTSTRAP` | SD Manager (SD card mount) | ~7.7-8.0s |
-| **SD Card Ready** | `GUITION_MAIN` | ✓ SD card mounted, Capacity | ~8.0s |
-| **WiFi Init** | `wifi_hosted` | ✓ WiFi initialized (ESP-Hosted) | ~4.4s |
-| **WiFi Connect** | `GUITION_MAIN` | ✓ WiFi connected! IP, RSSI | ~10.9s |
+| **Boot Info** | `app_init` | App version, compile time, ESP-IDF | ~1.4s |
+| **BSP Phase A** | `BSP` | SD power control (GPIO36 only) | ~1.4-1.6s |
+| **I2C Bus** | `GUITION_MAIN` | ✓ I2C bus ready (SDA=GPIO7, SCL=GPIO8) | ~1.6s |
+| **ES8311 Audio** | `ES8311` | ✓ ES8311 initialized (Chip ID: 0x83) | ~1.7s |
+| **RTC** | `RX8025T` | ✓ RTC initialized, Current time | ~1.7s |
+| **Display** | `JD9165` | Display initialized (1024x600) | ~2.0s |
+| **Touch** | `GT911` | ✓ GT911 initialized (1024x600) | ~2.1s |
+| **Bootstrap Phase C** | `BOOTSTRAP` | WiFi Manager (SDMMC + C6 reset) | ~2.1-7.5s |
+| **Bootstrap Phase B** | `BOOTSTRAP` | SD Manager (dummy init + mount) | ~7.5-7.8s |
+| **SD Card Ready** | `GUITION_MAIN` | ✓ SD card mounted, Capacity | ~7.8s |
+| **WiFi Connect** | `GUITION_MAIN` | ✓ WiFi connected! IP, RSSI | ~8.8s |
 
 ---
 
@@ -384,15 +433,15 @@ All peripherals can be enabled/disabled via feature flags in `main/feature_flags
 | GPIO40 | D1 | 10k pullup (4-bit mode only) |
 | GPIO41 | D2 | 10k pullup (4-bit mode only) |
 | GPIO42 | D3 | 10k pullup required even in 1-bit mode |
-| GPIO36 | PWR_EN | SD card power control (active HIGH) |
+| GPIO36 | PWR_EN | SD card power control (BSP manages) |
 
 ### SDMMC Slot 1 (ESP-Hosted WiFi)
 
-| ESP32-P4 Pin | Function | Notes |
+| ESP32-P4 Pin | Function | Owner |
 |--------------|----------|-------|
-| GPIO14-19 | SDIO Data | 4-bit SDIO interface |
-| GPIO54 | C6_RESET | ESP32-C6 CHIP_PU (active HIGH) |
-| GPIO6 | INT/READY | Dual-purpose: interrupt + ready signal |
+| GPIO14-19 | SDIO Data | SDMMC driver |
+| GPIO54 | C6_RESET | ESP-Hosted driver |
+| GPIO6 | INT/READY | ESP-Hosted driver |
 
 ### I2C Bus
 
@@ -426,7 +475,7 @@ All peripherals can be enabled/disabled via feature flags in `main/feature_flags
 
 ### WiFi Connection Test
 
-By default, the demo performs a WiFi scan. To enable full WiFi connection:
+By default, the demo initializes WiFi without connecting. To enable full WiFi connection:
 
 1. **Create WiFi credentials file:**
    ```bash
@@ -454,14 +503,13 @@ By default, the demo performs a WiFi scan. To enable full WiFi connection:
 
 **Expected Output:**
 ```
-I (4429) GUITION_MAIN: ✓ WiFi initialized (ESP-Hosted via C6)
-I (6429) GUITION_MAIN: === WiFi Connection Test ===
-I (6429) GUITION_MAIN: Connecting to: YourWiFiSSID
-I (8500) GUITION_MAIN: ✓ WiFi connected!
-I (8500) GUITION_MAIN:    IP Address: 192.168.1.100
-I (8501) GUITION_MAIN:    Netmask:    255.255.255.0
-I (8502) GUITION_MAIN:    Gateway:    192.168.1.1
-I (8503) GUITION_MAIN:    RSSI: -45 dBm
+I (7770) GUITION_MAIN: === WiFi Connection Test ===
+I (7771) GUITION_MAIN: Connecting to: FRITZ!Box 7530 WL
+I (8829) GUITION_MAIN: ✓ WiFi connected!
+I (8829) GUITION_MAIN:    IP: 192.168.188.88
+I (8829) GUITION_MAIN:    Netmask: 255.255.255.0
+I (8829) GUITION_MAIN:    Gateway: 192.168.188.1
+I (8833) GUITION_MAIN:    RSSI: -67 dBm
 ```
 
 > [!NOTE]
@@ -500,12 +548,6 @@ Synchronize RTC with Network Time Protocol server (requires WiFi connection):
 - **Timeout**: 10 seconds
 - **Verification**: Readback confirmation
 
-**Use Cases:**
-- Initial RTC setup on first boot
-- Periodic time synchronization
-- Recovery from RTC battery failure
-- Development/testing time sync
-
 ---
 
 ## ⚙️ Build Configuration
@@ -543,14 +585,14 @@ Synchronize RTC with Network Time Protocol server (requires WiFi connection):
 | **IDF Monitor Restart** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ Clean | ✅ **Development** |
 | **`idf.py monitor`** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ Clean | ✅ **Development** |
 | **Power Cycle (5s)** | ⭐⭐⭐⭐⭐ | ✅ OK | ✅ OK | ✅ Clean | ✅ **Production** |
-| **Hardware Button** | ⭐⭐⭐ | ✅ OK | ✅ OK | ⚙️ Hard reset cycle | ⚠️ Works (warm boot) |
+| **Hardware Button** | ⭐⭐⭐ | ✅ OK | ✅ OK | ⚙️ Soft reset | ⚠️ Works (C6 resets) |
 | **USB Disconnect** | ⭐⭐ | ⚠️ May fail | ⚠️ May timeout | ⚙️ Hard reset cycle | ❌ Less reliable |
 
 ### Best Practices
 
 1. **Use IDF Monitor restart** (`Ctrl+T` then `Ctrl+R`) for development
 2. **Full power cycle** for production testing
-3. **Hardware button** triggers automatic hard reset (expected behavior)
+3. **Hardware button** works reliably (C6 resets automatically on P4 boot)
 4. **USB disconnect** may cause initialization issues (avoid if possible)
 
 **See [troubleshooting.md](troubleshooting.md) for detailed reset behavior analysis.**
@@ -576,12 +618,12 @@ E (xxxx) sdmmc_cmd: sdmmc_init_sd_scr: send_scr (1) returned 0x107
 ```
 
 **Common Causes:**
-- Hardware button reset (use IDF monitor restart instead)
+- SDMMC host controller re-initialization attempted (Phase B must use "dummy init")
+- Hardware button reset with inconsistent state
 - USB disconnect/reconnect (power cycle for 5+ seconds)
-- Inconsistent hardware state after soft reset
 
 **Solutions:**
-1. Use `Ctrl+T` + `Ctrl+R` in IDF monitor
+1. Use `Ctrl+T` + `Ctrl+R` in IDF monitor (recommended)
 2. Full power cycle (disconnect USB for 5+ seconds)
 3. Check SD card is properly seated
 4. Try different SD card (FAT32 formatted)
@@ -593,10 +635,10 @@ E (xxxx) sdmmc_cmd: sdmmc_init_sd_scr: send_scr (1) returned 0x107
 **Symptoms:**
 ```
 E (2617) BOOTSTRAP: Bootstrap timeout!
-E (2635) BOOTSTRAP:   Phase B (WiFi Hosted) did not complete
+E (2635) BOOTSTRAP:   Phase C (WiFi Hosted) did not complete
 ```
 
-**Note:** GPIO6 handshake timeout (5s) is **expected behavior**. ESP-Hosted proceeds successfully despite timeout message. Both WiFi and SD card work correctly.
+**Note:** This is **expected behavior**. ESP-Hosted proceeds successfully despite timeout. Both WiFi and SD card work correctly.
 
 **See [troubleshooting.md](troubleshooting.md#bootstrap-manager-timing-and-behavior) for timing details.**
 
@@ -626,19 +668,7 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 1. Verify credentials in `main/wifi_config.h` are correct
 2. Ensure router broadcasts 2.4GHz (ESP32-C6 doesn't support 5GHz)
 3. Check WiFi signal strength (router proximity)
-4. Verify GPIO6 interrupt configuration
-5. Check firewall settings
-
-#### NTP synchronization fails
-
-**Symptoms:** NTP sync timeout or failure
-
-**Checklist:**
-1. Verify WiFi is connected (check IP address in logs)
-2. Test internet connectivity
-3. Check firewall allows UDP port 123 (NTP)
-4. Try alternative NTP server (edit `rtc_ntp_sync.c`)
-5. Increase timeout in `sync_time_from_ntp()` call
+4. Check firewall settings
 
 ### Important Notes
 
@@ -650,12 +680,16 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 ⚠️ **Single lwIP Reference Required**
 - CMakeLists.txt must have only ONE `lwip` in REQUIRES
 - Duplicate causes WiFi instability and SD card errors
-- Fixed in commit `bb2168c` (2026-03-01)
 
 ⚠️ **RTC NTP Sync Requires WiFi**
 - Enable `ENABLE_WIFI_CONNECT=1` first
 - Verify WiFi connection succeeds
 - Then enable `ENABLE_RTC_NTP_SYNC=1`
+
+⚠️ **BSP Manages Only GPIO36**
+- GPIO54 (C6 reset) is owned by ESP-Hosted
+- GPIO18 (SDIO CLK) is owned by SDMMC driver
+- Never manipulate these pins outside their drivers
 
 ---
 
@@ -664,6 +698,7 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 ### Additional Resources
 
 - **[troubleshooting.md](troubleshooting.md)** - Complete troubleshooting guide with:
+  - BSP minimal architecture and driver ownership
   - Bootstrap Manager timing analysis
   - Reset behavior comparison
   - SD card `0x107` error root causes
@@ -677,39 +712,6 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 - **[RELEASE_NOTES.md](RELEASE_NOTES.md)** - Version history and changes
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
 
-### Example Output
-
-A Wi-Fi scan is performed before and after accessing the SD card, demonstrating that both SDMMC slots work as expected:
-
-```
-I (2103) transport: Received INIT event from ESP32 peripheral
-I (2113) transport: Identified slave [esp32c6]
-I (2123) transport: Features supported are:
-I (2123) transport:      * WLAN
-I (2133) transport:        - HCI over SDIO
-I (2133) transport:        - BLE only
-
-I (2643) example: Initializing SD card
-I (2743) example: Mounting filesystem
-I (2953) example: Filesystem mounted
-I (2953) example: Doing Wi-Fi Scan
-I (6203) example: Total APs scanned = 11
-
-Name: SD16G
-Type: SDHC
-Speed: 40.00 MHz (limit: 40.00 MHz)
-Size: 14868MB
-
-I (6213) example: Opening file /sdcard/hello.txt
-I (6303) example: File written
-I (6333) example: Read from file: 'Hello SD16G!'
-I (6363) example: Card unmounted
-I (6363) example: Doing another Wi-Fi Scan
-I (8883) example: Total APs scanned = 11
-
-Done
-```
-
 ---
 
 ## 🗺️ Roadmap
@@ -721,279 +723,46 @@ All onboard peripherals functional with deterministic bootstrap manager and comp
 ### Phase 2: Testing & Software Suite Completion (Q2 2026)
 
 #### 2.1 Onboard Hardware Testing
-- [ ] **Display Tests**
-  - [ ] Full screen color fill tests (RGB, patterns)
-  - [ ] Partial update performance benchmarks
-  - [ ] Frame rate measurements
-  - [ ] Brightness control via I2C (if supported)
-  - [ ] Screen orientation rotation tests
-  
-- [ ] **Touch Controller Tests**
-  - [ ] Multi-touch validation (up to 5 points)
-  - [ ] Touch accuracy calibration
-  - [ ] Gesture recognition (swipe, pinch, rotate)
-  - [ ] Palm rejection testing
-  - [ ] Interrupt latency measurements
-
-- [ ] **Audio Codec Tests**
-  - [ ] I2S playback from SD card (WAV files)
-  - [ ] Sample rate support validation (8kHz - 96kHz)
-  - [ ] Volume control via ES8311 registers
-  - [ ] Speaker amplifier enable/disable timing
-  - [ ] Audio quality measurements (SNR, THD)
-  - [ ] Microphone input (if supported)
-
-- [ ] **RTC Tests**
-  - [ ] Long-term timekeeping accuracy (battery backup)
-  - [ ] Alarm and interrupt functionality
-  - [ ] Temperature compensation validation
-  - [ ] Power loss recovery tests
-  - [ ] 32.768 kHz oscillator stability
-
-- [ ] **SD Card Tests**
-  - [ ] Read/write speed benchmarks
-  - [ ] Large file operations (>1GB)
-  - [ ] Fragmentation handling
-  - [ ] FAT32 filesystem stress tests
-  - [ ] Multiple file concurrent access
-  - [ ] Hot-plug detection (if available)
-
-- [ ] **WiFi/ESP-Hosted Tests**
-  - [ ] Throughput measurements (TCP/UDP)
-  - [ ] Range and signal strength tests
-  - [ ] Roaming between APs
-  - [ ] Power consumption profiling
-  - [ ] BLE functionality validation
-  - [ ] Concurrent WiFi + BLE operations
+- [ ] Display, Touch, Audio, RTC, SD, WiFi comprehensive test suites
 
 #### 2.2 External Peripherals Support
-
-- [ ] **I2C Expansion**
-  - [ ] BME280/BME680 environmental sensor
-  - [ ] MPU6050/MPU9250 IMU (accelerometer + gyroscope)
-  - [ ] PCA9685 16-channel PWM controller
-  - [ ] PCF8574 I2C GPIO expander
-  - [ ] OLED displays (SSD1306, SH1106)
-  - [ ] I2C EEPROM (AT24Cxx series)
-
-- [ ] **SPI Expansion**
-  - [ ] Additional SD card slot
-  - [ ] SPI SRAM/Flash expansion
-  - [ ] LoRa modules (SX1276, SX1278)
-  - [ ] NRF24L01+ wireless transceiver
-
-- [ ] **UART Peripherals**
-  - [ ] GPS modules (NEO-6M, NEO-M8N)
-  - [ ] Bluetooth modules (HC-05, HC-06)
-  - [ ] GSM/LTE modems
-  - [ ] RS485 transceivers
-
-- [ ] **GPIO Expansion**
-  - [ ] Relay modules
-  - [ ] LED strips (WS2812B, SK6812)
-  - [ ] Stepper motor drivers
-  - [ ] Ultrasonic sensors (HC-SR04)
+- [ ] I2C, SPI, UART, GPIO expansion modules
 
 #### 2.3 Software Suite
-
-- [ ] **Automated Test Framework**
-  - [ ] Unity-based unit tests for all drivers
-  - [ ] CI/CD integration (GitHub Actions)
-  - [ ] Hardware-in-the-loop (HIL) test suite
-  - [ ] Code coverage reporting
-
-- [ ] **Diagnostic Tools**
-  - [ ] Interactive CLI for peripheral testing
-  - [ ] Web-based diagnostic dashboard
-  - [ ] Real-time system monitor (CPU, memory, tasks)
-  - [ ] Performance profiling tools
-
-- [ ] **Example Applications**
-  - [ ] Weather station (sensors + display)
-  - [ ] Music player (SD card + audio)
-  - [ ] Photo frame (SD card + display)
-  - [ ] IoT gateway (WiFi + sensors)
-
----
+- [ ] Automated test framework
+- [ ] Diagnostic tools
+- [ ] Example applications
 
 ### Phase 3: Architecture Refactoring (Q3 2026)
 
 #### 3.1 Driver Isolation
-
-- [ ] **Separate Hardware Drivers from BSP Logic**
-  ```
-  components/guition_jc1060_bsp/
-  ├── drivers/              # Pure hardware abstraction
-  │   ├── jd9165_driver.c   # Display hardware ops only
-  │   ├── gt911_driver.c    # Touch hardware ops only
-  │   ├── es8311_driver.c   # Audio hardware ops only
-  │   ├── rx8025t_driver.c  # RTC hardware ops only
-  │   └── ...
-  └── bsp/                  # Initialization sequences
-      ├── bsp_display.c     # Display init + config
-      ├── bsp_touch.c       # Touch init + calibration
-      ├── bsp_audio.c       # Audio init + routing
-      └── ...
-  ```
-
-- [ ] **Driver API Standardization**
-  - [ ] Consistent error handling across all drivers
-  - [ ] Uniform initialization/deinitialization patterns
-  - [ ] Configuration structures for all peripherals
-  - [ ] Event callback mechanisms
-
-- [ ] **Hardware Abstraction Layer (HAL)**
-  - [ ] Abstract I2C operations (platform-independent)
-  - [ ] Abstract SPI operations
-  - [ ] Abstract GPIO operations
-  - [ ] Platform-specific implementations (ESP32-P4, ESP32-S3)
+- [ ] Separate hardware drivers from BSP logic
+- [ ] Driver API standardization
+- [ ] Hardware abstraction layer (HAL)
 
 #### 3.2 BSP Component Architecture
-
-- [ ] **Reusable ESP-IDF Component**
-  ```
-  components/guition_jc1060_bsp/
-  ├── CMakeLists.txt
-  ├── Kconfig                # Menuconfig integration
-  ├── include/
-  │   ├── bsp_board.h        # Main BSP API
-  │   ├── bsp_display.h
-  │   ├── bsp_touch.h
-  │   ├── bsp_audio.h
-  │   ├── bsp_rtc.h
-  │   ├── bsp_sdcard.h
-  │   └── bsp_wifi.h
-  └── src/
-      ├── drivers/           # Hardware drivers
-      └── bsp/               # BSP logic
-  ```
-
-- [ ] **Public API Design**
-  - [ ] Centralized `bsp_board_init()` API
-  - [ ] Per-peripheral configuration structures
-  - [ ] Event-driven callback system
-  - [ ] Resource management (mutex, semaphores)
-
-- [ ] **Bootstrap Manager as Standalone Component**
-  - [ ] Configurable power sequencing
-  - [ ] Generic SDMMC arbitration framework
-  - [ ] Extensible to other multi-peripheral boards
+- [ ] Reusable ESP-IDF component
+- [ ] Public API design
+- [ ] Bootstrap Manager as standalone component
 
 #### 3.3 Business Logic Separation
-
-- [ ] **Demo Applications Restructuring**
-  ```
-  main/
-  ├── demos/
-  │   ├── demo_display_test.c
-  │   ├── demo_touch_test.c
-  │   ├── demo_audio_playback.c
-  │   ├── demo_wifi_scan.c
-  │   ├── demo_rtc_ntp_sync.c
-  │   └── demo_file_operations.c
-  └── main.c                 # Demo orchestrator
-  ```
-
-- [ ] **Application-Level Features**
-  - [ ] Menu system for demo selection
-  - [ ] Configuration persistence in NVS
-  - [ ] Runtime peripheral enable/disable
-  - [ ] Logging and diagnostics UI
-
----
+- [ ] Demo applications restructuring
+- [ ] Application-level features
 
 ### Phase 4: Advanced Integration (Q4 2026)
 
-#### 4.1 Graphics Framework
-
-- [ ] **LVGL Integration**
-  - [ ] Display driver for JD9165
-  - [ ] Touch input driver for GT911
-  - [ ] Double-buffering for smooth animations
-  - [ ] Hardware acceleration (if available)
-  - [ ] Demo UI applications
-
-- [ ] **Graphics Libraries**
-  - [ ] Image decoding (JPEG, PNG, BMP)
-  - [ ] Font rendering (TrueType fonts)
-  - [ ] 2D graphics primitives
-  - [ ] Canvas and drawing tools
-
-#### 4.2 Audio Framework
-
-- [ ] **Audio Playback**
-  - [ ] WAV file decoder
-  - [ ] MP3 decoder (optional, licensing)
-  - [ ] Audio streaming from SD card
-  - [ ] Playlist management
-  - [ ] Equalizer and audio effects
-
-- [ ] **Audio Input** (if microphone available)
-  - [ ] Audio recording to SD card
-  - [ ] Voice activity detection
-  - [ ] Noise cancellation
-
-#### 4.3 Networking & IoT
-
-- [ ] **Network Protocols**
-  - [ ] HTTP client/server
-  - [ ] MQTT client
-  - [ ] WebSocket support
-  - [ ] OTA firmware updates
-
-- [ ] **IoT Integration**
-  - [ ] AWS IoT Core
-  - [ ] Google Cloud IoT
-  - [ ] Azure IoT Hub
-  - [ ] Home Assistant integration
-
-#### 4.4 Power Management
-
-- [ ] **Low Power Modes**
-  - [ ] Deep sleep with RTC wakeup
-  - [ ] Light sleep with peripheral activity wakeup
-  - [ ] Dynamic frequency scaling
-  - [ ] Power consumption profiling
-
-- [ ] **Battery Management** (if battery support added)
-  - [ ] Battery level monitoring
-  - [ ] Charging status
-  - [ ] Low battery warnings
-
----
+- [ ] LVGL integration
+- [ ] Audio framework
+- [ ] Networking & IoT
+- [ ] Power management
 
 ### Phase 5: Production Readiness (2027)
 
-- [ ] **Documentation**
-  - [ ] Complete API reference (Doxygen)
-  - [ ] Hardware design guidelines
-  - [ ] Manufacturing test procedures
-  - [ ] Certification guides (CE, FCC, etc.)
+- [ ] Documentation
+- [ ] Quality assurance
+- [ ] Community
 
-- [ ] **Quality Assurance**
-  - [ ] Automated regression testing
-  - [ ] Long-term stability testing
-  - [ ] Temperature and environmental testing
-  - [ ] EMC/EMI compliance validation
-
-- [ ] **Community**
-  - [ ] Example projects repository
-  - [ ] Video tutorials
-  - [ ] Forum/Discord community
-  - [ ] Regular maintenance releases
-
----
-
-### Contributing to Roadmap
-
-We welcome contributions! If you'd like to work on any roadmap item:
-
-1. Check if an issue exists for the feature
-2. Comment on the issue to claim it
-3. Fork the repository and create a feature branch
-4. Submit a pull request with your implementation
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+**See [README.md Roadmap section](README.md#-roadmap) for complete details.**
 
 ---
 

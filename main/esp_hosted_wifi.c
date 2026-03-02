@@ -17,6 +17,9 @@ static bool transport_initialized = false;
 static bool wifi_started = false;
 static esp_event_handler_instance_t ip_event_handler = NULL;
 
+/* C6 firmware boot delay after BSP Phase A release */
+#define C6_FIRMWARE_BOOT_DELAY_MS 2500
+
 static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP)
@@ -145,7 +148,32 @@ void init_wifi(void)
         }
     }
     
-    // Initialize WiFi stack
+    // CRITICAL FIX: Wait for C6 firmware to boot after BSP Phase A release
+    // 
+    // Timeline:
+    //   T+1549ms: BSP Phase A releases C6 from reset (GPIO54 HIGH)
+    //   T+2130ms: init_wifi() called
+    //   T+2130ms: Wait here for C6 firmware boot (2500ms)
+    //   T+4630ms: C6 firmware fully booted and SDIO slave ready
+    //   T+4630ms: esp_wifi_init() safely initializes ESP-Hosted transport
+    //
+    // Without this delay:
+    //   - esp_wifi_init() resets C6 again via GPIO54
+    //   - ESP-Hosted immediately tries SDMMC Slot 1 init
+    //   - C6 not ready → timeout 0x107 → init fails
+    //
+    // C6 boot time breakdown:
+    // - Bootloader: ~300ms
+    // - App startup: ~500ms  
+    // - SDIO slave init: ~700ms
+    // - State machine sync: ~500ms
+    // Total: ~2000ms (using 2500ms for safety margin)
+    //
+    ESP_LOGI(TAG, "Waiting %dms for C6 firmware boot (BSP released C6 at ~T+1549ms)...", C6_FIRMWARE_BOOT_DELAY_MS);
+    vTaskDelay(pdMS_TO_TICKS(C6_FIRMWARE_BOOT_DELAY_MS));
+    ESP_LOGI(TAG, "C6 firmware should be ready, proceeding with WiFi init");
+    
+    // Initialize WiFi stack (this triggers ESP-Hosted SDIO init)
     LOG_WIFI(TAG, "Initializing WiFi driver...");
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t ret = esp_wifi_init(&cfg);
