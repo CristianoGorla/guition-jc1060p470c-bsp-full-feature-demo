@@ -1,5 +1,5 @@
 dependencies:
   espressif/esp_lcd_jd9165: "*"
   espressif/esp_lcd_touch_gt911: "*"
-  lvgl/lvgl: "^9.2.2"
+  lvgl/lvgl: "~9.2.2"  # Lock to 9.2.x (allows 9.2.3, 9.2.4 but NOT 9.3+)
   espressif/esp_lvgl_port: "^2.0.0"
