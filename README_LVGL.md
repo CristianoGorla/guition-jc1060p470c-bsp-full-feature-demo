@@ -379,6 +379,151 @@ config.buffer.use_spiram = false;          // Use internal RAM
 
 ## Troubleshooting
 
+### 🚨 **Issue: Black Screen (Backlight ON, Display Black)**
+
+**Symptoms:**
+- Backlight is ON (screen glowing)
+- Display shows solid black (no content)
+- Hardware BSP logs show success:
+  ```
+  I (1709) BSP_JD9165: Display initialized successfully
+  I (1794) BSP_GT911: GT911 initialized
+  I (1797) BSP: ✓ BSP Ready
+  ```
+- **Missing** LVGL initialization logs:
+  ```
+  I (XXXX) bsp_lvgl: ========================================
+  I (XXXX) bsp_lvgl: Initializing LVGL v9.2.2
+  I (XXXX) bsp_lvgl: LVGL initialization complete!
+  ```
+
+**Root Cause Analysis:**
+
+1. **LVGL not initialized in main.c** (most common)
+   - `main.c` missing `bsp_lvgl_init_default()` call
+   - Code tries to create UI without LVGL context
+
+2. **CONFIG_BSP_ENABLE_LVGL=n** in sdkconfig
+   - LVGL code compiled out via `#ifdef`
+   - Check: `grep CONFIG_BSP_ENABLE_LVGL sdkconfig`
+
+3. **Memory allocation failure** (silent fail)
+   - Buffer too large for available RAM
+   - No error log if allocation fails early
+
+**Fix Procedure:**
+
+**Step 1: Enable LVGL in menuconfig**
+```bash
+idf.py menuconfig
+# Navigate to:
+# Guition JC1060P470C Board Configuration
+#   └─> LVGL Graphics Library Configuration
+#        └─> [*] Enable LVGL Graphics Library
+
+# Save and exit
+idf.py fullclean build
+```
+
+**Step 2: Verify main.c has initialization**
+
+Your `main.c` **MUST** include:
+```c
+#include "bsp_lvgl.h"
+#include "lvgl_demo.h"
+
+void app_main(void)
+{
+    // ... BSP init ...
+    bsp_board_init();
+    
+    // === ADD THIS BLOCK ===
+#ifdef CONFIG_BSP_ENABLE_LVGL
+    ESP_LOGI(TAG, "=== LVGL Initialization ===");
+    lv_display_t *display = bsp_lvgl_init_default();
+    if (display == NULL) {
+        ESP_LOGE(TAG, "❌ LVGL init FAILED");
+        // Check memory
+        ESP_LOGI(TAG, "Free heap: %lu", esp_get_free_heap_size());
+        ESP_LOGI(TAG, "Free DMA: %lu", heap_caps_get_free_size(MALLOC_CAP_DMA));
+    } else {
+        ESP_LOGI(TAG, "✅ LVGL initialized");
+        
+        // Option A: Auto-run demo from menuconfig
+        lvgl_demo_run_from_config();
+        
+        // Option B: Manual UI
+        // create_my_ui();
+    }
+#endif
+    // === END BLOCK ===
+    
+    // ... rest of code ...
+}
+```
+
+**Step 3: Test with minimal config**
+```bash
+idf.py menuconfig
+# LVGL Display Configuration:
+#   Buffer size: 50 lines
+#   [*] Enable double buffering: NO
+#   [*] Use SPIRAM for buffers: YES
+# LVGL Demo Applications:
+#   [*] Enable LVGL demo at startup: YES
+#   Demo type: Simple test screen
+
+idf.py build flash monitor
+```
+
+**Expected SUCCESS logs:**
+```
+I (1797) BSP: ✓ BSP Ready
+I (1798) GUITION_MAIN: === LVGL Initialization ===
+I (1820) bsp_lvgl: ========================================
+I (1820) bsp_lvgl: Initializing LVGL v9.2.2
+I (1821) bsp_lvgl: Display: JD9165 (1024x600)
+I (1821) bsp_lvgl: Buffer: 50 lines (single, SPIRAM)
+I (1895) bsp_lvgl: ✅ LVGL initialization complete!
+I (1896) GUITION_MAIN: ✅ LVGL initialized
+I (1897) lvgl_demo: Starting simple LVGL demo
+I (1920) lvgl_demo: Simple demo started successfully
+```
+
+**Screen should show:**
+- Blue background (#003a57)
+- White title "Guition JC1060P470C"
+- Green subtitle "LVGL 9.2.2 Demo"
+- FPS counter (top-left)
+- Touch test area (bottom)
+
+**If still black after fix:**
+
+Check CMakeLists.txt includes LVGL sources:
+```cmake
+# components/guition_jc1060_bsp/CMakeLists.txt
+set(srcs
+    "src/bsp_board.c"
+    "src/bsp_display.c"
+    "src/bsp_touch.c"
+    "src/bsp_lvgl.c"        # ← MUST BE HERE
+)
+
+idf_component_register(
+    SRCS ${srcs}
+    REQUIRES driver esp_lcd esp_lcd_touch_gt911 
+             esp_lvgl_port lvgl      # ← MUST INCLUDE
+)
+```
+
+Rebuild:
+```bash
+idf.py fullclean
+idf.py build
+```
+
+---
+
 ### Issue: LVGL doesn't initialize
 
 **Check:**
