@@ -1,6 +1,6 @@
 /*
  * Guition JC1060P470C Board Support Package - Implementation
- * Phase A: Power Manager with GPIO 18 Strapping Guard
+ * Phase A: Power Manager
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -18,7 +18,6 @@ static const char *TAG = "BSP";
 
 /* Hardware Pin Definitions (from Guition JC1060P470C V1.0 schematics) */
 #define SD_POWER_EN_PIN         36  /* SD Card Power Enable (active HIGH) */
-#define C6_IO9_STRAP_PIN        18  /* ESP32-C6 IO9 Strapping (shared with SDIO CLK Slot 1) */
 
 /* Timing Constants */
 #define HARD_RESET_DISCHARGE_MS 500  /* Capacitor discharge time */
@@ -92,7 +91,9 @@ static bool bsp_needs_hard_reset(void)
  * Forces complete power-down of SD Card to ensure clean state after
  * crashes, watchdog timeouts, or power glitches.
  * 
- * NOTE: GPIO54 (C6 reset) is NOT managed by BSP - ESP-Hosted owns it exclusively.
+ * NOTE: 
+ * - GPIO54 (C6 reset) is NOT managed by BSP - ESP-Hosted owns it exclusively.
+ * - GPIO18 (SDIO CLK) is NOT managed by BSP - SDMMC driver owns it.
  * 
  * NOT performed on:
  * - Power-on reset (already clean)
@@ -127,45 +128,7 @@ static void bsp_hard_reset(void)
     vTaskDelay(pdMS_TO_TICKS(HARD_RESET_DISCHARGE_MS));
     
     ESP_LOGI(TAG, "[RESET] Hard reset complete (SD card only)");
-    ESP_LOGI(TAG, "[RESET] NOTE: C6 reset (GPIO54) managed by ESP-Hosted, not BSP");
-}
-
-/**
- * @brief Configure GPIO 18 strapping guard
- * 
- * CRITICAL: GPIO 18 is shared between:
- * - ESP32-P4 SDIO Slot 1 CLK
- * - ESP32-C6 IO9 (boot mode strapping pin)
- * 
- * The C6 reads IO9 at boot to determine boot mode:
- * - HIGH → SPI Boot (desired)
- * - LOW → Download Boot (undesired)
- * 
- * This function ensures GPIO 18 is forced HIGH before C6 boots.
- */
-static void bsp_strapping_guard(void)
-{
-    ESP_LOGI(TAG, "[STRAP] Configuring GPIO 18 strapping guard...");
-    
-    /* 
-     * De-mux GPIO 18 from SDIO function (if active)
-     * Force it as standard GPIO output
-     */
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << C6_IO9_STRAP_PIN),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    
-    gpio_config(&io_conf);
-    
-    /* Force HIGH - ensures C6 boots in SPI mode */
-    gpio_set_level(C6_IO9_STRAP_PIN, 1);
-    
-    ESP_LOGI(TAG, "[STRAP] GPIO%d (C6_IO9) → HIGH (SPI boot mode)", C6_IO9_STRAP_PIN);
-    ESP_LOGI(TAG, "[STRAP] ✓ Strapping guard active");
+    ESP_LOGI(TAG, "[RESET] NOTE: C6 (GPIO54) and SDIO signals managed by drivers, not BSP");
 }
 
 /**
@@ -174,11 +137,12 @@ static void bsp_strapping_guard(void)
  * Implements deterministic power sequencing:
  * 1. Hard reset (if crash/watchdog/brownout) - SD card only
  * 2. Power isolation (SD unpowered)
- * 3. GPIO 18 strapping guard (CRITICAL for C6 boot mode)
- * 4. Controlled power-on (SD card)
+ * 3. Controlled power-on (SD card)
  * 
- * NOTE: GPIO54 (C6 reset) is NEVER touched by BSP.
- *       ESP-Hosted has exclusive ownership and will manage it during esp_wifi_init().
+ * NOTES:
+ * - GPIO54 (C6 reset) is NEVER touched by BSP - ESP-Hosted owns it exclusively
+ * - GPIO18 (SDIO CLK) is NEVER touched by BSP - SDMMC driver owns it
+ * - C6 strapping (IO9) must be handled by hardware pull-ups, not software
  */
 static esp_err_t bsp_phase_a_power_manager(void)
 {
@@ -188,7 +152,7 @@ static esp_err_t bsp_phase_a_power_manager(void)
     bsp_hard_reset();
     
     /* Step 2: GPIO isolation (pre-initialization guard) */
-    ESP_LOGI(TAG, "[PHASE A] Forcing GPIO isolation...");
+    ESP_LOGI(TAG, "[PHASE A] Configuring SD card power control...");
     
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << SD_POWER_EN_PIN),
@@ -202,16 +166,13 @@ static esp_err_t bsp_phase_a_power_manager(void)
     /* SD power (cut power) */
     gpio_set_level(SD_POWER_EN_PIN, 0);
     ESP_LOGI(TAG, "[PHASE A]   GPIO%d (SD_POWER_EN) → LOW (SD unpowered)", SD_POWER_EN_PIN);
-    ESP_LOGI(TAG, "[PHASE A] NOTE: GPIO54 (C6 reset) NOT managed by BSP - ESP-Hosted owns it");
+    ESP_LOGI(TAG, "[PHASE A] NOTE: GPIO54 (C6) and GPIO18 (SDIO CLK) managed by drivers");
     
-    /* Step 3: GPIO 18 strapping guard (CRITICAL for C6 boot) */
-    bsp_strapping_guard();
-    
-    /* Step 4: Wait for power rail stabilization */
+    /* Step 3: Wait for power rail stabilization */
     ESP_LOGI(TAG, "[PHASE A] Waiting %dms for rail stabilization...", POWER_STABILIZATION_MS);
     vTaskDelay(pdMS_TO_TICKS(POWER_STABILIZATION_MS));
     
-    /* Step 5: Power-on sequence (SD card only) */
+    /* Step 4: Power-on sequence (SD card only) */
     ESP_LOGI(TAG, "[PHASE A] Power-on sequence starting...");
     
     /* SD card power ON */
@@ -220,7 +181,7 @@ static esp_err_t bsp_phase_a_power_manager(void)
     vTaskDelay(pdMS_TO_TICKS(SD_POWER_DELAY_MS));
     
     ESP_LOGI(TAG, "[POWER] SD card powered, rails stabilized");
-    ESP_LOGI(TAG, "[POWER] C6 reset will be managed by ESP-Hosted during esp_wifi_init()");
+    ESP_LOGI(TAG, "[POWER] C6 reset and SDIO signals will be managed by ESP-Hosted/SDMMC");
     
     ESP_LOGI(TAG, "[PHASE A] ✓ POWER_READY");
     
