@@ -3,6 +3,8 @@
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v5.5.3-blue)](https://github.com/espressif/esp-idf)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-ESP32--P4-orange)](https://www.espressif.com/en/products/socs/esp32-p4)
+[![Latest Release](https://img.shields.io/badge/release-v1.0.0--beta-brightgreen)](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/releases/tag/v1.0.0-beta)
+[![Development](https://img.shields.io/badge/dev-v1.1.0--dev-yellow)](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo)
 
 **Complete Board Support Package demonstration for the Guition JC1060P470C_I_W_Y development board featuring ESP32-P4.**
 
@@ -10,8 +12,49 @@ This project provides a comprehensive demonstration of all hardware capabilities
 
 ---
 
-## 📑 Table of Contents
+## 📋 Versions
 
+### Latest Stable Release
+
+**[v1.0.0-beta](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/releases/tag/v1.0.0-beta)** (2026-03-01)
+
+- ✅ All 8 onboard peripherals fully functional
+- ✅ Three-phase bootstrap manager with deterministic initialization
+- ✅ WiFi connection and RTC NTP synchronization
+- ✅ Comprehensive documentation and troubleshooting guide
+- ⚠️ Beta status: Production testing ongoing
+
+**Installation:**
+```bash
+git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
+cd guition-jc1060p470c-bsp-full-feature-demo
+git checkout v1.0.0-beta
+idf.py build flash monitor
+```
+
+### Development Version
+
+**v1.1.0-dev** (main branch)
+
+- 🚧 Active development with latest features
+- 🚧 Phase 2 roadmap: Testing suite, external peripherals, refactoring
+- 🚧 May contain experimental features
+
+**Installation:**
+```bash
+git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
+cd guition-jc1060p470c-bsp-full-feature-demo
+# Already on main branch with v1.1.0-dev
+idf.py build flash monitor
+```
+
+**See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete version history.**
+
+---
+
+## 📋 Table of Contents
+
+- [Versions](#-versions)
 - [Features](#-features)
 - [Hardware Support](#-hardware-support)
 - [System Architecture](#-system-architecture)
@@ -53,7 +96,7 @@ This project provides a comprehensive demonstration of all hardware capabilities
 
 - **⚡ Three-Phase Bootstrap Manager**: Deterministic initialization preventing SDMMC bus conflicts
 - **🔄 Automatic Power Sequencing**: Hardware reset cycle on warm boot for clean initialization
-- **🎛️ Feature Flags System**: Easy enable/disable of peripherals via compile-time flags
+- **🏛️ Feature Flags System**: Easy enable/disable of peripherals via compile-time flags
 - **🐛 Debug Tracing**: Per-peripheral debug output control for detailed diagnostics
 - **📊 System Monitoring**: Real-time boot timing analysis and hardware status tracking
 - **🛡️ Error Handling**: Robust error recovery for all peripherals with detailed logging
@@ -92,7 +135,7 @@ This project provides a comprehensive demonstration of all hardware capabilities
 
 ---
 
-## 🏗️ System Architecture
+## 🏛️ System Architecture
 
 ### Bootstrap Manager Architecture
 
