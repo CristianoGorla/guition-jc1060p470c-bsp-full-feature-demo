@@ -51,24 +51,34 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
     setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
     tzset();
     
-    // Configure SNTP
+    // Configure SNTP - CRITICAL: callback must be set before init
+    esp_sntp_set_time_sync_notification_cb(time_sync_notification_cb);
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_set_time_sync_notification_cb(time_sync_notification_cb);
     esp_sntp_init();
     
     // Wait for time sync
     ESP_LOGI(TAG, "Waiting for NTP sync (timeout: %d seconds)...", timeout_sec);
     
     int retry = 0;
-    const int max_retry = timeout_sec * 2; // Check every 500ms
+    const int max_retry = timeout_sec * 10; // Check every 100ms
     
-    while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && retry < max_retry) {
-        vTaskDelay(pdMS_TO_TICKS(500));
+    // FIX: Wait until status becomes COMPLETED (not just != RESET)
+    while (esp_sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && 
+           retry < max_retry) {
+        vTaskDelay(pdMS_TO_TICKS(100));
         retry++;
+        
+        // Debug: log status transitions
+        sntp_sync_status_t status = esp_sntp_get_sync_status();
+        if (status != SNTP_SYNC_STATUS_RESET && retry % 10 == 0) {
+            ESP_LOGI(TAG, "NTP status: %d (retry %d/%d)", status, retry, max_retry);
+        }
     }
     
-    if (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+    sntp_sync_status_t final_status = esp_sntp_get_sync_status();
+    
+    if (final_status == SNTP_SYNC_STATUS_COMPLETED) {
         // Get current time
         time_t now;
         struct tm timeinfo;
@@ -83,7 +93,8 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         
         return ESP_OK;
     } else {
-        ESP_LOGE(TAG, "✗ NTP sync timeout after %d seconds", timeout_sec);
+        ESP_LOGE(TAG, "✗ NTP sync failed (status: %d) after %d seconds", 
+                 final_status, timeout_sec);
         return ESP_ERR_TIMEOUT;
     }
 }
