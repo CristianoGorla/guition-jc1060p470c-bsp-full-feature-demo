@@ -5,9 +5,10 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES 
         esp_lcd
-        esp_mmc_host
+        sdmmc
         fatfs
         lwip
+        esp_netif
         esp_hosted
     PRIV_REQUIRES 
         driver
