@@ -34,7 +34,7 @@ static const char *TAG = "BSP";
 /* Hardware Pin Definitions (from Guition JC1060P470C V1.0 schematics) */
 #define SD_POWER_EN_PIN         36  /* SD Card Power Enable (active HIGH) */
 #define I2C_MASTER_SCL_IO       GPIO_NUM_8
-#define I2C_MASTER_SDA_IO       GPIO_NUM_3
+#define I2C_MASTER_SDA_IO       GPIO_NUM_7  /* CORRECTED: was GPIO_NUM_3 */
 #define I2C_MASTER_FREQ_HZ      400000
 
 /* Timing Constants */
