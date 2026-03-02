@@ -22,7 +22,8 @@ CONFIG_SPI_FLASH_BYPASS_BLOCK_ERASE_CHECK=y
 CONFIG_SPI_FLASH_BYPASS_CHIP_DRIVER_SELECTION=n
 
 # === Chip Revision ===
-# Target ESP32-P4 v1.3
+# Target ESP32-P4 v1.3 (revisions < 3.0)
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
 CONFIG_ESP_REV_MIN_FULL=103
 CONFIG_ESP_REV_MIN=103
 
@@ -80,19 +81,13 @@ CONFIG_LWIP_LOCAL_HOSTNAME="guition-jc1060"
 CONFIG_LWIP_NETIF_LOOPBACK=y
 CONFIG_LWIP_LOOPBACK_MAX_PBUFS=8
 
-# === SDMMC Power Control Configuration ===
-# CRITICAL: Different slots use different power sources
-# - Slot 0 (SD card): Uses internal LDO for VDDPST_5
-# - Slot 1 (WiFi): Uses external power (BSP GPIO control)
-CONFIG_SDMMC_HOST_POWER_CONTROL_SLOT_0=y
-CONFIG_SDMMC_HOST_POWER_CONTROL_SLOT_1=n
-
 # === ESP-Hosted (WiFi) ===
 CONFIG_ESP_HOSTED_TRANSPORT_SDIO=y
 CONFIG_ESP_HOSTED_TRANSPORT_UART=n
 CONFIG_ESP_HOSTED_TRANSPORT_SPI=n
 
-# ESP-Hosted SDIO (Slot 1) - External power via BSP GPIO
+# CRITICAL: Disable internal LDO for ESP-Hosted SDIO
+# Board uses external power control via BSP GPIO for both SD and WiFi
 CONFIG_ESP_HOSTED_SD_PWR_CTRL_LDO_INTERNAL_IO=n
 
 # === WiFi Configuration ===
