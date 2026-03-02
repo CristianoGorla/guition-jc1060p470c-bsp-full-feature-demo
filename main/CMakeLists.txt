@@ -20,10 +20,10 @@ idf_component_register(
         "${CMAKE_CURRENT_BINARY_DIR}"
     REQUIRES 
         guition_jc1060_bsp
-        lvgl
         nvs_flash
         esp_netif
         esp_event
+        esp_wifi
 )
 
 # Generate build info AFTER component registration to avoid early evaluation issues
