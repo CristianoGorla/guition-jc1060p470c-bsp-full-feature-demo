@@ -16,7 +16,7 @@ else()
     set(BUILD_GIT_COMMIT $ENV{BUILD_GIT_COMMIT})
 endif()
 
-configure_file(build_info.h.in build_info.h @ONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/build_info.h.in ${CMAKE_CURRENT_BINARY_DIR}/build_info.h @ONLY)
 
 idf_component_register(
     SRCS 
