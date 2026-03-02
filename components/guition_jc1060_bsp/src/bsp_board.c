@@ -28,6 +28,9 @@
 #ifdef CONFIG_BSP_ENABLE_RTC
 #include "../drivers/rx8025t_bsp.h"
 #endif
+#ifdef CONFIG_BSP_ENABLE_LVGL
+#include "../include/lvgl_port.h"
+#endif
 
 static const char *TAG = "BSP";
 
@@ -372,6 +375,17 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
         return ret;
     }
     ESP_LOGI(TAG, "[PHASE D] ✓ RTC ready");
+#endif
+
+    /* FINAL: Initialize LVGL (after display + touch ready) */
+#ifdef CONFIG_BSP_ENABLE_LVGL
+    ESP_LOGI(TAG, "[PHASE D] Initializing LVGL...");
+    ret = bsp_lvgl_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "[PHASE D] LVGL initialization failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    ESP_LOGI(TAG, "[PHASE D] ✓ LVGL ready");
 #endif
 
     ESP_LOGI(TAG, "[PHASE D] ✓ All enabled peripherals initialized");
