@@ -31,16 +31,32 @@
 
 static const char *TAG = "BSP";
 
-/* Hardware Pin Definitions (from Guition JC1060P470C V1.0 schematics) */
-#define SD_POWER_EN_PIN         36  /* SD Card Power Enable (active HIGH) */
-#define I2C_MASTER_SCL_IO       GPIO_NUM_8
-#define I2C_MASTER_SDA_IO       GPIO_NUM_7  /* CORRECTED: was GPIO_NUM_3 */
-#define I2C_MASTER_FREQ_HZ      400000
+/* Hardware configuration from Kconfig (with fallback defaults) */
+#ifndef CONFIG_BSP_PIN_SD_POWER_EN
+#define CONFIG_BSP_PIN_SD_POWER_EN 36
+#endif
 
-/* Timing Constants */
-#define HARD_RESET_DISCHARGE_MS 500  /* Capacitor discharge time */
-#define POWER_STABILIZATION_MS  100  /* Power rail stabilization delay */
-#define SD_POWER_DELAY_MS        50  /* Delay after SD power on */
+#ifndef CONFIG_BSP_I2C_SCL_GPIO
+#define CONFIG_BSP_I2C_SCL_GPIO 8
+#endif
+
+#ifndef CONFIG_BSP_I2C_SDA_GPIO
+#define CONFIG_BSP_I2C_SDA_GPIO 7
+#endif
+
+#ifndef CONFIG_BSP_I2C_FREQ_HZ
+#define CONFIG_BSP_I2C_FREQ_HZ 400000
+#endif
+
+#ifndef CONFIG_BSP_HARD_RESET_DISCHARGE_MS
+#define CONFIG_BSP_HARD_RESET_DISCHARGE_MS 500
+#endif
+
+#ifndef CONFIG_BSP_POWER_STABILIZATION_MS
+#define CONFIG_BSP_POWER_STABILIZATION_MS 100
+#endif
+
+#define SD_POWER_DELAY_MS 50  /* Delay after SD power on */
 
 /* Global I2C bus handle (shared by all I2C peripherals) */
 i2c_master_bus_handle_t g_i2c_bus_handle = NULL;
@@ -65,6 +81,10 @@ i2c_master_bus_handle_t g_i2c_bus_handle = NULL;
  */
 static bool bsp_needs_hard_reset(void)
 {
+#ifndef CONFIG_BSP_ENABLE_HARD_RESET
+    return false;  /* Hard reset disabled in Kconfig */
+#endif
+
     esp_reset_reason_t reason = esp_reset_reason();
     
     switch (reason) {
@@ -132,7 +152,7 @@ static void bsp_hard_reset(void)
     
     /* Configure SD power control pin as output */
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << SD_POWER_EN_PIN),
+        .pin_bit_mask = (1ULL << CONFIG_BSP_PIN_SD_POWER_EN),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -141,15 +161,15 @@ static void bsp_hard_reset(void)
     gpio_config(&io_conf);
     
     /* Cut SD card power */
-    gpio_set_level(SD_POWER_EN_PIN, 0);
-    ESP_LOGI(TAG, "[RESET]   GPIO%d (SD_POWER_EN) → LOW", SD_POWER_EN_PIN);
+    gpio_set_level(CONFIG_BSP_PIN_SD_POWER_EN, 0);
+    ESP_LOGI(TAG, "[RESET]   GPIO%d (SD_POWER_EN) → LOW", CONFIG_BSP_PIN_SD_POWER_EN);
     
     /* Wait for capacitor discharge */
-    ESP_LOGI(TAG, "[RESET]   Waiting %dms for capacitor discharge...", HARD_RESET_DISCHARGE_MS);
-    vTaskDelay(pdMS_TO_TICKS(HARD_RESET_DISCHARGE_MS));
+    ESP_LOGI(TAG, "[RESET]   Waiting %dms for capacitor discharge...", CONFIG_BSP_HARD_RESET_DISCHARGE_MS);
+    vTaskDelay(pdMS_TO_TICKS(CONFIG_BSP_HARD_RESET_DISCHARGE_MS));
     
     ESP_LOGI(TAG, "[RESET] Hard reset complete (SD card only)");
-    ESP_LOGI(TAG, "[RESET] NOTE: C6 (GPIO54) and SDIO signals managed by drivers, not BSP");
+    ESP_LOGI(TAG, "[RESET] NOTE: C6 (GPIO%d) and SDIO signals managed by drivers, not BSP", CONFIG_BSP_PIN_WIFI_RESET);
 }
 
 /**
@@ -176,7 +196,7 @@ static esp_err_t bsp_phase_a_power_manager(void)
     ESP_LOGI(TAG, "[PHASE A] Configuring SD card power control...");
     
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << SD_POWER_EN_PIN),
+        .pin_bit_mask = (1ULL << CONFIG_BSP_PIN_SD_POWER_EN),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -185,20 +205,21 @@ static esp_err_t bsp_phase_a_power_manager(void)
     gpio_config(&io_conf);
     
     /* SD power (cut power) */
-    gpio_set_level(SD_POWER_EN_PIN, 0);
-    ESP_LOGI(TAG, "[PHASE A]   GPIO%d (SD_POWER_EN) → LOW (SD unpowered)", SD_POWER_EN_PIN);
-    ESP_LOGI(TAG, "[PHASE A] NOTE: GPIO54 (C6) and GPIO18 (SDIO CLK) managed by drivers");
+    gpio_set_level(CONFIG_BSP_PIN_SD_POWER_EN, 0);
+    ESP_LOGI(TAG, "[PHASE A]   GPIO%d (SD_POWER_EN) → LOW (SD unpowered)", CONFIG_BSP_PIN_SD_POWER_EN);
+    ESP_LOGI(TAG, "[PHASE A] NOTE: GPIO%d (C6) and GPIO%d (SDIO CLK) managed by drivers", 
+             CONFIG_BSP_PIN_WIFI_RESET, CONFIG_BSP_PIN_WIFI_SDIO_CLK);
     
     /* Step 3: Wait for power rail stabilization */
-    ESP_LOGI(TAG, "[PHASE A] Waiting %dms for rail stabilization...", POWER_STABILIZATION_MS);
-    vTaskDelay(pdMS_TO_TICKS(POWER_STABILIZATION_MS));
+    ESP_LOGI(TAG, "[PHASE A] Waiting %dms for rail stabilization...", CONFIG_BSP_POWER_STABILIZATION_MS);
+    vTaskDelay(pdMS_TO_TICKS(CONFIG_BSP_POWER_STABILIZATION_MS));
     
     /* Step 4: Power-on sequence (SD card only) */
     ESP_LOGI(TAG, "[PHASE A] Power-on sequence starting...");
     
     /* SD card power ON */
-    gpio_set_level(SD_POWER_EN_PIN, 1);
-    ESP_LOGI(TAG, "[POWER]   GPIO%d (SD_POWER_EN) → HIGH (SD powered)", SD_POWER_EN_PIN);
+    gpio_set_level(CONFIG_BSP_PIN_SD_POWER_EN, 1);
+    ESP_LOGI(TAG, "[POWER]   GPIO%d (SD_POWER_EN) → HIGH (SD powered)", CONFIG_BSP_PIN_SD_POWER_EN);
     vTaskDelay(pdMS_TO_TICKS(SD_POWER_DELAY_MS));
     
     ESP_LOGI(TAG, "[POWER] SD card powered, rails stabilized");
@@ -216,13 +237,13 @@ static esp_err_t bsp_i2c_bus_init(void)
 {
 #if defined(CONFIG_BSP_ENABLE_TOUCH) || defined(CONFIG_BSP_ENABLE_AUDIO) || defined(CONFIG_BSP_ENABLE_RTC)
     ESP_LOGI(TAG, "[I2C] Initializing I2C bus (SCL=%d, SDA=%d, %d Hz)",
-             I2C_MASTER_SCL_IO, I2C_MASTER_SDA_IO, I2C_MASTER_FREQ_HZ);
+             CONFIG_BSP_I2C_SCL_GPIO, CONFIG_BSP_I2C_SDA_GPIO, CONFIG_BSP_I2C_FREQ_HZ);
 
     i2c_master_bus_config_t bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
-        .scl_io_num = I2C_MASTER_SCL_IO,
-        .sda_io_num = I2C_MASTER_SDA_IO,
+        .scl_io_num = CONFIG_BSP_I2C_SCL_GPIO,
+        .sda_io_num = CONFIG_BSP_I2C_SDA_GPIO,
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = true,
     };
