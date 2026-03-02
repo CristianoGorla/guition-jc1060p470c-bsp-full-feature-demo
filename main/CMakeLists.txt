@@ -1,15 +1,45 @@
-idf_component_register(SRCS "main.c" 
-                            "sd_card_functions.c" 
-                            "esp_hosted_wifi.c"
-                            "bootstrap_manager.c"
-                            "sd_card_manager.c"
-                            "sdmmc_arbiter.c"
-                            "display_jd9165.c"
-                            "touch_gt911.c"
-                            "i2c_utils.c"
-                            "rtc_rx8025t.c"
-                            "rtc_test.c"
-                            "rtc_ntp_sync.c"
-                            "es8311_audio.c"
-                    INCLUDE_DIRS "."
-                    REQUIRES esp_driver_i2c esp_driver_gpio sdmmc vfs fatfs esp_wifi esp_event esp_netif lwip esp_hosted esp_lcd nvs_flash)
+# Main application component
+
+set(BUILD_TIMESTAMP "${CMAKE_CURRENT_TIMESTAMP}")
+
+if(NOT DEFINED ENV{BUILD_GIT_COMMIT})
+    execute_process(
+        COMMAND git log -1 --format=%h
+        OUTPUT_VARIABLE BUILD_GIT_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT BUILD_GIT_COMMIT)
+        set(BUILD_GIT_COMMIT "unknown")
+    endif()
+else()
+    set(BUILD_GIT_COMMIT $ENV{BUILD_GIT_COMMIT})
+endif()
+
+configure_file(build_info.h.in build_info.h @ONLY)
+
+idf_component_register(
+    SRCS 
+        "main.c"
+        "bootstrap_manager.c"
+        "display_jd9165.c"
+        "touch_gt911.c"
+        "i2c_utils.c"
+        "es8311_audio.c"
+        "rtc_rx8025t.c"
+        "rtc_ntp_sync.c"
+        "rtc_test.c"
+        "esp_hosted_wifi.c"
+        "sd_card_manager.c"
+        "sd_card_functions.c"
+        "sdmmc_arbiter.c"
+    INCLUDE_DIRS 
+        "."
+        "${CMAKE_CURRENT_BINARY_DIR}"
+    REQUIRES 
+        guition_jc1060_bsp
+        lvgl
+        nvs_flash
+        esp_netif
+        esp_event
+)
