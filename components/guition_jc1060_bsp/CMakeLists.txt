@@ -28,4 +28,5 @@ idf_component_register(
         sdmmc
         fatfs
         esp_timer
+        esp_wifi
 )
