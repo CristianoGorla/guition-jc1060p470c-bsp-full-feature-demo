@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_sleep.h"
+#include "sdkconfig.h"
 
 static const char *TAG = "BSP";
 
@@ -55,12 +56,16 @@ static bool bsp_needs_hard_reset(void)
             
         case ESP_RST_SW:
             ESP_LOGI(TAG, "[RESET] Software reset (esp_restart) - no hard reset needed");
-            ESP_LOGI(TAG, "[RESET] ESP-Hosted will reset C6 during init_wifi()");
+#ifdef CONFIG_ESP_HOSTED_TRANSPORT_SDIO
+            ESP_LOGI(TAG, "[RESET] ESP-Hosted will manage C6 reset during init_wifi()");
+#endif
             return false;
             
         case 11:  // ESP_RST_USB_UART (IDF monitor Ctrl+T, Ctrl+R)
             ESP_LOGI(TAG, "[RESET] USB-UART reset (IDF monitor) - no hard reset needed");
-            ESP_LOGI(TAG, "[RESET] ESP-Hosted will reset C6 during init_wifi()");
+#ifdef CONFIG_ESP_HOSTED_TRANSPORT_SDIO
+            ESP_LOGI(TAG, "[RESET] ESP-Hosted will manage C6 reset during init_wifi()");
+#endif
             return false;
             
         case ESP_RST_DEEPSLEEP:
@@ -115,11 +120,16 @@ static void bsp_hard_reset(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     
-    /* Force C6 into reset */
+#ifdef CONFIG_ESP_HOSTED_TRANSPORT_SDIO
+    ESP_LOGI(TAG, "[RESET] ESP-Hosted enabled - skipping C6 reset (GPIO54)");
+    ESP_LOGI(TAG, "[RESET] ESP-Hosted will manage C6 reset internally");
+#else
+    /* Force C6 into reset (only if ESP-Hosted not managing it) */
     io_conf.pin_bit_mask = (1ULL << C6_CHIP_PU_PIN);
     gpio_config(&io_conf);
     gpio_set_level(C6_CHIP_PU_PIN, 0);
     ESP_LOGI(TAG, "[RESET]   GPIO%d (C6_CHIP_PU) → LOW", C6_CHIP_PU_PIN);
+#endif
     
     /* Cut SD card power */
     io_conf.pin_bit_mask = (1ULL << SD_POWER_EN_PIN);
@@ -177,9 +187,9 @@ static void bsp_strapping_guard(void)
  * 
  * Implements deterministic power sequencing:
  * 1. Hard reset (if crash/watchdog/brownout)
- * 2. Power isolation (C6 in reset, SD unpowered)
+ * 2. Power isolation (C6 handling depends on ESP-Hosted, SD unpowered)
  * 3. GPIO 18 strapping guard
- * 4. Controlled power-on (SD first, then C6)
+ * 4. Controlled power-on (SD only, C6 managed by ESP-Hosted)
  */
 static esp_err_t bsp_phase_a_power_manager(void)
 {
@@ -198,11 +208,16 @@ static esp_err_t bsp_phase_a_power_manager(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     
-    /* C6 reset (hold in reset) */
+#ifdef CONFIG_ESP_HOSTED_TRANSPORT_SDIO
+    ESP_LOGI(TAG, "[PHASE A] ESP-Hosted enabled - skipping GPIO54 configuration");
+    ESP_LOGI(TAG, "[PHASE A] ESP-Hosted will manage C6 reset during esp_wifi_init()");
+#else
+    /* C6 reset (hold in reset) - only if ESP-Hosted not managing it */
     io_conf.pin_bit_mask = (1ULL << C6_CHIP_PU_PIN);
     gpio_config(&io_conf);
     gpio_set_level(C6_CHIP_PU_PIN, 0);
     ESP_LOGI(TAG, "[PHASE A]   GPIO%d (C6_CHIP_PU) → LOW (C6 in reset)", C6_CHIP_PU_PIN);
+#endif
     
     /* SD power (cut power) */
     io_conf.pin_bit_mask = (1ULL << SD_POWER_EN_PIN);
@@ -225,12 +240,17 @@ static esp_err_t bsp_phase_a_power_manager(void)
     ESP_LOGI(TAG, "[POWER]   GPIO%d (SD_POWER_EN) → HIGH (SD powered)", SD_POWER_EN_PIN);
     vTaskDelay(pdMS_TO_TICKS(C6_BOOT_DELAY_MS));
     
+#ifdef CONFIG_ESP_HOSTED_TRANSPORT_SDIO
+    ESP_LOGI(TAG, "[POWER] C6 reset managed by ESP-Hosted (GPIO54 not touched)");
+    ESP_LOGI(TAG, "[POWER] C6 will boot when ESP-Hosted calls esp_wifi_init()");
+#else
     /* Release C6 from reset (boots immediately with GPIO 18 HIGH) */
     gpio_set_level(C6_CHIP_PU_PIN, 1);
     ESP_LOGI(TAG, "[POWER]   GPIO%d (C6_CHIP_PU) → HIGH (C6 released)", C6_CHIP_PU_PIN);
     vTaskDelay(pdMS_TO_TICKS(C6_BOOT_DELAY_MS));
+    ESP_LOGI(TAG, "[POWER] Rails stabilized, C6 released from reset.");
+#endif
     
-    ESP_LOGI(TAG, "[POWER] Rails stabilized, releasing C6 reset.");
     ESP_LOGI(TAG, "[PHASE A] ✓ POWER_READY");
     
     return ESP_OK;
