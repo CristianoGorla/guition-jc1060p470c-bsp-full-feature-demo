@@ -1,5 +1,5 @@
 #include "rtc_test.h"
-#include "rtc_rx8025t.h"
+#include "rx8025t_bsp.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
