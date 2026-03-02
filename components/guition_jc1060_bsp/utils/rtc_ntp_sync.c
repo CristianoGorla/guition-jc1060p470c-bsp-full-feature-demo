@@ -284,29 +284,30 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
     int heartbeat_counter = 0;
 #endif
     
-    // FIX #1: Wait until status COMPLETED OR callback invoked
+    // Wait loop - CRITICAL FIX: Trust callback as source of truth
     while (retry < max_retry) {
         vTaskDelay(pdMS_TO_TICKS(100));
         retry++;
         
         sntp_sync_status_t status = esp_sntp_get_sync_status();
         
-        // FIX #2: Exit immediately if callback was invoked
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
-        if (ntp_callback_invoked && status == SNTP_SYNC_STATUS_COMPLETED) {
+        // FIX: Exit immediately if callback was invoked (ignore status)
+        if (ntp_callback_invoked) {
             int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
-            ESP_LOGI(TAG, "[NTP] Callback + Status COMPLETED detected (T+%.1fs)", elapsed_ms / 1000.0);
+            ESP_LOGI(TAG, "[NTP] Callback detected! Exiting wait loop (T+%.1fs, status=%s)", 
+                     elapsed_ms / 1000.0, sntp_status_to_str(status));
             break;
         }
 #endif
         
-        // Normal exit condition
+        // Fallback exit condition (if callback not invoked but status changed)
         if (status == SNTP_SYNC_STATUS_COMPLETED) {
             break;
         }
         
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
-        // FIX #3: Detailed status logging with string names
+        // Detailed status logging
         if (status != last_status) {
             int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
             ESP_LOGI(TAG, "[NTP] Status: %s (%d) at T+%.1fs", 
@@ -332,9 +333,14 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
 #endif
     }
     
-    sntp_sync_status_t final_status = esp_sntp_get_sync_status();
+    // CRITICAL FIX: Trust callback as source of truth
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+    bool sync_successful = ntp_callback_invoked;
+#else
+    bool sync_successful = (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED);
+#endif
     
-    if (final_status == SNTP_SYNC_STATUS_COMPLETED) {
+    if (sync_successful) {
         // Get current time
         time_t now;
         struct tm timeinfo;
@@ -346,12 +352,16 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
         int64_t total_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
+        sntp_sync_status_t final_status = esp_sntp_get_sync_status();
         ESP_LOGI(TAG, "");
         ESP_LOGI(TAG, "========================================");
         ESP_LOGI(TAG, "   ✓✓✓ NTP SYNC SUCCESSFUL ✓✓✓");
         ESP_LOGI(TAG, "========================================");
         ESP_LOGI(TAG, "Current time: %s CET", strftime_buf);
         ESP_LOGI(TAG, "Sync completed after %.1f seconds", total_ms / 1000.0);
+        ESP_LOGI(TAG, "Final status: %s (callback invoked: %s)", 
+                 sntp_status_to_str(final_status),
+                 ntp_callback_invoked ? "YES" : "NO");
         ESP_LOGI(TAG, "========================================\n");
 #else
         ESP_LOGI(TAG, "✓ NTP sync successful!");
@@ -361,6 +371,7 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         return ESP_OK;
     } else {
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+        sntp_sync_status_t final_status = esp_sntp_get_sync_status();
         ESP_LOGE(TAG, "");
         ESP_LOGE(TAG, "========================================");
         ESP_LOGE(TAG, "   ✗✗✗ NTP SYNC FAILED ✗✗✗");
@@ -378,8 +389,7 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
                  sntp_status_to_str(final_status));
         ESP_LOGE(TAG, "========================================\n");
 #else
-        ESP_LOGE(TAG, "✗ NTP sync failed (status: %d) after %d seconds", 
-                 final_status, timeout_sec);
+        ESP_LOGE(TAG, "✗ NTP sync failed after %d seconds", timeout_sec);
 #endif
         return ESP_ERR_TIMEOUT;
     }
