@@ -340,7 +340,7 @@ void bsp_lvgl_print_stats(void)
     ESP_LOGI(TAG, "  Double buffer: %s", CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "Yes" : "No");
     ESP_LOGI(TAG, "  Total memory: %zu KB", bsp_lvgl_get_buffer_size() / 1024);
     ESP_LOGI(TAG, "  Buffer location: %s", 
-             CONFIG_BSP_LVGL_USE_SPIRAM ? "SPIRAM" : 
+             CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER ? "SPIRAM" : 
              CONFIG_BSP_LVGL_USE_DMA_BUFFER ? "DMA" : "Internal");
     
 #ifdef CONFIG_BSP_LVGL_ENABLE_SW_ROTATE
