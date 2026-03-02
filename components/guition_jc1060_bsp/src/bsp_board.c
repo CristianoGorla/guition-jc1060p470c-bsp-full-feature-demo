@@ -27,48 +27,104 @@ static const char *TAG = "BSP";
 #define C6_BOOT_DELAY_MS         50  /* Delay after C6 release */
 
 /**
- * @brief Perform deterministic hard reset
+ * @brief Check if hard reset is needed
  * 
- * Forces complete power-down of ESP32-C6 and SD Card to ensure
- * clean state on warm boots (watchdog resets, software resets, etc.)
+ * Determines whether we need to perform a hard reset based on the reset reason.
+ * 
+ * Hard reset is needed for:
+ * - ESP_RST_PANIC: System crash (need clean state)
+ * - ESP_RST_INT_WDT / ESP_RST_TASK_WDT: Watchdog timeout (likely hung state)
+ * - ESP_RST_BROWNOUT: Power glitch (uncertain hardware state)
+ * 
+ * Hard reset is NOT needed for:
+ * - ESP_RST_POWERON: Already clean state
+ * - ESP_RST_SW: IDF monitor restart (clean software reset)
+ * - ESP_RST_DEEPSLEEP: Controlled wake from sleep
+ * 
+ * @return true if hard reset is needed, false otherwise
  */
-static void bsp_hard_reset(void)
+static bool bsp_needs_hard_reset(void)
 {
     esp_reset_reason_t reason = esp_reset_reason();
     
-    /* Check if warm boot (any reset except power-on) */
-    if (reason != ESP_RST_POWERON) {
-        ESP_LOGW(TAG, "[RESET] Warm boot detected (reason: %d), forcing hard reset", reason);
-        ESP_LOGI(TAG, "[RESET] === HARD RESET CYCLE ===");
-        
-        /* Configure power control pins as outputs */
-        gpio_config_t io_conf = {
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE,
-        };
-        
-        /* Force C6 into reset */
-        io_conf.pin_bit_mask = (1ULL << C6_CHIP_PU_PIN);
-        gpio_config(&io_conf);
-        gpio_set_level(C6_CHIP_PU_PIN, 0);
-        ESP_LOGI(TAG, "[RESET]   GPIO%d (C6_CHIP_PU) → LOW", C6_CHIP_PU_PIN);
-        
-        /* Cut SD card power */
-        io_conf.pin_bit_mask = (1ULL << SD_POWER_EN_PIN);
-        gpio_config(&io_conf);
-        gpio_set_level(SD_POWER_EN_PIN, 0);
-        ESP_LOGI(TAG, "[RESET]   GPIO%d (SD_POWER_EN) → LOW", SD_POWER_EN_PIN);
-        
-        /* Wait for capacitor discharge */
-        ESP_LOGI(TAG, "[RESET]   Waiting %dms for capacitor discharge...", HARD_RESET_DISCHARGE_MS);
-        vTaskDelay(pdMS_TO_TICKS(HARD_RESET_DISCHARGE_MS));
-        
-        ESP_LOGI(TAG, "[RESET] Hard reset complete");
-    } else {
-        ESP_LOGI(TAG, "[RESET] Cold boot detected (power-on reset)");
+    switch (reason) {
+        case ESP_RST_POWERON:
+            ESP_LOGI(TAG, "[RESET] Cold boot (power-on reset) - no hard reset needed");
+            return false;
+            
+        case ESP_RST_SW:
+            ESP_LOGI(TAG, "[RESET] Software reset (IDF monitor restart) - no hard reset needed");
+            ESP_LOGI(TAG, "[RESET] ESP-Hosted will reset C6 during init_wifi()");
+            return false;
+            
+        case ESP_RST_DEEPSLEEP:
+            ESP_LOGI(TAG, "[RESET] Wake from deep sleep - no hard reset needed");
+            return false;
+            
+        case ESP_RST_PANIC:
+            ESP_LOGW(TAG, "[RESET] System crash detected (panic) - hard reset required");
+            return true;
+            
+        case ESP_RST_INT_WDT:
+        case ESP_RST_TASK_WDT:
+        case ESP_RST_WDT:
+            ESP_LOGW(TAG, "[RESET] Watchdog timeout detected - hard reset required");
+            return true;
+            
+        case ESP_RST_BROWNOUT:
+            ESP_LOGW(TAG, "[RESET] Brownout detected - hard reset required");
+            return true;
+            
+        default:
+            ESP_LOGW(TAG, "[RESET] Unknown reset reason (%d) - performing hard reset", reason);
+            return true;
     }
+}
+
+/**
+ * @brief Perform deterministic hard reset
+ * 
+ * Forces complete power-down of ESP32-C6 and SD Card to ensure
+ * clean state after crashes, watchdog timeouts, or power glitches.
+ * 
+ * NOT performed on:
+ * - Power-on reset (already clean)
+ * - Software reset (IDF monitor restart is clean)
+ * - Deep sleep wake (controlled wake)
+ */
+static void bsp_hard_reset(void)
+{
+    if (!bsp_needs_hard_reset()) {
+        return;  // No hard reset needed
+    }
+    
+    ESP_LOGW(TAG, "[RESET] === HARD RESET CYCLE ===");
+    
+    /* Configure power control pins as outputs */
+    gpio_config_t io_conf = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    
+    /* Force C6 into reset */
+    io_conf.pin_bit_mask = (1ULL << C6_CHIP_PU_PIN);
+    gpio_config(&io_conf);
+    gpio_set_level(C6_CHIP_PU_PIN, 0);
+    ESP_LOGI(TAG, "[RESET]   GPIO%d (C6_CHIP_PU) → LOW", C6_CHIP_PU_PIN);
+    
+    /* Cut SD card power */
+    io_conf.pin_bit_mask = (1ULL << SD_POWER_EN_PIN);
+    gpio_config(&io_conf);
+    gpio_set_level(SD_POWER_EN_PIN, 0);
+    ESP_LOGI(TAG, "[RESET]   GPIO%d (SD_POWER_EN) → LOW", SD_POWER_EN_PIN);
+    
+    /* Wait for capacitor discharge */
+    ESP_LOGI(TAG, "[RESET]   Waiting %dms for capacitor discharge...", HARD_RESET_DISCHARGE_MS);
+    vTaskDelay(pdMS_TO_TICKS(HARD_RESET_DISCHARGE_MS));
+    
+    ESP_LOGI(TAG, "[RESET] Hard reset complete");
 }
 
 /**
@@ -113,7 +169,7 @@ static void bsp_strapping_guard(void)
  * @brief Phase A: Power Manager Initialization
  * 
  * Implements deterministic power sequencing:
- * 1. Hard reset (if warm boot)
+ * 1. Hard reset (if crash/watchdog/brownout)
  * 2. Power isolation (C6 in reset, SD unpowered)
  * 3. GPIO 18 strapping guard
  * 4. Controlled power-on (SD first, then C6)
@@ -122,7 +178,7 @@ static esp_err_t bsp_phase_a_power_manager(void)
 {
     ESP_LOGI(TAG, "[PHASE A] Power Manager starting...");
     
-    /* Step 1: Hard reset on warm boot */
+    /* Step 1: Hard reset only if needed (crash/watchdog/brownout) */
     bsp_hard_reset();
     
     /* Step 2: GPIO isolation (pre-initialization guard) */
