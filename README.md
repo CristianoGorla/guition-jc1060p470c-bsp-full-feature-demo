@@ -1,18 +1,23 @@
 | Supported Hosts | ESP32-P4 | ESP32-S3 |
 | --------------- | -------- | -------- |
 
-# SD Card (SDMMC) with ESP-Hosted example
+# Guition JC1060P470C BSP - Full Feature Demo
+
+**Complete Board Support Package demonstration for the Guition JC1060P470C_I_W_Y development board featuring ESP32-P4.**
 
 > [!IMPORTANT]
 > The ESP-IDF `master` branch has an issue that prevents the SD card and ESP-Hosted from working together when both are using SDMMC. See [ESP-IDF Issue 16233](https://github.com/espressif/esp-idf/issues/16233) for more information. This code contains a workaround for this issue.
 
-This example demonstrates how to use an SD card on an ESP32-P4 dev board when ESP-Hosted is using SDIO to communicate with the on-board ESP32-C6. It has been modified from the standard [ESP-IDF SD Card example](https://github.com/espressif/esp-idf/tree/master/examples/storage/sd_card/sdmmc).
+This project demonstrates all hardware capabilities of the Guition JC1060P470C board, including:
+- **Display**: JD9165 1024x600 MIPI DSI touchscreen
+- **Touch Controller**: GT911 capacitive multi-touch
+- **Audio Codec**: ES8311 with speaker amplifier control
+- **RTC**: RX8025T with battery backup and NTP synchronization
+- **Storage**: SD card (SDMMC Slot 0) with FAT filesystem
+- **Connectivity**: WiFi via ESP-Hosted on ESP32-C6 (SDMMC Slot 1)
+- **Power Management**: Deterministic three-phase bootstrap manager
 
-This example uses a **deterministic three-phase bootstrap manager** to ensure reliable initialization of:
-- ESP32-C6 (WiFi/BLE via ESP-Hosted on SDMMC Slot 1)
-- SD Card (on SDMMC Slot 0)
-
-The bootstrap manager enforces strict power sequencing and prevents SDMMC bus conflicts.
+Originally adapted from the [ESP-IDF SD Card example](https://github.com/espressif/esp-idf/tree/master/examples/storage/sd_card/sdmmc), this project has evolved into a comprehensive BSP demonstration with advanced peripheral management and reliable initialization sequences.
 
 ---
 
@@ -218,15 +223,21 @@ W (2427) BOOTSTRAP: Hard reset complete, ready for clean init
 
 ## Hardware
 
-This example requires an ESP32-P4 development board with an SD card slot and an SD card. On this board, the SD card slot is assigned to SDMMC Slot 0, while the on-board ESP32-C6 is connected to the ESP32-P4 on SDMMC Slot 1.
+This demo requires a **Guition JC1060P470C_I_W_Y** development board featuring:
+- ESP32-P4 main processor (360 MHz, 32MB PSRAM, 16MB Flash)
+- ESP32-C6 WiFi/BLE coprocessor via ESP-Hosted (SDMMC Slot 1)
+- 4.7" 1024x600 MIPI DSI display with GT911 touch controller
+- ES8311 audio codec with speaker amplifier
+- RX8025T I2C RTC with battery backup
+- SD card slot (SDMMC Slot 0)
 
 Although it is possible to connect an SD card breakout adapter, keep in mind that connections using breakout cables are often unreliable and have poor signal integrity. You may need to use lower clock frequency when working with SD card breakout adapters.
 
-This example doesn't utilize card detect (CD) and write protect (WP) signals from SD card slot.
+This demo doesn't utilize card detect (CD) and write protect (WP) signals from SD card slot.
 
 ### Pin assignments for SDMMC Slot 0 on ESP32-P4
 
-On ESP32-P4, SDMMC Slot 0 GPIO pins cannot be customized. The GPIO assigned in the example should not be modified.
+On ESP32-P4, SDMMC Slot 0 GPIO pins cannot be customized. The GPIO assigned in the demo should not be modified.
 
 The table below lists the default pin assignments.
 
@@ -259,7 +270,7 @@ The table below lists the default pin assignments.
 
 ### 4-line and 1-line SD modes
 
-By default, this example uses 4 line SD mode, utilizing 6 pins: CLK, CMD, D0 - D3. It is possible to use 1-line mode (CLK, CMD, D0) by changing "SD/MMC bus width" in the example configuration menu (see `CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_1`).
+By default, this demo uses 4 line SD mode, utilizing 6 pins: CLK, CMD, D0 - D3. It is possible to use 1-line mode (CLK, CMD, D0) by changing "SD/MMC bus width" in the configuration menu (see `CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_1`).
 
 Note that even if card's D3 line is not connected to the ESP chip, it still has to be pulled up, otherwise the card will go into SPI protocol mode.
 
@@ -267,7 +278,7 @@ Note that even if card's D3 line is not connected to the ESP chip, it still has 
 
 ### WiFi Scan (Default)
 
-By default, the example performs a WiFi scan to verify ESP-Hosted connectivity:
+By default, the demo performs a WiFi scan to verify ESP-Hosted connectivity:
 
 ```c
 // In main/feature_flags.h
@@ -395,7 +406,7 @@ I (8465) RTC_NTP: ========================================
 - Recovery from RTC power loss (PON/VLF flags set)
 - Development/testing time synchronization
 
-## How to use example
+## How to use this demo
 
 ### Build and flash
 
@@ -530,7 +541,7 @@ Connections between the card and the ESP32 are too long for the frequency used. 
 example: Failed to mount filesystem.
 ```
 
-The example will be able to mount only cards formatted using FAT32 filesystem.
+The demo will be able to mount only cards formatted using FAT32 filesystem.
 
 ### Bootstrap timeout or phase failure
 
