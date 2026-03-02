@@ -37,7 +37,7 @@ typedef struct {
         int buffer_lines;           /*!< Number of lines per buffer (from CONFIG_BSP_LVGL_BUFFER_LINES) */
         bool double_buffer;         /*!< Enable double buffering (from CONFIG_BSP_LVGL_DOUBLE_BUFFER) */
         bool use_dma;               /*!< Use DMA-capable memory (from CONFIG_BSP_LVGL_USE_DMA_BUFFER) */
-        bool use_spiram;            /*!< Use SPIRAM for buffers (from CONFIG_BSP_LVGL_USE_SPIRAM) */
+        bool use_spiram;            /*!< Use SPIRAM for buffers (from CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER) */
     } buffer;
     
     struct {
@@ -73,7 +73,7 @@ typedef struct {
         .buffer_lines = CONFIG_BSP_LVGL_BUFFER_LINES,                    \
         .double_buffer = CONFIG_BSP_LVGL_DOUBLE_BUFFER,                  \
         .use_dma = CONFIG_BSP_LVGL_USE_DMA_BUFFER,                       \
-        .use_spiram = CONFIG_BSP_LVGL_USE_SPIRAM,                        \
+        .use_spiram = CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER,                 \
     },                                                                   \
     .rotation = {                                                        \
         .sw_rotate = CONFIG_BSP_LVGL_ENABLE_SW_ROTATE,                   \
