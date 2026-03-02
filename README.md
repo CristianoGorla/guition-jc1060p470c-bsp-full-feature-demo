@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-ESP32--P4-orange)](https://www.espressif.com/en/products/socs/esp32-p4)
 [![Latest Release](https://img.shields.io/badge/release-v1.0.0--beta-brightgreen)](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/releases/tag/v1.0.0-beta)
-[![Development](https://img.shields.io/badge/dev-v1.1.0--dev-yellow)](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo)
+[![Development](https://img.shields.io/badge/dev-v1.3.0--dev-yellow)](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo)
 
 **Complete Board Support Package demonstration for the Guition JC1060P470C_I_W_Y development board featuring ESP32-P4.**
 
@@ -34,17 +34,18 @@ idf.py build flash monitor
 
 ### Development Version
 
-**v1.1.0-dev** (main branch)
+**v1.3.0-dev** (develop/v1.3.0 branch)
 
 - 🚧 Active development with latest features
-- 🚧 Phase 2 roadmap: Testing suite, external peripherals, refactoring
+- ✅ Fixed NTP sync with ESP-Hosted (callback-based detection)
+- ✅ Enhanced NTP diagnostic tools (DNS, ping, detailed logging)
 - 🚧 May contain experimental features
 
 **Installation:**
 ```bash
 git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
 cd guition-jc1060p470c-bsp-full-feature-demo
-# Already on main branch with v1.1.0-dev
+git checkout develop/v1.3.0
 idf.py build flash monitor
 ```
 
@@ -394,7 +395,7 @@ All peripherals can be enabled/disabled via feature flags in `main/feature_flags
 |---------|--------|------|--------------|-------------|
 | **WiFi Connection Test** | ✅ Available | `ENABLE_WIFI_CONNECT=1` | `wifi_config.h` | Connect to WiFi and display IP/RSSI |
 | **RTC Read/Write Test** | ✅ Active | `ENABLE_RTC_TEST=1` | - | Display current RTC time |
-| **RTC NTP Sync** | ⚙️ Available | `ENABLE_RTC_NTP_SYNC=0` | WiFi connected | Sync RTC with NTP server |
+| **RTC NTP Sync** | ✅ Fixed | `ENABLE_RTC_NTP_SYNC=0` | WiFi connected | Sync RTC with NTP server (callback-based) |
 | **RTC Hardware Test** | ⚙️ Available | `ENABLE_RTC_HW_TEST=0` | - | Advanced RTC diagnostics |
 | **Display RGB Test** | ⚙️ Available | `ENABLE_DISPLAY_TEST=0` | - | RGB test pattern |
 | **Touch Input Test** | ⚙️ Available | `ENABLE_TOUCH_TEST=0` | - | Continuous touch reading |
@@ -545,8 +546,34 @@ Synchronize RTC with Network Time Protocol server (requires WiFi connection):
 **Features:**
 - **NTP Server**: pool.ntp.org (public pool)
 - **Timezone**: CET (UTC+1) with automatic DST
-- **Timeout**: 10 seconds
-- **Verification**: Readback confirmation
+- **Timeout**: 90 seconds (optimized for ESP-Hosted)
+- **Success Detection**: Callback-based (fixes race condition)
+- **Diagnostics**: DNS resolution, gateway ping, NTP server ping
+- **Debug Mode**: Enhanced logging via `CONFIG_APP_NTP_DEBUG_ENABLE`
+
+**Debug Configuration:**
+
+For detailed NTP diagnostics, enable debug mode in `sdkconfig`:
+
+```
+CONFIG_APP_NTP_DEBUG_ENABLE=y
+```
+
+This enables:
+- DNS resolution testing
+- Gateway connectivity checks (ping)
+- NTP server connectivity checks (ping)
+- Detailed timing information
+- Status transition logging
+
+> [!IMPORTANT]
+> **ESP-Hosted NTP Sync Fix (v1.3.0-dev)**
+>
+> NTP synchronization with ESP-Hosted requires callback-based success detection due to a race condition in SNTP status polling:
+> - SNTP status briefly shows `COMPLETED` then resets to `RESET`
+> - Callback invocation is the authoritative success indicator
+> - Typical sync time: 12-13 seconds
+> - See [troubleshooting.md](troubleshooting.md#rtc-ntp-synchronization-with-esp-hosted) for details
 
 ---
 
@@ -670,6 +697,24 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 3. Check WiFi signal strength (router proximity)
 4. Check firewall settings
 
+#### NTP sync fails or reports failure despite callback
+
+**Symptoms:**
+```
+I (xxxx) RTC_NTP: ✓ NTP callback invoked! Time synchronized
+I (xxxx) RTC_NTP: Final status: RESET (callback invoked: YES)
+```
+
+**Note:** This is **expected behavior** with ESP-Hosted. The callback is the authoritative success indicator.
+
+**Why it happens:**
+- SNTP status briefly shows `COMPLETED` then immediately resets to `RESET`
+- This is a race condition in ESP-IDF's SNTP implementation with ESP-Hosted
+- The fix uses callback-based detection instead of status polling
+- Sync is successful if callback was invoked, regardless of final status
+
+**See [troubleshooting.md](troubleshooting.md#rtc-ntp-synchronization-with-esp-hosted) for complete details.**
+
 ### Important Notes
 
 ⚠️ **I2C Scan Must Be Disabled**
@@ -691,6 +736,11 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 - GPIO18 (SDIO CLK) is owned by SDMMC driver
 - Never manipulate these pins outside their drivers
 
+⚠️ **NTP Sync Status vs Callback**
+- With ESP-Hosted, trust the callback, not the final status
+- Status shows `RESET` after sync is a known race condition
+- Callback invocation = successful sync
+
 ---
 
 ## 📚 Documentation
@@ -704,6 +754,7 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
   - SD card `0x107` error root causes
   - I2C device initialization best practices
   - WiFi/ESP-Hosted debugging
+  - **RTC NTP sync with ESP-Hosted (callback-based fix)**
   - Complete system boot logs
   - Hardware diagnostic procedures
 
