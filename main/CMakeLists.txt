@@ -1,4 +1,4 @@
-idf_component_register(SRCS "sd_card_example_main.c" 
+idf_component_register(SRCS "main.c" 
                             "sd_card_functions.c" 
                             "esp_hosted_wifi.c"
                             "bootstrap_manager.c"
