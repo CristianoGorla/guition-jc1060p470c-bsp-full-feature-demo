@@ -72,6 +72,11 @@ CONFIG_ESP_HOSTED_TRANSPORT_SDIO=y
 CONFIG_ESP_HOSTED_TRANSPORT_UART=n
 CONFIG_ESP_HOSTED_TRANSPORT_SPI=n
 
+# CRITICAL FIX: Disable internal LDO for SDIO power control
+# Board uses external power via GPIO36 (MOSFET for SD) and LDO for C6
+# This prevents "acquire LDO channel failed: channel:109" error
+CONFIG_ESP_HOSTED_SD_PWR_CTRL_LDO_INTERNAL_IO=n
+
 # === WiFi Configuration ===
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
 CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
