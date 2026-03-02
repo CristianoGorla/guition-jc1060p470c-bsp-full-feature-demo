@@ -21,7 +21,7 @@ menu "Guition JC1060 BSP Configuration"
         bool "Enable I2C Bus"
         default y
         help
-            Enable the I2C bus (GPIO3=SDA, GPIO8=SCL @ 400kHz).
+            Enable the I2C bus (GPIO7=SDA, GPIO8=SCL @ 400kHz).
             This is required for touch controller, audio codec, and RTC.
             The I2C bus is shared by multiple peripherals.
 
