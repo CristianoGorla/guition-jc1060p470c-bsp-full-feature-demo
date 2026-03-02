@@ -176,8 +176,9 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
     
+    /* CRITICAL: io_handle = NULL for DPI panels (no GRAM)! */
     const lvgl_port_display_cfg_t disp_cfg = {
-        .io_handle = bsp_jd9165_get_io(),  // ✓ REQUIRED!
+        .io_handle = NULL,  // ✓ DPI panel has no DBI I/O!
         .panel_handle = display,
         .buffer_size = 1024 * 50,
         .double_buffer = 1,
