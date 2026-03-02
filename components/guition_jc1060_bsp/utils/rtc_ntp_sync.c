@@ -10,7 +10,7 @@
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
 #include "esp_timer.h"        // For esp_timer_get_time()
 #include "lwip/inet.h"
-#include "lwip/netdb.h"       // For getaddrinfo(), gai_strerror()
+#include "lwip/netdb.h"       // For getaddrinfo()
 #include "lwip/sockets.h"
 #include "ping/ping_sock.h"
 #include "esp_netif.h"
@@ -39,8 +39,8 @@ static esp_err_t test_dns_resolution(const char *hostname)
     int64_t elapsed_ms = (esp_timer_get_time() - start) / 1000;
     
     if (err != 0 || res == NULL) {
-        ESP_LOGE(TAG, "[DNS] ✗ Resolution failed: %s (took %lld ms)", 
-                 gai_strerror(err), elapsed_ms);
+        ESP_LOGE(TAG, "[DNS] ✗ Resolution failed: error %d (took %lld ms)", 
+                 err, elapsed_ms);
         return ESP_FAIL;
     }
     
