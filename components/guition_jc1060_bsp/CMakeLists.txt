@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS 
         "src/bsp_board.c"
+        "src/bsp_lvgl.c"
         "drivers/jd9165_bsp.c"
         "drivers/gt911_bsp.c"
         "drivers/es8311_bsp.c"
@@ -13,5 +14,6 @@ idf_component_register(
         esp_lcd
         esp_lcd_touch_gt911
         esp_lcd_jd9165
+        esp_lvgl_port
         freertos
 )
