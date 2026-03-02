@@ -1,3 +1,0 @@
-# SD/MMC and WiFi configuration moved to BSP component
-# See: components/guition_jc1060_bsp/Kconfig.projbuild
-# Menu: "Guition JC1060P470C Board Configuration"
