@@ -148,7 +148,7 @@ static lv_display_t *bsp_lvgl_init_display(const bsp_lvgl_config_t *config)
 static lv_indev_t *bsp_lvgl_init_touch(lv_display_t *display)
 {
 #ifdef CONFIG_BSP_LVGL_TOUCH_ENABLE
-    if (!CONFIG_BSP_ENABLE_TOUCH) {
+    if (!IS_ENABLED(CONFIG_BSP_ENABLE_TOUCH)) {
         ESP_LOGW(TAG, "Touch is disabled in BSP configuration");
         return NULL;
     }
@@ -322,11 +322,9 @@ size_t bsp_lvgl_get_buffer_size(void)
 {
     size_t single_buffer = LVGL_BUFFER_SIZE * sizeof(lv_color_t);
     
-#ifdef CONFIG_BSP_LVGL_DOUBLE_BUFFER
-    if (CONFIG_BSP_LVGL_DOUBLE_BUFFER) {
+    if (IS_ENABLED(CONFIG_BSP_LVGL_DOUBLE_BUFFER)) {
         return single_buffer * 2;
     }
-#endif
     
     return single_buffer;
 }
@@ -337,11 +335,11 @@ void bsp_lvgl_print_stats(void)
     ESP_LOGI(TAG, "  Display: %dx%d", CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_DISPLAY_HEIGHT);
     ESP_LOGI(TAG, "  Buffer lines: %d", CONFIG_BSP_LVGL_BUFFER_LINES);
     ESP_LOGI(TAG, "  Buffer size: %zu KB (single)", LVGL_BUFFER_SIZE * sizeof(lv_color_t) / 1024);
-    ESP_LOGI(TAG, "  Double buffer: %s", CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "Yes" : "No");
+    ESP_LOGI(TAG, "  Double buffer: %s", IS_ENABLED(CONFIG_BSP_LVGL_DOUBLE_BUFFER) ? "Yes" : "No");
     ESP_LOGI(TAG, "  Total memory: %zu KB", bsp_lvgl_get_buffer_size() / 1024);
     ESP_LOGI(TAG, "  Buffer location: %s", 
-             CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER ? "SPIRAM" : 
-             CONFIG_BSP_LVGL_USE_DMA_BUFFER ? "DMA" : "Internal");
+             IS_ENABLED(CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER) ? "SPIRAM" : 
+             IS_ENABLED(CONFIG_BSP_LVGL_USE_DMA_BUFFER) ? "DMA" : "Internal");
     
 #ifdef CONFIG_BSP_LVGL_ENABLE_SW_ROTATE
     ESP_LOGI(TAG, "  Rotation: %d degrees (SW rotate enabled)", bsp_lvgl_get_rotation());
