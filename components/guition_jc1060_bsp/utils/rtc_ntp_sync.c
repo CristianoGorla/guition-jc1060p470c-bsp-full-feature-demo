@@ -20,6 +20,19 @@ static const char *TAG = "RTC_NTP";
 
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
 static int64_t test_start_time_us = 0;
+static volatile bool ntp_callback_invoked = false;  // Flag to detect callback
+
+/**
+ * @brief Convert SNTP status to string
+ */
+static const char* sntp_status_to_str(sntp_sync_status_t status) {
+    switch(status) {
+        case SNTP_SYNC_STATUS_RESET:       return "RESET";
+        case SNTP_SYNC_STATUS_COMPLETED:   return "COMPLETED";
+        case SNTP_SYNC_STATUS_IN_PROGRESS: return "IN_PROGRESS";
+        default:                            return "UNKNOWN";
+    }
+}
 
 /**
  * @brief Test DNS resolution for NTP server
@@ -174,6 +187,7 @@ static esp_err_t get_gateway_ip(char *ip_str, size_t len)
 static void time_sync_notification_cb(struct timeval *tv)
 {
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+    ntp_callback_invoked = true;  // Set flag
     int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
     ESP_LOGI(TAG, "✓ NTP callback invoked! Time synchronized (T+%.1fs)", elapsed_ms / 1000.0);
 #else
@@ -208,6 +222,7 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
 {
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
     test_start_time_us = esp_timer_get_time();
+    ntp_callback_invoked = false;  // Reset flag
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "   Enhanced NTP Sync (ESP-Hosted)");
@@ -269,21 +284,33 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
     int heartbeat_counter = 0;
 #endif
     
-    // FIX: Wait until status becomes COMPLETED (not just != RESET)
-    while (esp_sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && 
-           retry < max_retry) {
+    // FIX #1: Wait until status COMPLETED OR callback invoked
+    while (retry < max_retry) {
         vTaskDelay(pdMS_TO_TICKS(100));
         retry++;
         
         sntp_sync_status_t status = esp_sntp_get_sync_status();
         
+        // FIX #2: Exit immediately if callback was invoked
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
-        // Log status transitions
-        if (status != last_status && status != SNTP_SYNC_STATUS_RESET) {
+        if (ntp_callback_invoked && status == SNTP_SYNC_STATUS_COMPLETED) {
             int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
-            const char *status_str = (status == SNTP_SYNC_STATUS_IN_PROGRESS) ? "IN_PROGRESS" : "UNKNOWN";
-            ESP_LOGI(TAG, "[NTP] Status transition: %s (at T+%.1fs)", 
-                     status_str, elapsed_ms / 1000.0);
+            ESP_LOGI(TAG, "[NTP] Callback + Status COMPLETED detected (T+%.1fs)", elapsed_ms / 1000.0);
+            break;
+        }
+#endif
+        
+        // Normal exit condition
+        if (status == SNTP_SYNC_STATUS_COMPLETED) {
+            break;
+        }
+        
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+        // FIX #3: Detailed status logging with string names
+        if (status != last_status) {
+            int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
+            ESP_LOGI(TAG, "[NTP] Status: %s (%d) at T+%.1fs", 
+                     sntp_status_to_str(status), status, elapsed_ms / 1000.0);
             last_status = status;
         }
         
@@ -291,8 +318,10 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         heartbeat_counter++;
         if (heartbeat_counter >= 50) { // 50 * 100ms = 5s
             int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
-            ESP_LOGI(TAG, "[NTP] Still waiting... (%.1f/%d seconds elapsed)", 
-                     elapsed_ms / 1000.0, timeout_sec);
+            ESP_LOGI(TAG, "[NTP] Waiting... %.1f/%d sec | Status: %s | Callback: %s", 
+                     elapsed_ms / 1000.0, timeout_sec,
+                     sntp_status_to_str(status),
+                     ntp_callback_invoked ? "YES" : "NO");
             heartbeat_counter = 0;
         }
 #else
@@ -336,14 +365,17 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         ESP_LOGE(TAG, "========================================");
         ESP_LOGE(TAG, "   ✗✗✗ NTP SYNC FAILED ✗✗✗");
         ESP_LOGE(TAG, "========================================");
-        ESP_LOGE(TAG, "Status: %d (expected %d for COMPLETED)", 
-                 final_status, SNTP_SYNC_STATUS_COMPLETED);
+        ESP_LOGE(TAG, "Final status: %s (%d)", sntp_status_to_str(final_status), final_status);
+        ESP_LOGE(TAG, "Callback invoked: %s", ntp_callback_invoked ? "YES" : "NO");
         ESP_LOGE(TAG, "Timeout: %d seconds", timeout_sec);
         ESP_LOGE(TAG, "");
         ESP_LOGE(TAG, "Possible causes:");
-        ESP_LOGE(TAG, "  - ESP-Hosted needs longer timeout (try 60-90s)");
+        ESP_LOGE(TAG, "  - ESP-Hosted needs longer timeout (try 90-120s)");
         ESP_LOGE(TAG, "  - Firewall blocking NTP (UDP port 123)");
         ESP_LOGE(TAG, "  - Network congestion or packet loss");
+        ESP_LOGE(TAG, "  - SNTP state machine stuck (callback=%s, status=%s)",
+                 ntp_callback_invoked ? "invoked" : "not invoked",
+                 sntp_status_to_str(final_status));
         ESP_LOGE(TAG, "========================================\n");
 #else
         ESP_LOGE(TAG, "✗ NTP sync failed (status: %d) after %d seconds", 
@@ -431,12 +463,12 @@ esp_err_t rtc_ntp_sync_test(void)
              reset_time.year, reset_time.month, reset_time.day,
              reset_time.hour, reset_time.minute, reset_time.second);
     
-    // Step 3: Sync with NTP (use Kconfig timeout)
+    // Step 3: Sync with NTP (90 seconds timeout for ESP-Hosted)
     ESP_LOGI(TAG, "Step 3/4: Synchronize with NTP server");
 #ifdef CONFIG_APP_NTP_SYNC_TIMEOUT_SEC
     ret = sync_time_from_ntp(CONFIG_APP_NTP_SYNC_TIMEOUT_SEC);
 #else
-    ret = sync_time_from_ntp(60);  // 60 seconds default for ESP-Hosted
+    ret = sync_time_from_ntp(90);  // 90 seconds for ESP-Hosted (was 60)
 #endif
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "NTP sync failed\n");
