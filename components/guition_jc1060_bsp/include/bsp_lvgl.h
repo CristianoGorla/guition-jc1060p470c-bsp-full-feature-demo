@@ -62,6 +62,10 @@ typedef struct {
  * This macro creates a bsp_lvgl_config_t structure with all values
  * automatically populated from menuconfig settings.
  * 
+ * Note: Bool Kconfig symbols (bool type) generate #defines only when enabled (=y).
+ * When disabled (=n), they don't exist as macros. We use conditional compilation
+ * to provide safe defaults.
+ * 
  * Usage:
  * @code
  * bsp_lvgl_config_t config = BSP_LVGL_CONFIG_DEFAULT();
@@ -71,16 +75,16 @@ typedef struct {
 #define BSP_LVGL_CONFIG_DEFAULT() {                                      \
     .buffer = {                                                          \
         .buffer_lines = CONFIG_BSP_LVGL_BUFFER_LINES,                    \
-        .double_buffer = CONFIG_BSP_LVGL_DOUBLE_BUFFER,                  \
-        .use_dma = CONFIG_BSP_LVGL_USE_DMA_BUFFER,                       \
-        .use_spiram = CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER,                 \
+        .double_buffer = IS_ENABLED(CONFIG_BSP_LVGL_DOUBLE_BUFFER),      \
+        .use_dma = IS_ENABLED(CONFIG_BSP_LVGL_USE_DMA_BUFFER),           \
+        .use_spiram = IS_ENABLED(CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER),     \
     },                                                                   \
     .rotation = {                                                        \
-        .sw_rotate = CONFIG_BSP_LVGL_ENABLE_SW_ROTATE,                   \
+        .sw_rotate = IS_ENABLED(CONFIG_BSP_LVGL_ENABLE_SW_ROTATE),       \
         .initial_rotation = CONFIG_BSP_LVGL_ROTATION_DEGREE,             \
     },                                                                   \
     .touch = {                                                           \
-        .enable = CONFIG_BSP_LVGL_TOUCH_ENABLE,                          \
+        .enable = IS_ENABLED(CONFIG_BSP_LVGL_TOUCH_ENABLE),              \
     },                                                                   \
     .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),                        \
 }
