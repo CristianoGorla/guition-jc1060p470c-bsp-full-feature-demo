@@ -56,7 +56,7 @@ static esp_err_t bootstrap_power_sequence(void)
     
     // C6_IO9 strapping protection (force high for SPI boot)
     if (GPIO_C6_IO9_STRAPPING >= 0) {
-        io_conf.pin_bit_mask = (1ULL << GPIO_C6_IO9_STRAPPING);
+        io_conf.pin_bit_mask = (1ULL << (unsigned)GPIO_C6_IO9_STRAPPING);
         gpio_config(&io_conf);
         gpio_set_level(GPIO_C6_IO9_STRAPPING, 1);
         ESP_LOGI(TAG, "[Phase A]   GPIO%d (C6_IO9) → HIGH (SPI boot mode)", GPIO_C6_IO9_STRAPPING);

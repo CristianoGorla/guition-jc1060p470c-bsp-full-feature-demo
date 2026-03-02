@@ -24,6 +24,7 @@ idf_component_register(
         nvs_flash
         esp_netif
         esp_event
+        esp_wifi
 )
 
 # Generate build info AFTER component registration to avoid early evaluation issues
