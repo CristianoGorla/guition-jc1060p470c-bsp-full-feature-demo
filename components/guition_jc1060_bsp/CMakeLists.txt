@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS 
         "src/bsp_board.c"
+        "src/bsp_lvgl.c"
         "drivers/jd9165_bsp.c"
         "drivers/gt911_bsp.c"
         "drivers/es8311_bsp.c"
