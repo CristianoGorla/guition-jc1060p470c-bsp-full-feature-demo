@@ -62,9 +62,9 @@ typedef struct {
  * This macro creates a bsp_lvgl_config_t structure with all values
  * automatically populated from menuconfig settings.
  * 
- * Note: Bool Kconfig symbols (bool type) generate #defines only when enabled (=y).
- * When disabled (=n), they don't exist as macros. We use conditional compilation
- * to provide safe defaults.
+ * Note: Bool Kconfig symbols generate #defines only when enabled (=y).
+ * When disabled (=n), they don't exist. We use conditional compilation
+ * to provide safe defaults (0 for disabled, 1 for enabled).
  * 
  * Usage:
  * @code
@@ -75,19 +75,37 @@ typedef struct {
 #define BSP_LVGL_CONFIG_DEFAULT() {                                      \
     .buffer = {                                                          \
         .buffer_lines = CONFIG_BSP_LVGL_BUFFER_LINES,                    \
-        .double_buffer = IS_ENABLED(CONFIG_BSP_LVGL_DOUBLE_BUFFER),      \
-        .use_dma = IS_ENABLED(CONFIG_BSP_LVGL_USE_DMA_BUFFER),           \
-        .use_spiram = IS_ENABLED(CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER),     \
+        .double_buffer = _BSP_KCONFIG_BOOL(CONFIG_BSP_LVGL_DOUBLE_BUFFER), \
+        .use_dma = _BSP_KCONFIG_BOOL(CONFIG_BSP_LVGL_USE_DMA_BUFFER),    \
+        .use_spiram = _BSP_KCONFIG_BOOL(CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER), \
     },                                                                   \
     .rotation = {                                                        \
-        .sw_rotate = IS_ENABLED(CONFIG_BSP_LVGL_ENABLE_SW_ROTATE),       \
+        .sw_rotate = _BSP_KCONFIG_BOOL(CONFIG_BSP_LVGL_ENABLE_SW_ROTATE), \
         .initial_rotation = CONFIG_BSP_LVGL_ROTATION_DEGREE,             \
     },                                                                   \
     .touch = {                                                           \
-        .enable = IS_ENABLED(CONFIG_BSP_LVGL_TOUCH_ENABLE),              \
+        .enable = _BSP_KCONFIG_BOOL(CONFIG_BSP_LVGL_TOUCH_ENABLE),       \
     },                                                                   \
     .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),                        \
 }
+
+/**
+ * @brief Helper macro to safely read Kconfig bool symbols
+ * 
+ * Returns 1 if symbol is defined (enabled), 0 if undefined (disabled).
+ * This handles the case where Kconfig bool options don't generate
+ * #defines when set to 'n'.
+ */
+#define _BSP_KCONFIG_BOOL(sym) ( \
+    __BSP_KCONFIG_IS_DEFINED(sym) ? 1 : 0 \
+)
+
+/* Helper to check if a macro is defined */
+#define __BSP_KCONFIG_IS_DEFINED(x) __BSP_KCONFIG_IS_DEFINED_IMPL(x)
+#define __BSP_KCONFIG_IS_DEFINED_IMPL(x) __BSP_KCONFIG_IS_DEFINED_##x
+#define __BSP_KCONFIG_IS_DEFINED_ 0
+#define __BSP_KCONFIG_IS_DEFINED_0 0
+#define __BSP_KCONFIG_IS_DEFINED_1 1
 
 /**
  * @brief Initialize LVGL with BSP configuration
