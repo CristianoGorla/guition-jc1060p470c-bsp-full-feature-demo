@@ -41,6 +41,12 @@
 #define DEBUG_TOUCH 1       // Detailed touch logs
 #define ENABLE_TOUCH_TEST 0 // Touch input test (DISABLED - only init)
 
+// ========== LVGL ==========
+#define ENABLE_LVGL 1         // ✅ LVGL graphics library (v9.2.2)
+#define DEBUG_LVGL 1          // Detailed LVGL logs
+#define ENABLE_LVGL_DEMO 1    // 🎨 Run LVGL demo (widgets/benchmark/stress test)
+#define LVGL_DEMO_TYPE 0      // 0=widgets, 1=benchmark, 2=stress, 3=music
+
 // ========== NVS ==========
 #define ENABLE_NVS 1 // NVS Flash (required for some peripherals)
 #define DEBUG_NVS 0  // Detailed NVS logs
@@ -108,6 +114,15 @@
 #define LOG_TOUCH(tag, format, ...) \
     do                              \
     {                               \
+    } while (0)
+#endif
+
+#if DEBUG_LVGL
+#define LOG_LVGL(tag, format, ...) ESP_LOGI(tag, format, ##__VA_ARGS__)
+#else
+#define LOG_LVGL(tag, format, ...) \
+    do                             \
+    {                              \
     } while (0)
 #endif
 
