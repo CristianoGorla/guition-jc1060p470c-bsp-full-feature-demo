@@ -8,8 +8,9 @@
 #include "freertos/task.h"
 
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+#include "esp_timer.h"        // For esp_timer_get_time()
 #include "lwip/inet.h"
-#include "lwip/netdb.h"
+#include "lwip/netdb.h"       // For getaddrinfo(), gai_strerror()
 #include "lwip/sockets.h"
 #include "ping/ping_sock.h"
 #include "esp_netif.h"
