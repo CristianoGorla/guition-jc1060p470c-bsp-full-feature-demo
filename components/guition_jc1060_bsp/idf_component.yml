@@ -1,3 +1,5 @@
 dependencies:
   espressif/esp_lcd_jd9165: "*"
   espressif/esp_lcd_touch_gt911: "*"
+  espressif/esp_lvgl_port: "^2.7.2"
+  lvgl/lvgl: "~9.2.2"
