@@ -37,6 +37,11 @@
 #include "wifi_config.h"
 #endif
 
+// LVGL test UI
+#ifdef CONFIG_BSP_ENABLE_LVGL
+extern void lvgl_create_test_ui(void);
+#endif
+
 static const char *TAG = "GUITION_MAIN";
 
 /**
@@ -46,10 +51,11 @@ static const char *TAG = "GUITION_MAIN";
  * Step 5 refactoring. All hardware and bootstrap code is now in the BSP.
  * 
  * Application Flow:
- * 1. BSP initialization (Phase A: Power, Phase D: Drivers)
+ * 1. BSP initialization (Phase A: Power, Phase D: Drivers + LVGL)
  * 2. NVS initialization (for WiFi/BT)
  * 3. Bootstrap manager (Phase C: WiFi, Phase B: SD Card)
- * 4. Application-level features and tests
+ * 4. LVGL test UI (if enabled)
+ * 5. Application-level features and tests
  */
 void app_main(void)
 {
@@ -68,7 +74,7 @@ void app_main(void)
     // ========================================
     // This single call handles:
     // - Phase A: Power Manager (SD card power sequencing)
-    // - Phase D: Peripheral Drivers (display, touch, audio, RTC)
+    // - Phase D: Peripheral Drivers (display, touch, audio, RTC, LVGL)
     //   (conditional on Kconfig settings)
     ret = bsp_board_init();
     if (ret != ESP_OK) {
@@ -78,6 +84,15 @@ void app_main(void)
     }
     
     ESP_LOGI(TAG, "✓ Hardware initialization complete\n");
+
+    // ========================================
+    // LVGL Test UI (after BSP init)
+    // ========================================
+#ifdef CONFIG_BSP_ENABLE_LVGL
+    ESP_LOGI(TAG, "=== LVGL Test UI ===");
+    lvgl_create_test_ui();
+    ESP_LOGI(TAG, "✓ LVGL UI displayed\n");
+#endif
 
     // ========================================
     // NVS Initialization
@@ -215,22 +230,16 @@ void app_main(void)
 #ifdef CONFIG_BSP_ENABLE_SDCARD
     ESP_LOGI(TAG, "  ✓ SD Card: SDMMC");
 #endif
+#ifdef CONFIG_BSP_ENABLE_LVGL
+    ESP_LOGI(TAG, "  ✓ LVGL: v9.2.2 (1024x600 PSRAM)");
+#endif
     ESP_LOGI(TAG, "");
-    
-    // TODO: Add application-specific initialization here
-    // Examples:
-    // - LVGL UI initialization (if using LVGL)
-    // - Application task creation
-    // - Sensor polling setup
-    // - Network service initialization
     
     ESP_LOGI(TAG, "Entering main loop...\n");
     
     // Main application loop
     while (1)
     {
-        // TODO: Add periodic application tasks here
-        // For now, just idle
         vTaskDelay(pdMS_TO_TICKS(10000));
         
         // Periodic status log
