@@ -107,6 +107,13 @@ CONFIG_ESP_HOSTED_SD_PWR_CTRL_LDO_INTERNAL_IO=y
 CONFIG_ESP_HOSTED_SDIO_LDO_CHANNEL_ID=4
 CONFIG_ESP_HOSTED_SDIO_LDO_VOLTAGE=3300
 
+# === ESP-Hosted Reset Strategy ===
+# CRITICAL: Force C6 reset on EVERY P4 boot to prevent boot loops
+# Conditional reset causes boot loops because C6 maintains state across
+# P4 software resets. See docs/ESP_HOSTED_RESET_STRATEGIES.md for details.
+CONFIG_ESP_HOSTED_RESET_SLAVE_ON_INIT=y
+CONFIG_ESP_HOSTED_RESET_SLAVE_IF_NEEDED=n
+
 # === WiFi Configuration ===
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
 CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
