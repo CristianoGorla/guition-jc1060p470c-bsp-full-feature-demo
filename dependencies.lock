@@ -149,6 +149,13 @@ dependencies:
     source:
       type: idf
     version: 5.5.3
+  lvgl/lvgl:
+    component_hash: 184e532558c1c45fefed631f3e235423d22582aafb4630f3e8885c35281a49ae
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 9.5.0
 direct_dependencies:
 - espressif/esp_hosted
 - espressif/esp_lcd_ek79007
@@ -157,6 +164,7 @@ direct_dependencies:
 - espressif/esp_lcd_touch_gt911
 - espressif/esp_wifi_remote
 - idf
-manifest_hash: ad666a26f5968e81a0cfaf327ee68a79ede649b4bded4f68b213668f1f33f6e9
+- lvgl/lvgl
+manifest_hash: 1f5e919ada14dd9609f2c358110b9706d064c77fd8567ea4076d8bfa1610b8f6
 target: esp32p4
 version: 2.0.0
