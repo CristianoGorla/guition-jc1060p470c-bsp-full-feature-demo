@@ -30,6 +30,7 @@ This project provides a comprehensive demonstration of all hardware capabilities
 - [Development Workflow](#-development-workflow)
 - [Troubleshooting](#-troubleshooting)
 - [Documentation](#-documentation)
+- [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -668,21 +669,294 @@ Done
 
 ---
 
+## 🗺️ Roadmap
+
+### Current Status: Phase 1 Complete ✅
+
+All onboard peripherals functional with deterministic bootstrap manager and comprehensive documentation.
+
+### Phase 2: Testing & Software Suite Completion (Q2 2026)
+
+#### 2.1 Onboard Hardware Testing
+- [ ] **Display Tests**
+  - [ ] Full screen color fill tests (RGB, patterns)
+  - [ ] Partial update performance benchmarks
+  - [ ] Frame rate measurements
+  - [ ] Brightness control via I2C (if supported)
+  - [ ] Screen orientation rotation tests
+  
+- [ ] **Touch Controller Tests**
+  - [ ] Multi-touch validation (up to 5 points)
+  - [ ] Touch accuracy calibration
+  - [ ] Gesture recognition (swipe, pinch, rotate)
+  - [ ] Palm rejection testing
+  - [ ] Interrupt latency measurements
+
+- [ ] **Audio Codec Tests**
+  - [ ] I2S playback from SD card (WAV files)
+  - [ ] Sample rate support validation (8kHz - 96kHz)
+  - [ ] Volume control via ES8311 registers
+  - [ ] Speaker amplifier enable/disable timing
+  - [ ] Audio quality measurements (SNR, THD)
+  - [ ] Microphone input (if supported)
+
+- [ ] **RTC Tests**
+  - [ ] Long-term timekeeping accuracy (battery backup)
+  - [ ] Alarm and interrupt functionality
+  - [ ] Temperature compensation validation
+  - [ ] Power loss recovery tests
+  - [ ] 32.768 kHz oscillator stability
+
+- [ ] **SD Card Tests**
+  - [ ] Read/write speed benchmarks
+  - [ ] Large file operations (>1GB)
+  - [ ] Fragmentation handling
+  - [ ] FAT32 filesystem stress tests
+  - [ ] Multiple file concurrent access
+  - [ ] Hot-plug detection (if available)
+
+- [ ] **WiFi/ESP-Hosted Tests**
+  - [ ] Throughput measurements (TCP/UDP)
+  - [ ] Range and signal strength tests
+  - [ ] Roaming between APs
+  - [ ] Power consumption profiling
+  - [ ] BLE functionality validation
+  - [ ] Concurrent WiFi + BLE operations
+
+#### 2.2 External Peripherals Support
+
+- [ ] **I2C Expansion**
+  - [ ] BME280/BME680 environmental sensor
+  - [ ] MPU6050/MPU9250 IMU (accelerometer + gyroscope)
+  - [ ] PCA9685 16-channel PWM controller
+  - [ ] PCF8574 I2C GPIO expander
+  - [ ] OLED displays (SSD1306, SH1106)
+  - [ ] I2C EEPROM (AT24Cxx series)
+
+- [ ] **SPI Expansion**
+  - [ ] Additional SD card slot
+  - [ ] SPI SRAM/Flash expansion
+  - [ ] LoRa modules (SX1276, SX1278)
+  - [ ] NRF24L01+ wireless transceiver
+
+- [ ] **UART Peripherals**
+  - [ ] GPS modules (NEO-6M, NEO-M8N)
+  - [ ] Bluetooth modules (HC-05, HC-06)
+  - [ ] GSM/LTE modems
+  - [ ] RS485 transceivers
+
+- [ ] **GPIO Expansion**
+  - [ ] Relay modules
+  - [ ] LED strips (WS2812B, SK6812)
+  - [ ] Stepper motor drivers
+  - [ ] Ultrasonic sensors (HC-SR04)
+
+#### 2.3 Software Suite
+
+- [ ] **Automated Test Framework**
+  - [ ] Unity-based unit tests for all drivers
+  - [ ] CI/CD integration (GitHub Actions)
+  - [ ] Hardware-in-the-loop (HIL) test suite
+  - [ ] Code coverage reporting
+
+- [ ] **Diagnostic Tools**
+  - [ ] Interactive CLI for peripheral testing
+  - [ ] Web-based diagnostic dashboard
+  - [ ] Real-time system monitor (CPU, memory, tasks)
+  - [ ] Performance profiling tools
+
+- [ ] **Example Applications**
+  - [ ] Weather station (sensors + display)
+  - [ ] Music player (SD card + audio)
+  - [ ] Photo frame (SD card + display)
+  - [ ] IoT gateway (WiFi + sensors)
+
+---
+
+### Phase 3: Architecture Refactoring (Q3 2026)
+
+#### 3.1 Driver Isolation
+
+- [ ] **Separate Hardware Drivers from BSP Logic**
+  ```
+  components/guition_jc1060_bsp/
+  ├── drivers/              # Pure hardware abstraction
+  │   ├── jd9165_driver.c   # Display hardware ops only
+  │   ├── gt911_driver.c    # Touch hardware ops only
+  │   ├── es8311_driver.c   # Audio hardware ops only
+  │   ├── rx8025t_driver.c  # RTC hardware ops only
+  │   └── ...
+  └── bsp/                  # Initialization sequences
+      ├── bsp_display.c     # Display init + config
+      ├── bsp_touch.c       # Touch init + calibration
+      ├── bsp_audio.c       # Audio init + routing
+      └── ...
+  ```
+
+- [ ] **Driver API Standardization**
+  - [ ] Consistent error handling across all drivers
+  - [ ] Uniform initialization/deinitialization patterns
+  - [ ] Configuration structures for all peripherals
+  - [ ] Event callback mechanisms
+
+- [ ] **Hardware Abstraction Layer (HAL)**
+  - [ ] Abstract I2C operations (platform-independent)
+  - [ ] Abstract SPI operations
+  - [ ] Abstract GPIO operations
+  - [ ] Platform-specific implementations (ESP32-P4, ESP32-S3)
+
+#### 3.2 BSP Component Architecture
+
+- [ ] **Reusable ESP-IDF Component**
+  ```
+  components/guition_jc1060_bsp/
+  ├── CMakeLists.txt
+  ├── Kconfig                # Menuconfig integration
+  ├── include/
+  │   ├── bsp_board.h        # Main BSP API
+  │   ├── bsp_display.h
+  │   ├── bsp_touch.h
+  │   ├── bsp_audio.h
+  │   ├── bsp_rtc.h
+  │   ├── bsp_sdcard.h
+  │   └── bsp_wifi.h
+  └── src/
+      ├── drivers/           # Hardware drivers
+      └── bsp/               # BSP logic
+  ```
+
+- [ ] **Public API Design**
+  - [ ] Centralized `bsp_board_init()` API
+  - [ ] Per-peripheral configuration structures
+  - [ ] Event-driven callback system
+  - [ ] Resource management (mutex, semaphores)
+
+- [ ] **Bootstrap Manager as Standalone Component**
+  - [ ] Configurable power sequencing
+  - [ ] Generic SDMMC arbitration framework
+  - [ ] Extensible to other multi-peripheral boards
+
+#### 3.3 Business Logic Separation
+
+- [ ] **Demo Applications Restructuring**
+  ```
+  main/
+  ├── demos/
+  │   ├── demo_display_test.c
+  │   ├── demo_touch_test.c
+  │   ├── demo_audio_playback.c
+  │   ├── demo_wifi_scan.c
+  │   ├── demo_rtc_ntp_sync.c
+  │   └── demo_file_operations.c
+  └── main.c                 # Demo orchestrator
+  ```
+
+- [ ] **Application-Level Features**
+  - [ ] Menu system for demo selection
+  - [ ] Configuration persistence in NVS
+  - [ ] Runtime peripheral enable/disable
+  - [ ] Logging and diagnostics UI
+
+---
+
+### Phase 4: Advanced Integration (Q4 2026)
+
+#### 4.1 Graphics Framework
+
+- [ ] **LVGL Integration**
+  - [ ] Display driver for JD9165
+  - [ ] Touch input driver for GT911
+  - [ ] Double-buffering for smooth animations
+  - [ ] Hardware acceleration (if available)
+  - [ ] Demo UI applications
+
+- [ ] **Graphics Libraries**
+  - [ ] Image decoding (JPEG, PNG, BMP)
+  - [ ] Font rendering (TrueType fonts)
+  - [ ] 2D graphics primitives
+  - [ ] Canvas and drawing tools
+
+#### 4.2 Audio Framework
+
+- [ ] **Audio Playback**
+  - [ ] WAV file decoder
+  - [ ] MP3 decoder (optional, licensing)
+  - [ ] Audio streaming from SD card
+  - [ ] Playlist management
+  - [ ] Equalizer and audio effects
+
+- [ ] **Audio Input** (if microphone available)
+  - [ ] Audio recording to SD card
+  - [ ] Voice activity detection
+  - [ ] Noise cancellation
+
+#### 4.3 Networking & IoT
+
+- [ ] **Network Protocols**
+  - [ ] HTTP client/server
+  - [ ] MQTT client
+  - [ ] WebSocket support
+  - [ ] OTA firmware updates
+
+- [ ] **IoT Integration**
+  - [ ] AWS IoT Core
+  - [ ] Google Cloud IoT
+  - [ ] Azure IoT Hub
+  - [ ] Home Assistant integration
+
+#### 4.4 Power Management
+
+- [ ] **Low Power Modes**
+  - [ ] Deep sleep with RTC wakeup
+  - [ ] Light sleep with peripheral activity wakeup
+  - [ ] Dynamic frequency scaling
+  - [ ] Power consumption profiling
+
+- [ ] **Battery Management** (if battery support added)
+  - [ ] Battery level monitoring
+  - [ ] Charging status
+  - [ ] Low battery warnings
+
+---
+
+### Phase 5: Production Readiness (2027)
+
+- [ ] **Documentation**
+  - [ ] Complete API reference (Doxygen)
+  - [ ] Hardware design guidelines
+  - [ ] Manufacturing test procedures
+  - [ ] Certification guides (CE, FCC, etc.)
+
+- [ ] **Quality Assurance**
+  - [ ] Automated regression testing
+  - [ ] Long-term stability testing
+  - [ ] Temperature and environmental testing
+  - [ ] EMC/EMI compliance validation
+
+- [ ] **Community**
+  - [ ] Example projects repository
+  - [ ] Video tutorials
+  - [ ] Forum/Discord community
+  - [ ] Regular maintenance releases
+
+---
+
+### Contributing to Roadmap
+
+We welcome contributions! If you'd like to work on any roadmap item:
+
+1. Check if an issue exists for the feature
+2. Comment on the issue to claim it
+3. Fork the repository and create a feature branch
+4. Submit a pull request with your implementation
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Development Roadmap
-
-Planned improvements (Phase 2+ refactoring):
-
-1. **Component Architecture**: Separate BSP into reusable ESP-IDF component
-2. **Driver Isolation**: Split hardware drivers from BSP logic
-3. **Public API**: Centralized BSP initialization and configuration API
-4. **LVGL Integration**: Graphics library support for display
-5. **Audio Playback**: I2S audio streaming implementation
-6. **Touch Gestures**: Advanced touch gesture recognition
-7. **Power Management**: Deep sleep and power optimization
 
 ---
 
