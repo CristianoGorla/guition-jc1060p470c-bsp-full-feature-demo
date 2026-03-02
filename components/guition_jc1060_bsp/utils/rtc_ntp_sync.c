@@ -1,5 +1,5 @@
 #include "rtc_ntp_sync.h"
-#include "rtc_rx8025t.h"
+#include "rx8025t_bsp.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
 #include <time.h>
@@ -21,7 +21,7 @@ esp_err_t rtc_reset_to_default(void)
 {
     ESP_LOGI(TAG, "Resetting RTC to default time (2000-01-01 00:00:00)...");
     
-    rtc_time_t default_time = {
+    bsp_rtc_time_t default_time = {
         .year = 0,      // RX8025T: 0 = year 2000
         .month = 1,     // January
         .day = 1,       // 1st
@@ -31,7 +31,7 @@ esp_err_t rtc_reset_to_default(void)
         .second = 0
     };
     
-    esp_err_t ret = rtc_rx8025t_set_time(&default_time);
+    esp_err_t ret = bsp_rx8025t_set_time(&default_time);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "✓ RTC reset to: 2000-01-01 00:00:00");
     } else {
@@ -100,7 +100,7 @@ esp_err_t update_rtc_from_system_time(void)
     localtime_r(&now, &timeinfo);
     
     // Convert to RTC format
-    rtc_time_t rtc_time = {
+    bsp_rtc_time_t rtc_time = {
         .year = timeinfo.tm_year - 100,  // tm_year is years since 1900, RTC uses years since 2000
         .month = timeinfo.tm_mon + 1,    // tm_mon is 0-11, RTC uses 1-12
         .day = timeinfo.tm_mday,
@@ -114,13 +114,13 @@ esp_err_t update_rtc_from_system_time(void)
              rtc_time.year, rtc_time.month, rtc_time.day,
              rtc_time.hour, rtc_time.minute, rtc_time.second, rtc_time.wday);
     
-    esp_err_t ret = rtc_rx8025t_set_time(&rtc_time);
+    esp_err_t ret = bsp_rx8025t_set_time(&rtc_time);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "✓ RTC updated successfully");
         
         // Verify by reading back
-        rtc_time_t verify_time;
-        if (rtc_rx8025t_get_time(&verify_time) == ESP_OK) {
+        bsp_rtc_time_t verify_time;
+        if (bsp_rx8025t_get_time(&verify_time) == ESP_OK) {
             ESP_LOGI(TAG, "RTC readback: 20%02d-%02d-%02d %02d:%02d:%02d",
                      verify_time.year, verify_time.month, verify_time.day,
                      verify_time.hour, verify_time.minute, verify_time.second);
@@ -142,8 +142,8 @@ esp_err_t rtc_ntp_sync_test(void)
     
     // Step 1: Read current RTC time
     ESP_LOGI(TAG, "Step 1/4: Read current RTC time");
-    rtc_time_t current_time;
-    ret = rtc_rx8025t_get_time(&current_time);
+    bsp_rtc_time_t current_time;
+    ret = bsp_rx8025t_get_time(&current_time);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "Current RTC: 20%02d-%02d-%02d %02d:%02d:%02d\n",
                  current_time.year, current_time.month, current_time.day,
@@ -162,8 +162,8 @@ esp_err_t rtc_ntp_sync_test(void)
     vTaskDelay(pdMS_TO_TICKS(500));
     
     // Verify reset
-    rtc_time_t reset_time;
-    rtc_rx8025t_get_time(&reset_time);
+    bsp_rtc_time_t reset_time;
+    bsp_rx8025t_get_time(&reset_time);
     ESP_LOGI(TAG, "RTC after reset: 20%02d-%02d-%02d %02d:%02d:%02d\n",
              reset_time.year, reset_time.month, reset_time.day,
              reset_time.hour, reset_time.minute, reset_time.second);
