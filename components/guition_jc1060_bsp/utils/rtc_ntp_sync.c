@@ -7,14 +7,192 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+#include "esp_timer.h"        // For esp_timer_get_time()
+#include "lwip/inet.h"
+#include "lwip/netdb.h"       // For getaddrinfo()
+#include "lwip/sockets.h"
+#include "ping/ping_sock.h"
+#include "esp_netif.h"
+#endif
+
 static const char *TAG = "RTC_NTP";
+
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+static int64_t test_start_time_us = 0;
+static volatile bool ntp_callback_invoked = false;  // Flag to detect callback
+
+/**
+ * @brief Convert SNTP status to string
+ */
+static const char* sntp_status_to_str(sntp_sync_status_t status) {
+    switch(status) {
+        case SNTP_SYNC_STATUS_RESET:       return "RESET";
+        case SNTP_SYNC_STATUS_COMPLETED:   return "COMPLETED";
+        case SNTP_SYNC_STATUS_IN_PROGRESS: return "IN_PROGRESS";
+        default:                            return "UNKNOWN";
+    }
+}
+
+/**
+ * @brief Test DNS resolution for NTP server
+ */
+static esp_err_t test_dns_resolution(const char *hostname)
+{
+    ESP_LOGI(TAG, "[DNS] Resolving %s...", hostname);
+    int64_t start = esp_timer_get_time();
+    
+    struct addrinfo hints = {
+        .ai_family = AF_INET,
+        .ai_socktype = SOCK_DGRAM,
+    };
+    struct addrinfo *res;
+    
+    int err = getaddrinfo(hostname, NULL, &hints, &res);
+    int64_t elapsed_ms = (esp_timer_get_time() - start) / 1000;
+    
+    if (err != 0 || res == NULL) {
+        ESP_LOGE(TAG, "[DNS] ✗ Resolution failed: error %d (took %lld ms)", 
+                 err, elapsed_ms);
+        return ESP_FAIL;
+    }
+    
+    struct in_addr *addr = &((struct sockaddr_in *)res->ai_addr)->sin_addr;
+    ESP_LOGI(TAG, "[DNS] ✓ Resolved to %s (took %lld ms)", 
+             inet_ntoa(*addr), elapsed_ms);
+    
+    freeaddrinfo(res);
+    return ESP_OK;
+}
+
+/**
+ * @brief Ping callback for statistics
+ */
+static void ping_success_cb(esp_ping_handle_t hdl, void *args)
+{
+    uint8_t ttl;
+    uint16_t seqno;
+    uint32_t elapsed_time, recv_len;
+    ip_addr_t target_addr;
+    
+    esp_ping_get_profile(hdl, ESP_PING_PROF_SEQNO, &seqno, sizeof(seqno));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_TTL, &ttl, sizeof(ttl));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR, &target_addr, sizeof(target_addr));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_SIZE, &recv_len, sizeof(recv_len));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
+    
+    ESP_LOGI(TAG, "[PING] %d bytes from %s icmp_seq=%d ttl=%d time=%d ms",
+             recv_len, ipaddr_ntoa(&target_addr), seqno, ttl, elapsed_time);
+}
+
+static void ping_timeout_cb(esp_ping_handle_t hdl, void *args)
+{
+    uint16_t seqno;
+    ip_addr_t target_addr;
+    
+    esp_ping_get_profile(hdl, ESP_PING_PROF_SEQNO, &seqno, sizeof(seqno));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR, &target_addr, sizeof(target_addr));
+    
+    ESP_LOGW(TAG, "[PING] From %s icmp_seq=%d timeout",
+             ipaddr_ntoa(&target_addr), seqno);
+}
+
+static void ping_end_cb(esp_ping_handle_t hdl, void *args)
+{
+    uint32_t transmitted, received, total_time;
+    
+    esp_ping_get_profile(hdl, ESP_PING_PROF_REQUEST, &transmitted, sizeof(transmitted));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_REPLY, &received, sizeof(received));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_DURATION, &total_time, sizeof(total_time));
+    
+    uint32_t loss = transmitted - received;
+    ESP_LOGI(TAG, "[PING] %d packets transmitted, %d received, %d%% packet loss, time %dms",
+             transmitted, received, (loss * 100) / transmitted, total_time);
+}
+
+/**
+ * @brief Test ping to target IP
+ */
+static esp_err_t test_ping(const char *target_name, const char *target_ip)
+{
+    ESP_LOGI(TAG, "[PING] Testing connectivity to %s (%s)...", target_name, target_ip);
+    
+    ip_addr_t target_addr;
+    if (!ipaddr_aton(target_ip, &target_addr)) {
+        ESP_LOGE(TAG, "[PING] ✗ Invalid IP address: %s", target_ip);
+        return ESP_FAIL;
+    }
+    
+    esp_ping_config_t ping_config = ESP_PING_DEFAULT_CONFIG();
+    ping_config.target_addr = target_addr;
+    ping_config.count = 3;
+    ping_config.interval_ms = 1000;
+    ping_config.timeout_ms = 2000;
+    
+    esp_ping_callbacks_t cbs = {
+        .on_ping_success = ping_success_cb,
+        .on_ping_timeout = ping_timeout_cb,
+        .on_ping_end = ping_end_cb,
+        .cb_args = NULL
+    };
+    
+    esp_ping_handle_t ping;
+    esp_err_t ret = esp_ping_new_session(&ping_config, &cbs, &ping);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "[PING] ✗ Failed to create ping session: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ret = esp_ping_start(ping);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "[PING] ✗ Failed to start ping: %s", esp_err_to_name(ret));
+        esp_ping_delete_session(ping);
+        return ret;
+    }
+    
+    // Wait for ping to complete (3 pings * 1s interval + overhead)
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    
+    esp_ping_stop(ping);
+    esp_ping_delete_session(ping);
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Get gateway IP address
+ */
+static esp_err_t get_gateway_ip(char *ip_str, size_t len)
+{
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (!netif) {
+        ESP_LOGE(TAG, "Failed to get netif handle");
+        return ESP_FAIL;
+    }
+    
+    esp_netif_ip_info_t ip_info;
+    if (esp_netif_get_ip_info(netif, &ip_info) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get IP info");
+        return ESP_FAIL;
+    }
+    
+    snprintf(ip_str, len, IPSTR, IP2STR(&ip_info.gw));
+    return ESP_OK;
+}
+#endif // CONFIG_APP_NTP_DEBUG_ENABLE
 
 /**
  * @brief Callback called when NTP time sync completes
  */
 static void time_sync_notification_cb(struct timeval *tv)
 {
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+    ntp_callback_invoked = true;  // Set flag
+    int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
+    ESP_LOGI(TAG, "✓ NTP callback invoked! Time synchronized (T+%.1fs)", elapsed_ms / 1000.0);
+#else
     ESP_LOGI(TAG, "NTP time synchronized!");
+#endif
 }
 
 esp_err_t rtc_reset_to_default(void)
@@ -42,12 +220,50 @@ esp_err_t rtc_reset_to_default(void)
 
 esp_err_t sync_time_from_ntp(int timeout_sec)
 {
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+    test_start_time_us = esp_timer_get_time();
+    ntp_callback_invoked = false;  // Reset flag
+    
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "   Enhanced NTP Sync (ESP-Hosted)");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "NTP Server: pool.ntp.org");
+    ESP_LOGI(TAG, "Timezone: CET (UTC+1, DST auto)");
+    ESP_LOGI(TAG, "Timeout: %d seconds\n", timeout_sec);
+    
+    // Step 1: DNS Resolution Test
+    ESP_LOGI(TAG, "[1/4] Testing DNS resolution...");
+    if (test_dns_resolution("pool.ntp.org") != ESP_OK) {
+        ESP_LOGE(TAG, "DNS resolution failed - check network connectivity\n");
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "");
+    
+    // Step 2: Ping Gateway
+    ESP_LOGI(TAG, "[2/4] Testing connectivity to gateway...");
+    char gateway_ip[16];
+    if (get_gateway_ip(gateway_ip, sizeof(gateway_ip)) == ESP_OK) {
+        test_ping("Gateway", gateway_ip);
+    } else {
+        ESP_LOGW(TAG, "Could not determine gateway IP, skipping ping test");
+    }
+    ESP_LOGI(TAG, "");
+    
+    // Step 3: Ping NTP Server
+    ESP_LOGI(TAG, "[3/4] Testing connectivity to NTP server...");
+    // Use one of the NTP pool servers
+    test_ping("NTP Server", "185.125.190.58"); // time.cloudflare.com as fallback
+    ESP_LOGI(TAG, "");
+    
+    // Step 4: NTP Sync
+    ESP_LOGI(TAG, "[4/4] Starting NTP synchronization...");
+#else
     ESP_LOGI(TAG, "Starting NTP time synchronization...");
     ESP_LOGI(TAG, "NTP Server: pool.ntp.org");
     ESP_LOGI(TAG, "Timezone: CET (UTC+1, DST auto)");
+#endif
     
     // Set timezone to Central European Time (CET/CEST)
-    // CET = UTC+1, CEST = UTC+2 (DST from last Sun Mar 2am to last Sun Oct 3am)
     setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
     tzset();
     
@@ -62,23 +278,69 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
     
     int retry = 0;
     const int max_retry = timeout_sec * 10; // Check every 100ms
+    sntp_sync_status_t last_status = SNTP_SYNC_STATUS_RESET;
     
-    // FIX: Wait until status becomes COMPLETED (not just != RESET)
-    while (esp_sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && 
-           retry < max_retry) {
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+    int heartbeat_counter = 0;
+#endif
+    
+    // Wait loop - CRITICAL FIX: Trust callback as source of truth
+    while (retry < max_retry) {
         vTaskDelay(pdMS_TO_TICKS(100));
         retry++;
         
-        // Debug: log status transitions
         sntp_sync_status_t status = esp_sntp_get_sync_status();
+        
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+        // FIX: Exit immediately if callback was invoked (ignore status)
+        if (ntp_callback_invoked) {
+            int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
+            ESP_LOGI(TAG, "[NTP] Callback detected! Exiting wait loop (T+%.1fs, status=%s)", 
+                     elapsed_ms / 1000.0, sntp_status_to_str(status));
+            break;
+        }
+#endif
+        
+        // Fallback exit condition (if callback not invoked but status changed)
+        if (status == SNTP_SYNC_STATUS_COMPLETED) {
+            break;
+        }
+        
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+        // Detailed status logging
+        if (status != last_status) {
+            int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
+            ESP_LOGI(TAG, "[NTP] Status: %s (%d) at T+%.1fs", 
+                     sntp_status_to_str(status), status, elapsed_ms / 1000.0);
+            last_status = status;
+        }
+        
+        // Heartbeat every 5 seconds
+        heartbeat_counter++;
+        if (heartbeat_counter >= 50) { // 50 * 100ms = 5s
+            int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
+            ESP_LOGI(TAG, "[NTP] Waiting... %.1f/%d sec | Status: %s | Callback: %s", 
+                     elapsed_ms / 1000.0, timeout_sec,
+                     sntp_status_to_str(status),
+                     ntp_callback_invoked ? "YES" : "NO");
+            heartbeat_counter = 0;
+        }
+#else
+        // Standard logging every 10 iterations (1 second)
         if (status != SNTP_SYNC_STATUS_RESET && retry % 10 == 0) {
             ESP_LOGI(TAG, "NTP status: %d (retry %d/%d)", status, retry, max_retry);
         }
+#endif
     }
     
-    sntp_sync_status_t final_status = esp_sntp_get_sync_status();
+    // CRITICAL FIX: Trust callback as source of truth
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+    bool sync_successful = ntp_callback_invoked;
+#else
+    bool sync_successful = (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED);
+#endif
     
-    if (final_status == SNTP_SYNC_STATUS_COMPLETED) {
+    if (sync_successful) {
         // Get current time
         time_t now;
         struct tm timeinfo;
@@ -88,13 +350,47 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         char strftime_buf[64];
         strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
         
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+        int64_t total_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
+        sntp_sync_status_t final_status = esp_sntp_get_sync_status();
+        ESP_LOGI(TAG, "");
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "   ✓✓✓ NTP SYNC SUCCESSFUL ✓✓✓");
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "Current time: %s CET", strftime_buf);
+        ESP_LOGI(TAG, "Sync completed after %.1f seconds", total_ms / 1000.0);
+        ESP_LOGI(TAG, "Final status: %s (callback invoked: %s)", 
+                 sntp_status_to_str(final_status),
+                 ntp_callback_invoked ? "YES" : "NO");
+        ESP_LOGI(TAG, "========================================\n");
+#else
         ESP_LOGI(TAG, "✓ NTP sync successful!");
         ESP_LOGI(TAG, "Current time: %s CET", strftime_buf);
+#endif
         
         return ESP_OK;
     } else {
-        ESP_LOGE(TAG, "✗ NTP sync failed (status: %d) after %d seconds", 
-                 final_status, timeout_sec);
+#ifdef CONFIG_APP_NTP_DEBUG_ENABLE
+        sntp_sync_status_t final_status = esp_sntp_get_sync_status();
+        ESP_LOGE(TAG, "");
+        ESP_LOGE(TAG, "========================================");
+        ESP_LOGE(TAG, "   ✗✗✗ NTP SYNC FAILED ✗✗✗");
+        ESP_LOGE(TAG, "========================================");
+        ESP_LOGE(TAG, "Final status: %s (%d)", sntp_status_to_str(final_status), final_status);
+        ESP_LOGE(TAG, "Callback invoked: %s", ntp_callback_invoked ? "YES" : "NO");
+        ESP_LOGE(TAG, "Timeout: %d seconds", timeout_sec);
+        ESP_LOGE(TAG, "");
+        ESP_LOGE(TAG, "Possible causes:");
+        ESP_LOGE(TAG, "  - ESP-Hosted needs longer timeout (try 90-120s)");
+        ESP_LOGE(TAG, "  - Firewall blocking NTP (UDP port 123)");
+        ESP_LOGE(TAG, "  - Network congestion or packet loss");
+        ESP_LOGE(TAG, "  - SNTP state machine stuck (callback=%s, status=%s)",
+                 ntp_callback_invoked ? "invoked" : "not invoked",
+                 sntp_status_to_str(final_status));
+        ESP_LOGE(TAG, "========================================\n");
+#else
+        ESP_LOGE(TAG, "✗ NTP sync failed after %d seconds", timeout_sec);
+#endif
         return ESP_ERR_TIMEOUT;
     }
 }
@@ -177,9 +473,13 @@ esp_err_t rtc_ntp_sync_test(void)
              reset_time.year, reset_time.month, reset_time.day,
              reset_time.hour, reset_time.minute, reset_time.second);
     
-    // Step 3: Sync with NTP
+    // Step 3: Sync with NTP (90 seconds timeout for ESP-Hosted)
     ESP_LOGI(TAG, "Step 3/4: Synchronize with NTP server");
-    ret = sync_time_from_ntp(10);  // 10 second timeout
+#ifdef CONFIG_APP_NTP_SYNC_TIMEOUT_SEC
+    ret = sync_time_from_ntp(CONFIG_APP_NTP_SYNC_TIMEOUT_SEC);
+#else
+    ret = sync_time_from_ntp(90);  // 90 seconds for ESP-Hosted (was 60)
+#endif
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "NTP sync failed\n");
         return ret;

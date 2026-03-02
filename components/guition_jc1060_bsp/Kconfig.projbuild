@@ -432,6 +432,31 @@ menu "Guition JC1060P470C Board Configuration"
                 Enable automatic NTP time synchronization to RTC.
                 Requires WiFi connection to be active.
 
+        menu "NTP Sync Configuration"
+            visible if APP_ENABLE_RTC_NTP_SYNC
+
+            config APP_NTP_SYNC_TIMEOUT_SEC
+                int "NTP sync timeout (seconds)"
+                default 60
+                range 10 120
+                help
+                    Timeout for NTP synchronization.
+                    ESP-Hosted may take 30-60 seconds for first sync.
+                    Increase if you see frequent timeouts.
+
+            config APP_NTP_DEBUG_ENABLE
+                bool "Enable enhanced NTP debugging"
+                default y
+                help
+                    Enable detailed NTP sync debugging including:
+                    - DNS resolution checks
+                    - Ping tests to gateway and NTP server
+                    - Status transition logging
+                    - Timing measurements
+                    Useful for diagnosing ESP-Hosted network issues.
+
+        endmenu
+
         config APP_ENABLE_RTC_TEST
             bool "Enable RTC Test on Boot"
             default n
