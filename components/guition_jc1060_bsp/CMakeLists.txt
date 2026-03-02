@@ -5,13 +5,27 @@ idf_component_register(
         "drivers/gt911_bsp.c"
         "drivers/es8311_bsp.c"
         "drivers/rx8025t_bsp.c"
+        "bootstrap/bootstrap_manager.c"
+        "bootstrap/sdmmc_arbiter.c"
+        "bootstrap/sd_card_manager.c"
+        "bootstrap/esp_hosted_wifi.c"
+        "utils/rtc_ntp_sync.c"
+        "utils/rtc_test.c"
+        "utils/sd_card_functions.c"
     INCLUDE_DIRS 
         "include"
         "drivers"
+        "bootstrap"
+        "utils"
     REQUIRES
         driver
         esp_lcd
         esp_lcd_touch_gt911
         esp_lcd_jd9165
         freertos
+        nvs_flash
+        esp_netif
+        sdmmc
+        fatfs
+        esp_timer
 )
