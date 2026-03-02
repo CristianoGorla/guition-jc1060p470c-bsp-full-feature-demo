@@ -22,6 +22,7 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch.h"
 #include "build_info.h"
+#include "bsp_board.h"
 
 // Network includes
 #include "esp_netif.h"
@@ -171,6 +172,13 @@ void app_main(void)
     ESP_LOGI(TAG, "   Build: %s", BUILD_GIT_COMMIT);
     ESP_LOGI(TAG, "   Date: %s", BUILD_TIMESTAMP);
     ESP_LOGI(TAG, "========================================\n");
+
+    // Initialize BSP
+    ret = bsp_board_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "BSP initialization failed: %s", esp_err_to_name(ret));
+        return;
+    }
 
     // ========== 1. NVS ==========
 #if ENABLE_NVS
