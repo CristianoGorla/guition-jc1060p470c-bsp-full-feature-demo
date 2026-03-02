@@ -1,8 +1,8 @@
 # Guition JC1060P470C - Base Configuration (All Chips)
 
-# === BSP Configuration ===
+# === BSP Hardware Peripherals ===
 CONFIG_BSP_ENABLE_DISPLAY=y
-CONFIG_BSP_ENABLE_I2C_BUS=y
+CONFIG_BSP_ENABLE_I2C=y
 CONFIG_BSP_ENABLE_TOUCH=y
 CONFIG_BSP_ENABLE_AUDIO=y
 CONFIG_BSP_ENABLE_RTC=y
