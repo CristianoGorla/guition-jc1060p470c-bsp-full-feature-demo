@@ -37,16 +37,16 @@ static lv_display_t *bsp_lvgl_init_display(const bsp_lvgl_config_t *config)
     ESP_LOGI(TAG, "Initializing LVGL display (1024x600, %d buffer lines)", config->buffer.buffer_lines);
 
     /* Initialize BSP display (JD9165 MIPI-DSI) */
-    bsp_display_config_t bsp_disp_cfg = {
-        .max_transfer_bytes = LVGL_BUFFER_SIZE * sizeof(uint16_t),
-    };
-    
-    esp_lcd_panel_handle_t panel_handle = NULL;
-    esp_lcd_panel_io_handle_t io_handle = NULL;
-    
-    esp_err_t ret = bsp_display_new(&bsp_disp_cfg, &panel_handle, &io_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize display: %s", esp_err_to_name(ret));
+    esp_lcd_panel_handle_t panel_handle = bsp_display_init();
+    if (panel_handle == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize display");
+        return NULL;
+    }
+
+    /* Get DSI I/O handle for LVGL port */
+    esp_lcd_panel_io_handle_t io_handle = bsp_jd9165_get_io();
+    if (io_handle == NULL) {
+        ESP_LOGE(TAG, "Failed to get DSI I/O handle");
         return NULL;
     }
 
@@ -156,10 +156,9 @@ static lv_indev_t *bsp_lvgl_init_touch(lv_display_t *display)
     ESP_LOGI(TAG, "Initializing LVGL touch input (GT911)");
 
     /* Initialize BSP touch (GT911) */
-    esp_lcd_touch_handle_t touch_handle = NULL;
-    esp_err_t ret = bsp_touch_new(NULL, &touch_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize touch: %s", esp_err_to_name(ret));
+    esp_lcd_touch_handle_t touch_handle = bsp_touch_init();
+    if (touch_handle == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize touch");
         return NULL;
     }
 
@@ -341,7 +340,7 @@ void bsp_lvgl_print_stats(void)
     ESP_LOGI(TAG, "  Double buffer: %s", CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "Yes" : "No");
     ESP_LOGI(TAG, "  Total memory: %zu KB", bsp_lvgl_get_buffer_size() / 1024);
     ESP_LOGI(TAG, "  Buffer location: %s", 
-             CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER ? "SPIRAM" : 
+             CONFIG_BSP_LVGL_USE_SPIRAM ? "SPIRAM" : 
              CONFIG_BSP_LVGL_USE_DMA_BUFFER ? "DMA" : "Internal");
     
 #ifdef CONFIG_BSP_LVGL_ENABLE_SW_ROTATE
