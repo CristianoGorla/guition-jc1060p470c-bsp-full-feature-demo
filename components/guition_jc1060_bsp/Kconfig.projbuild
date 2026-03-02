@@ -1,3 +1,4 @@
+
 menu "Guition JC1060P470C Board Configuration"
 
     menu "Hardware Peripherals"
