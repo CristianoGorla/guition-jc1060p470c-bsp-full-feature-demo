@@ -2,11 +2,12 @@ menu "Guition JC1060P470C Board Configuration"
 
     menu "Hardware Peripherals"
 
-        # ============================================================
-        # Display (MIPI-DSI) - Standalone
-        # ============================================================
+        comment "────────────────────────────────────────────────────────────────"
+        comment "DISPLAY CONTROLLER (MIPI-DSI)"
+        comment "────────────────────────────────────────────────────────────────"
+
         config BSP_ENABLE_DISPLAY
-            bool "Enable JD9165 MIPI-DSI Display"
+            bool "▶ Enable JD9165 MIPI-DSI Display (1024x600)"
             default y
             select SPIRAM_SPEED_200M
             select CACHE_L2_CACHE_256KB
@@ -21,73 +22,66 @@ menu "Guition JC1060P470C Board Configuration"
             config BSP_DISPLAY_WIDTH
                 int "Display width (pixels)"
                 default 1024
-                help
-                    Display horizontal resolution
 
             config BSP_DISPLAY_HEIGHT
                 int "Display height (pixels)"
                 default 600
-                help
-                    Display vertical resolution
 
             config BSP_PIN_LCD_BL
-                int "LCD Backlight GPIO"
+                int "Backlight PWM GPIO"
                 default 23
-                help
-                    GPIO for backlight PWM control
 
             config BSP_LCD_BL_DEFAULT_DUTY
-                int "Default backlight duty cycle (%)"
+                int "Default backlight brightness (%)"
                 default 100
                 range 0 100
-                help
-                    Default backlight brightness (0-100%)
 
         endmenu
 
-        # ============================================================
-        # I2C Bus - Required by Touch, Audio, RTC
-        # ============================================================
+        comment "────────────────────────────────────────────────────────────────"
+        comment "I2C BUS (Required for Touch, Audio, RTC)"
+        comment "────────────────────────────────────────────────────────────────"
+
         config BSP_ENABLE_I2C
-            bool "Enable I2C Bus"
+            bool "▶ Enable I2C Bus (400kHz)"
             default y
             help
                 Enable the I2C bus for peripherals.
-                Required for: Touch (GT911), Audio (ES8311), RTC (RX8025T)
+                
+                REQUIRED FOR:
+                  • GT911 Touch Controller
+                  • ES8311 Audio Codec
+                  • RX8025T Real-Time Clock
 
         menu "I2C Bus Configuration"
             visible if BSP_ENABLE_I2C
 
             config BSP_I2C_SDA_GPIO
-                int "I2C SDA GPIO"
+                int "I2C SDA GPIO (data line)"
                 default 7
-                help
-                    GPIO for I2C SDA (data line)
 
             config BSP_I2C_SCL_GPIO
-                int "I2C SCL GPIO"
+                int "I2C SCL GPIO (clock line)"
                 default 8
-                help
-                    GPIO for I2C SCL (clock line)
 
             config BSP_I2C_FREQ_HZ
                 int "I2C Frequency (Hz)"
                 default 400000
                 help
-                    I2C bus frequency in Hz
-                    - 100000 = Standard mode (100 kHz)
-                    - 400000 = Fast mode (400 kHz, recommended)
+                    100000 = Standard mode (100 kHz)
+                    400000 = Fast mode (400 kHz, recommended)
 
-            # ========================================================
-            # Touch Controller - Depends on I2C
-            # ========================================================
+            comment "──────────────────────────────────────────────────────────"
+            comment "I2C Peripherals"
+            comment "──────────────────────────────────────────────────────────"
+
             config BSP_ENABLE_TOUCH
-                bool "Enable GT911 Touch Controller"
+                bool "  ├─ Enable GT911 Touch Controller (5-point capacitive)"
                 default y
                 depends on BSP_ENABLE_I2C
                 help
                     Enable the GT911 capacitive touch controller.
-                    Requires I2C bus to be enabled.
+                    Supports up to 5 simultaneous touch points.
 
             menu "Touch Controller Configuration"
                 visible if BSP_ENABLE_TOUCH
@@ -96,39 +90,30 @@ menu "Guition JC1060P470C Board Configuration"
                     hex "GT911 I2C Address"
                     default 0x14
                     help
-                        I2C address for GT911 (0x14 or 0x5D, set by reset sequence)
+                        I2C address: 0x14 or 0x5D (set by reset sequence)
 
                 config BSP_PIN_TOUCH_RST
                     int "Touch Reset GPIO"
                     default 21
-                    help
-                        GPIO for GT911 reset pin (active low)
 
                 config BSP_PIN_TOUCH_INT
                     int "Touch Interrupt GPIO"
                     default 22
-                    help
-                        GPIO for GT911 interrupt pin (active low)
 
                 config BSP_TOUCH_MAX_POINTS
                     int "Maximum touch points"
                     default 5
                     range 1 10
-                    help
-                        Maximum simultaneous touch points supported
 
             endmenu
 
-            # ========================================================
-            # Audio Codec - Depends on I2C
-            # ========================================================
             config BSP_ENABLE_AUDIO
-                bool "Enable ES8311 Audio Codec + NS4150 Amplifier"
+                bool "  ├─ Enable ES8311 Audio Codec + NS4150 Amplifier"
                 default y
                 depends on BSP_ENABLE_I2C
                 help
                     Enable the ES8311 audio codec and NS4150 power amplifier
-                    for audio input/output. Requires I2C bus to be enabled.
+                    for audio input/output (I2S interface).
 
             menu "Audio Configuration"
                 visible if BSP_ENABLE_AUDIO
@@ -136,57 +121,40 @@ menu "Guition JC1060P470C Board Configuration"
                 config BSP_AUDIO_CODEC_I2C_ADDR
                     hex "ES8311 Codec I2C Address"
                     default 0x18
-                    help
-                        I2C address for ES8311 audio codec
 
                 config BSP_PIN_I2S_MCLK
                     int "I2S MCLK GPIO"
                     default 9
-                    help
-                        GPIO for I2S master clock
 
                 config BSP_PIN_I2S_BCLK
                     int "I2S BCLK GPIO"
                     default 13
-                    help
-                        GPIO for I2S bit clock
 
                 config BSP_PIN_I2S_WS
                     int "I2S WS (LRCK) GPIO"
                     default 12
-                    help
-                        GPIO for I2S word select / left-right clock
 
                 config BSP_PIN_I2S_DOUT
                     int "I2S DOUT GPIO"
                     default 10
-                    help
-                        GPIO for I2S data out (to codec)
 
                 config BSP_PIN_PA_ENABLE
                     int "Power Amplifier Enable GPIO"
                     default 11
-                    help
-                        GPIO to enable NS4150 power amplifier (active high)
 
                 config BSP_AUDIO_SAMPLE_RATE
                     int "Default sample rate (Hz)"
                     default 48000
-                    help
-                        Default audio sample rate
 
             endmenu
 
-            # ========================================================
-            # RTC - Depends on I2C
-            # ========================================================
             config BSP_ENABLE_RTC
-                bool "Enable RX8025T Real-Time Clock"
+                bool "  └─ Enable RX8025T Real-Time Clock"
                 default y
                 depends on BSP_ENABLE_I2C
                 help
-                    Enable the RX8025T real-time clock module.
-                    Requires I2C bus to be enabled.
+                    Enable the RX8025T real-time clock module
+                    with battery backup for accurate timekeeping.
 
             menu "RTC Configuration"
                 visible if BSP_ENABLE_RTC
@@ -194,24 +162,21 @@ menu "Guition JC1060P470C Board Configuration"
                 config BSP_RTC_I2C_ADDR
                     hex "RX8025T I2C Address"
                     default 0x32
-                    help
-                        I2C address for RX8025T RTC
 
                 config BSP_PIN_RTC_INT
                     int "RTC Interrupt GPIO"
                     default 0
-                    help
-                        GPIO for RTC interrupt/alarm output
 
             endmenu
 
         endmenu # I2C Bus Configuration
 
-        # ============================================================
-        # SD Card (SDIO Slot 0) - Standalone
-        # ============================================================
+        comment "────────────────────────────────────────────────────────────────"
+        comment "SD CARD (SDIO Slot 0)"
+        comment "────────────────────────────────────────────────────────────────"
+
         config BSP_ENABLE_SDCARD
-            bool "Enable SD Card (SDIO Slot 0)"
+            bool "▶ Enable SD Card (4-bit SDIO, GPIO36 power control)"
             default y
             help
                 Enable SD Card support on SDIO Slot 0.
@@ -221,85 +186,70 @@ menu "Guition JC1060P470C Board Configuration"
             visible if BSP_ENABLE_SDCARD
 
             config BSP_SDMMC_SLOT
-                int "SD/MMC slot to use"
+                int "SD/MMC slot number"
                 default 0
                 range 0 0
                 help
-                    Select the slot to use for SD Card.
-                    For ESP32-P4 Guition board, only Slot 0 is available.
-                    Slot 1 is reserved for ESP-Hosted WiFi.
+                    Only Slot 0 available (Slot 1 = WiFi)
 
             choice BSP_SDMMC_BUS_WIDTH
-                prompt "SD/MMC bus width"
+                prompt "SD bus width"
                 default BSP_SDMMC_BUS_WIDTH_4
                 help
-                    Select the bus width of SD interface.
-                    4-bit mode provides better performance.
+                    4-bit mode provides better performance
 
                 config BSP_SDMMC_BUS_WIDTH_4
-                    bool "4 lines (D0 - D3)"
+                    bool "4-bit mode (D0-D3)"
 
                 config BSP_SDMMC_BUS_WIDTH_1
-                    bool "1 line (D0)"
+                    bool "1-bit mode (D0 only)"
             endchoice
 
             config BSP_PIN_CMD
                 int "SD CMD GPIO"
                 default 44
-                help
-                    CMD GPIO for SD Card (fixed on ESP32-P4)
 
             config BSP_PIN_CLK
                 int "SD CLK GPIO"
                 default 43
-                help
-                    CLK GPIO for SD Card (fixed on ESP32-P4)
 
             config BSP_PIN_D0
                 int "SD D0 GPIO"
                 default 39
-                help
-                    D0 GPIO for SD Card (fixed on ESP32-P4)
 
             config BSP_PIN_D1
                 int "SD D1 GPIO"
                 depends on BSP_SDMMC_BUS_WIDTH_4
                 default 40
-                help
-                    D1 GPIO for SD Card (fixed on ESP32-P4)
 
             config BSP_PIN_D2
                 int "SD D2 GPIO"
                 depends on BSP_SDMMC_BUS_WIDTH_4
                 default 41
-                help
-                    D2 GPIO for SD Card (fixed on ESP32-P4)
 
             config BSP_PIN_D3
                 int "SD D3 GPIO"
                 depends on BSP_SDMMC_BUS_WIDTH_4
                 default 42
-                help
-                    D3 GPIO for SD Card (fixed on ESP32-P4)
 
             config BSP_PIN_SD_POWER_EN
                 int "SD Power Enable GPIO"
                 default 36
                 help
-                    GPIO to control SD Card power (external MOSFET).
-                    Active HIGH to power on the SD card.
+                    Active HIGH to power on SD card (external MOSFET)
 
         endmenu # SD Card Configuration
 
-        # ============================================================
-        # WiFi ESP-Hosted (SDIO Slot 1) - Standalone
-        # ============================================================
+        comment "────────────────────────────────────────────────────────────────"
+        comment "WIFI CO-PROCESSOR (ESP32-C6 via ESP-Hosted on SDIO Slot 1)"
+        comment "────────────────────────────────────────────────────────────────"
+
         config BSP_ENABLE_WIFI
-            bool "Enable WiFi (ESP-Hosted on SDIO Slot 1)"
+            bool "▶ Enable WiFi (ESP-Hosted SDIO @ 40MHz)"
             default y
             help
                 Enable WiFi using ESP-Hosted on SDIO Slot 1.
-                The ESP32-C6 WiFi co-processor is connected via SDIO.
+                The ESP32-C6 WiFi co-processor communicates via SDIO.
 
         menu "WiFi ESP-Hosted Configuration"
             visible if BSP_ENABLE_WIFI
@@ -308,86 +258,60 @@ menu "Guition JC1060P470C Board Configuration"
                 int "WiFi SDIO Slot"
                 default 1
                 range 1 1
-                help
-                    SDIO Slot for ESP-Hosted WiFi (Slot 1 on Guition board)
 
-            menu "ESP-Hosted GPIO Configuration"
+            menu "ESP-Hosted GPIO Pins"
 
                 config BSP_PIN_WIFI_RESET
-                    int "ESP32-C6 Reset GPIO"
+                    int "ESP32-C6 Reset GPIO (active low)"
                     default 54
-                    help
-                        GPIO to reset ESP32-C6 WiFi co-processor (active low)
 
                 config BSP_PIN_WIFI_DATA_READY
                     int "Data Ready GPIO"
                     default 53
-                    help
-                        GPIO for ESP-Hosted data ready signal from C6
 
                 config BSP_PIN_WIFI_HANDSHAKE
                     int "Handshake GPIO"
                     default 52
-                    help
-                        GPIO for ESP-Hosted handshake with C6
 
                 config BSP_PIN_WIFI_SDIO_CLK
-                    int "SDIO CLK GPIO (Slot 1)"
+                    int "SDIO CLK GPIO"
                     default 18
-                    help
-                        SDIO clock for WiFi (Slot 1)
 
                 config BSP_PIN_WIFI_SDIO_CMD
-                    int "SDIO CMD GPIO (Slot 1)"
+                    int "SDIO CMD GPIO"
                     default 19
-                    help
-                        SDIO command for WiFi (Slot 1)
 
                 config BSP_PIN_WIFI_SDIO_D0
-                    int "SDIO D0 GPIO (Slot 1)"
+                    int "SDIO D0 GPIO"
                     default 14
-                    help
-                        SDIO data line 0 for WiFi (Slot 1)
 
                 config BSP_PIN_WIFI_SDIO_D1
-                    int "SDIO D1 GPIO (Slot 1)"
+                    int "SDIO D1 GPIO"
                     default 15
-                    help
-                        SDIO data line 1 for WiFi (Slot 1)
 
                 config BSP_PIN_WIFI_SDIO_D2
-                    int "SDIO D2 GPIO (Slot 1)"
+                    int "SDIO D2 GPIO"
                     default 16
-                    help
-                        SDIO data line 2 for WiFi (Slot 1)
 
                 config BSP_PIN_WIFI_SDIO_D3
-                    int "SDIO D3 GPIO (Slot 1)"
+                    int "SDIO D3 GPIO"
                     default 17
-                    help
-                        SDIO data line 3 for WiFi (Slot 1)
 
             endmenu
 
-            menu "ESP-Hosted Timing Configuration"
+            menu "ESP-Hosted Timing"
 
                 config BSP_WIFI_RESET_HOLD_MS
                     int "Reset hold time (ms)"
                     default 100
-                    help
-                        Duration to hold C6 reset low during initialization
 
                 config BSP_WIFI_BOOT_DELAY_MS
                     int "Boot delay after reset (ms)"
                     default 200
-                    help
-                        Delay after releasing reset to allow C6 to boot
 
                 config BSP_WIFI_SDIO_FREQ_KHZ
                     int "SDIO frequency (kHz)"
                     default 40000
-                    help
-                        SDIO bus frequency for ESP-Hosted communication
 
             endmenu
 
@@ -395,52 +319,55 @@ menu "Guition JC1060P470C Board Configuration"
 
     endmenu # Hardware Peripherals
 
-    # ================================================================
-    # LVGL Graphics Library - Top-level menu
-    # ================================================================
-    menu "LVGL Graphics Library"
+    comment "════════════════════════════════════════════════════════════════════"
+
+    menu "LVGL Graphics Library (v9.2.2)"
 
         config BSP_ENABLE_LVGL
-            bool "Enable LVGL Graphics Library"
+            bool "▶ Enable LVGL Graphics Library"
             default y
             depends on BSP_ENABLE_DISPLAY
             help
                 Enable LVGL (Light and Versatile Graphics Library) v9.2.2
                 for creating rich graphical user interfaces.
-                Requires display to be enabled.
+                
+                REQUIRES: Display to be enabled
+                OPTIONAL: Touch integration (if I2C + Touch enabled)
 
         menu "Display Buffer Configuration"
             visible if BSP_ENABLE_LVGL
 
             config BSP_LVGL_BUFFER_LINES
-                int "Display buffer size (lines)"
+                int "Buffer size (lines)"
                 default 100
                 range 10 300
                 help
                     Number of display lines for LVGL draw buffer.
-                    Higher values = smoother rendering but more memory usage.
-                    Recommended: 100 lines = ~246KB per buffer at 1024x600 RGB565.
+                    100 lines = ~246KB per buffer (1024x600 RGB565)
+                    
+                    Higher = smoother, more memory
+                    Lower = less memory, possible tearing
 
             config BSP_LVGL_DOUBLE_BUFFER
                 bool "Enable double buffering"
                 default y
                 help
-                    Use two buffers for smoother rendering without tearing.
+                    Use two buffers for tear-free rendering.
                     Requires 2x memory but eliminates visual artifacts.
 
             config BSP_LVGL_USE_DMA_BUFFER
                 bool "Use DMA-capable buffers"
                 default y
                 help
-                    Allocate buffers in DMA-capable memory for faster transfers.
-                    Recommended for best display performance.
+                    Allocate buffers in DMA-capable memory.
+                    Recommended for best performance.
 
             config BSP_LVGL_USE_SPIRAM_BUFFER
                 bool "Use SPIRAM for buffers"
                 default n
                 help
-                    Allocate LVGL buffers in external SPIRAM instead of internal RAM.
-                    Saves internal memory but may reduce performance.
+                    Allocate buffers in external SPIRAM.
+                    Saves internal RAM but may reduce performance.
 
         endmenu
 
@@ -451,24 +378,22 @@ menu "Guition JC1060P470C Board Configuration"
                 bool "Enable software rotation"
                 default y
                 help
-                    Enable runtime display rotation support.
+                    Enable runtime display rotation (0°/90°/180°/270°).
                     Allows changing orientation without rebuilding.
 
             choice BSP_LVGL_ROTATION
                 prompt "Initial display rotation"
                 default BSP_LVGL_ROTATION_0
                 depends on BSP_LVGL_ENABLE_SW_ROTATE
-                help
-                    Set the initial display orientation on startup.
 
                 config BSP_LVGL_ROTATION_0
-                    bool "0 degrees (Landscape)"
+                    bool "0° (Landscape)"
                 config BSP_LVGL_ROTATION_90
-                    bool "90 degrees (Portrait)"
+                    bool "90° (Portrait)"
                 config BSP_LVGL_ROTATION_180
-                    bool "180 degrees (Landscape inverted)"
+                    bool "180° (Landscape inverted)"
                 config BSP_LVGL_ROTATION_270
-                    bool "270 degrees (Portrait inverted)"
+                    bool "270° (Portrait inverted)"
             endchoice
 
             config BSP_LVGL_ROTATION_DEGREE
@@ -487,60 +412,45 @@ menu "Guition JC1060P470C Board Configuration"
                 bool "Enable touch input for LVGL"
                 default y
                 help
-                    Integrate GT911 touch controller with LVGL for interactive UIs.
-                    Requires both I2C bus and touch controller to be enabled.
+                    Integrate GT911 touch controller with LVGL.
+                    Enables interactive user interfaces.
 
         endmenu
 
-        menu "LVGL Demo Applications"
+        menu "Demo Applications"
             visible if BSP_ENABLE_LVGL
 
             config BSP_LVGL_ENABLE_DEMO
-                bool "Enable LVGL demo at startup"
+                bool "Enable demo at startup"
                 default y
                 help
-                    Automatically run an LVGL demo application on boot.
-                    Useful for testing display and touch functionality.
+                    Automatically run an LVGL demo on boot.
+                    Useful for testing display and touch.
 
             choice BSP_LVGL_DEMO_TYPE
                 prompt "Demo type"
                 default BSP_LVGL_DEMO_SIMPLE
                 depends on BSP_LVGL_ENABLE_DEMO
-                help
-                    Select which demo application to run on startup.
 
                 config BSP_LVGL_DEMO_SIMPLE
-                    bool "Simple test screen"
-                    help
-                        Basic test screen showing display and touch functionality.
-                        Minimal memory usage, good for initial testing.
+                    bool "Simple test screen (minimal memory)"
 
                 config BSP_LVGL_DEMO_WIDGETS
-                    bool "LVGL Widgets demo"
-                    help
-                        Comprehensive demo showing all LVGL widgets and styles.
-                        Requires more memory but showcases full LVGL capabilities.
+                    bool "LVGL Widgets showcase (full demo)"
 
                 config BSP_LVGL_DEMO_BENCHMARK
-                    bool "LVGL Benchmark"
-                    help
-                        Performance benchmark measuring rendering speed and FPS.
-                        Useful for optimization and hardware validation.
+                    bool "Performance benchmark (FPS test)"
 
                 config BSP_LVGL_DEMO_STRESS
-                    bool "LVGL Stress test"
-                    help
-                        Stress test with many animations and objects.
-                        Tests system stability under heavy graphics load.
+                    bool "Stress test (stability test)"
             endchoice
 
         endmenu
 
     endmenu # LVGL Graphics Library
 
-    # ================================================================
-    # Power Management
-    # ================================================================
+    comment "════════════════════════════════════════════════════════════════════"
+
     menu "Power Management"
 
         config BSP_ENABLE_HARD_RESET
@@ -548,53 +458,49 @@ menu "Guition JC1060P470C Board Configuration"
             default y
             help
                 Perform hard reset (power cycle SD card) when system
-                crashes, watchdog triggers, or brownout detected.
-                This ensures clean hardware state recovery.
+                crashes or watchdog triggers. Ensures clean recovery.
 
         config BSP_HARD_RESET_DISCHARGE_MS
             int "Hard reset discharge time (ms)"
             depends on BSP_ENABLE_HARD_RESET
             default 500
             help
-                Duration to keep SD card unpowered during hard reset
-                to ensure capacitor discharge
+                Duration to keep SD card unpowered during reset.
+                Ensures capacitor discharge.
 
         config BSP_POWER_STABILIZATION_MS
             int "Power stabilization delay (ms)"
             default 100
             help
-                Delay after power sequencing to allow rails to stabilize
+                Delay after power sequencing for rail stabilization.
 
-    endmenu # Power Management
+    endmenu
 
-    # ================================================================
-    # Application Features
-    # ================================================================
+    comment "════════════════════════════════════════════════════════════════════"
+
     menu "Application Features"
 
         config APP_ENABLE_NVS
             bool "Enable NVS (Non-Volatile Storage)"
             default y
             help
-                Enable NVS flash storage for WiFi credentials,
-                configuration persistence, and application data.
+                Enable NVS for WiFi credentials, settings, and app data.
 
         config APP_ENABLE_WIFI_CONNECT
-            bool "Enable WiFi Station Connection"
+            bool "Enable WiFi auto-connect on boot"
             default y
             depends on BSP_ENABLE_WIFI
             help
-                Enable automatic WiFi station connection on boot.
+                Automatically connect to WiFi station on boot.
                 Requires wifi_config.h with SSID/password.
-                Disable for WiFi scan-only mode.
 
         config APP_ENABLE_RTC_NTP_SYNC
-            bool "Enable RTC NTP Time Sync"
+            bool "Enable RTC NTP time sync"
             default y
             depends on BSP_ENABLE_I2C && BSP_ENABLE_RTC && APP_ENABLE_WIFI_CONNECT
             help
-                Enable automatic NTP time synchronization to RTC.
-                Requires WiFi connection and RTC to be active.
+                Automatically sync RTC with NTP time servers.
+                Requires WiFi connection and RTC.
 
         menu "NTP Sync Configuration"
             visible if APP_ENABLE_RTC_NTP_SYNC
@@ -604,36 +510,29 @@ menu "Guition JC1060P470C Board Configuration"
                 default 60
                 range 10 120
                 help
-                    Timeout for NTP synchronization.
                     ESP-Hosted may take 30-60 seconds for first sync.
 
             config APP_NTP_DEBUG_ENABLE
-                bool "Enable enhanced NTP debugging"
+                bool "Enable NTP debug logging"
                 default y
                 help
-                    Enable detailed NTP sync debugging including:
-                    - DNS resolution checks
-                    - Ping tests to gateway and NTP server
-                    - Status transition logging
-                    - Timing measurements
+                    Detailed logs: DNS, ping, status, timing.
 
         endmenu
 
         config APP_ENABLE_RTC_TEST
-            bool "Enable RTC Test on Boot"
+            bool "Run RTC test on boot"
             default n
             depends on BSP_ENABLE_I2C && BSP_ENABLE_RTC
             help
-                Run RTC validation tests during startup.
-                Useful for development and debugging.
+                Validate RTC functionality during startup.
 
         config APP_ENABLE_SD_TEST
-            bool "Enable SD Card Test on Boot"
+            bool "Run SD Card test on boot"
             default n
             depends on BSP_ENABLE_SDCARD
             help
-                Run SD card read/write tests during startup.
-                Useful for development and debugging.
+                Test SD card read/write during startup.
 
     endmenu # Application Features
 
