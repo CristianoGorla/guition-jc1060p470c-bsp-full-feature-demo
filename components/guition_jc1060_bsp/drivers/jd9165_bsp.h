@@ -17,6 +17,7 @@ extern "C" {
 #endif
 
 #include "esp_lcd_panel_ops.h"
+#include "esp_lcd_panel_io.h"
 #include "esp_err.h"
 
 /**
@@ -31,6 +32,12 @@ extern "C" {
  * @return LCD panel handle on success, NULL on failure
  */
 esp_lcd_panel_handle_t bsp_display_init(void);
+
+/**
+ * @brief Get DSI I/O handle for LVGL port
+ * @return esp_lcd_panel_io_handle_t
+ */
+esp_lcd_panel_io_handle_t bsp_jd9165_get_io(void);
 
 /**
  * @brief Set display backlight brightness
