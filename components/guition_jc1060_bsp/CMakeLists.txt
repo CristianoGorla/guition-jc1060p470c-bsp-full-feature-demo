@@ -22,6 +22,8 @@ idf_component_register(
         esp_lcd
         esp_lcd_touch_gt911
         esp_lcd_jd9165
+        esp_lvgl_port
+        lvgl
         freertos
         nvs_flash
         esp_netif
