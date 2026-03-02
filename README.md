@@ -3,8 +3,8 @@
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v5.5.3-blue)](https://github.com/espressif/esp-idf)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-ESP32--P4-orange)](https://www.espressif.com/en/products/socs/esp32-p4)
-[![Latest Release](https://img.shields.io/badge/release-v1.0.0--beta-brightgreen)](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/releases/tag/v1.0.0-beta)
-[![Development](https://img.shields.io/badge/dev-v1.1.0--dev-yellow)](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo)
+[![Latest Release](https://img.shields.io/badge/release-v1.3.0-brightgreen)](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/releases/tag/v1.3.0)
+[![Development](https://img.shields.io/badge/dev-v1.3.0-yellow)](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/tree/develop/v1.3.0)
 
 **Complete Board Support Package demonstration for the Guition JC1060P470C_I_W_Y development board featuring ESP32-P4.**
 
@@ -14,7 +14,25 @@ This project provides a comprehensive demonstration of all hardware capabilities
 
 ## 📋 Versions
 
-### Latest Stable Release
+### Latest Release
+
+**v1.3.0** (2026-03-02)
+
+- ✅ **Complete BSP Refactor**: All drivers, bootstrap, and utils moved to `components/guition_jc1060_bsp/`
+- ✅ **Kconfig Configuration**: Replaced `feature_flags.h` with `idf.py menuconfig`
+- ✅ **Driver Naming Convention**: All drivers use `_bsp` suffix (rx8025t_bsp.h, es8311_bsp.h, etc.)
+- ✅ **Clean Application Code**: `main/` contains only application logic (main.c)
+- ✅ **All Compilation Issues Fixed**: Project builds cleanly
+
+**Installation:**
+```bash
+git clone --branch develop/v1.3.0 https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
+cd guition-jc1060p470c-bsp-full-feature-demo
+idf.py set-target esp32p4
+idf.py build flash monitor
+```
+
+### Previous Release
 
 **[v1.0.0-beta](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/releases/tag/v1.0.0-beta)** (2026-03-01)
 
@@ -23,30 +41,6 @@ This project provides a comprehensive demonstration of all hardware capabilities
 - ✅ WiFi connection and RTC NTP synchronization
 - ✅ Comprehensive documentation and troubleshooting guide
 - ⚠️ Beta status: Production testing ongoing
-
-**Installation:**
-```bash
-git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
-cd guition-jc1060p470c-bsp-full-feature-demo
-git checkout v1.0.0-beta
-idf.py build flash monitor
-```
-
-### Development Version
-
-**v1.1.0-dev** (main branch)
-
-- 🚧 Active development with latest features
-- 🚧 Phase 2 roadmap: Testing suite, external peripherals, refactoring
-- 🚧 May contain experimental features
-
-**Installation:**
-```bash
-git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
-cd guition-jc1060p470c-bsp-full-feature-demo
-# Already on main branch with v1.1.0-dev
-idf.py build flash monitor
-```
 
 **See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete version history.**
 
@@ -66,6 +60,7 @@ idf.py build flash monitor
   - [Prerequisites](#prerequisites)
   - [Quick Start](#quick-start)
   - [Configuration](#configuration)
+  - [Project Structure](#project-structure-v130)
 - [Hardware Pinout](#-hardware-pinout)
 - [Advanced Features](#-advanced-features)
   - [WiFi Connection](#wifi-connection-test)
@@ -97,7 +92,7 @@ idf.py build flash monitor
 
 - **⚡ Three-Phase Bootstrap Manager**: Deterministic initialization preventing SDMMC bus conflicts
 - **🔄 Automatic Power Sequencing**: Hardware reset cycle on warm boot for clean initialization
-- **🏛️ Feature Flags System**: Easy enable/disable of peripherals via compile-time flags
+- **🏛️ Kconfig Configuration**: Easy enable/disable of peripherals via `idf.py menuconfig`
 - **🐛 Debug Tracing**: Per-peripheral debug output control for detailed diagnostics
 - **📊 System Monitoring**: Real-time boot timing analysis and hardware status tracking
 - **🛡️ Error Handling**: Robust error recovery for all peripherals with detailed logging
@@ -315,7 +310,7 @@ I (1412) BSP: [PHASE A] NOTE: GPIO54 (C6) and GPIO18 (SDIO CLK) managed by drive
 
 1. **Clone this repository**
    ```bash
-   git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
+   git clone --branch develop/v1.3.0 https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
    cd guition-jc1060p470c-bsp-full-feature-demo
    ```
 
@@ -341,34 +336,73 @@ I (1412) BSP: [PHASE A] NOTE: GPIO54 (C6) and GPIO18 (SDIO CLK) managed by drive
 
 ### Configuration
 
-All peripherals can be enabled/disabled via feature flags in `main/feature_flags.h`:
+**All peripherals can be enabled/disabled via `idf.py menuconfig`:**
 
-```c
-// Core Peripherals
-#define ENABLE_I2C          1  // I2C bus (required for RTC, Audio, Touch)
-#define ENABLE_DISPLAY      1  // JD9165 MIPI DSI display
-#define ENABLE_TOUCH        1  // GT911 touch controller
-#define ENABLE_AUDIO        1  // ES8311 audio codec
-#define ENABLE_RTC          1  // RX8025T RTC
-#define ENABLE_SD_CARD      1  // SD card filesystem
-#define ENABLE_WIFI         1  // ESP-Hosted WiFi
-#define ENABLE_NVS          1  // Non-volatile storage
-
-// Advanced Features (disabled by default)
-#define ENABLE_WIFI_CONNECT 0  // WiFi connection test
-#define ENABLE_RTC_NTP_SYNC 0  // NTP time synchronization
-#define ENABLE_DISPLAY_TEST 0  // RGB test pattern
-#define ENABLE_TOUCH_TEST   0  // Continuous touch reading
-
-// Debug Output
-#define DEBUG_I2C           1  // I2C transaction logging
-#define DEBUG_DISPLAY       1  // Display initialization
-#define DEBUG_TOUCH         1  // Touch events
-#define DEBUG_AUDIO         1  // Audio codec status
-#define DEBUG_RTC           1  // RTC operations
-#define DEBUG_SD_CARD       1  // SD card operations
-#define DEBUG_WIFI          1  // WiFi/ESP-Hosted status
+```bash
+idf.py menuconfig
 ```
+
+#### BSP Features (`Component config → Guition JC1060 BSP`)
+
+```
+BSP_ENABLE_I2C           [*] I2C Bus (required for RTC, Audio, Touch)
+BSP_ENABLE_AUDIO         [*] ES8311 Audio Codec
+BSP_ENABLE_RTC           [*] RX8025T RTC
+BSP_ENABLE_DISPLAY       [*] JD9165 Display
+BSP_ENABLE_TOUCH         [*] GT911 Touch Controller
+BSP_ENABLE_SD_CARD       [*] SD Card (SDMMC Slot 0)
+BSP_ENABLE_WIFI_HOSTED   [*] WiFi (ESP-Hosted, SDMMC Slot 1)
+BSP_ENABLE_NVS           [*] NVS Storage
+```
+
+#### Application Features (`Component config → Example Configuration`)
+
+```
+APP_ENABLE_WIFI_CONNECT    [ ] WiFi connection test
+APP_ENABLE_RTC_NTP_SYNC    [ ] RTC NTP synchronization
+APP_ENABLE_RTC_TEST        [ ] RTC hardware validation
+APP_ENABLE_SD_TEST         [ ] SD card tests
+APP_ENABLE_DISPLAY_TEST    [ ] Display RGB test pattern
+APP_ENABLE_TOUCH_TEST      [ ] Continuous touch reading
+```
+
+**WiFi credentials:** Copy `main/wifi_config.h.example` → `main/wifi_config.h` and edit with your credentials.
+
+### Project Structure (v1.3.0)
+
+```
+components/
+└── guition_jc1060_bsp/          ← **BSP Component**
+    ├── drivers/                 ← Hardware drivers
+    │   ├── rx8025t_bsp.[ch]    ← RTC driver (renamed from rtc_rx8025t)
+    │   ├── es8311_bsp.[ch]     ← Audio driver (renamed from es8311_audio)
+    │   ├── gt911_bsp.[ch]      ← Touch driver
+    │   └── jd9165_bsp.[ch]     ← Display driver
+    ├── bootstrap/              ← SDMMC arbitration
+    │   ├── bootstrap_manager.[ch]
+    │   ├── power_manager.[ch]
+    │   ├── esp_hosted_wifi.[ch]
+    │   └── sd_card_manager.[ch]
+    ├── utils/                  ← Test utilities
+    │   ├── rtc_test.c
+    │   ├── rtc_ntp_sync.c
+    │   └── sd_card_functions.c
+    ├── Kconfig.projbuild       ← BSP configuration
+    └── CMakeLists.txt
+
+main/                           ← **Application code only**
+    ├── main.c                  ← Entry point
+    ├── wifi_config.h.example   ← WiFi credentials template
+    ├── Kconfig.projbuild       ← App features configuration
+    └── CMakeLists.txt
+```
+
+**Key Changes from v1.0.0-beta:**
+- All drivers moved to `components/guition_jc1060_bsp/drivers/`
+- All drivers renamed with `_bsp` suffix for clarity
+- `bootstrap/` and `utils/` moved to BSP component
+- `feature_flags.h` removed → now use Kconfig (menuconfig)
+- `main/` contains only application code
 
 ---
 
@@ -376,29 +410,28 @@ All peripherals can be enabled/disabled via feature flags in `main/feature_flags
 
 ### ✅ Hardware Components (All Working)
 
-| Component | Status | I2C Address | GPIO Pins | Feature Flag | Debug Flag |
-|-----------|--------|-------------|-----------|--------------|------------|
-| **I2C Bus** | ✅ Active | - | SDA=7, SCL=8 | `ENABLE_I2C=1` | `DEBUG_I2C=1` |
-| **ES8311 Audio** | ✅ Active | 0x18 | PA_CTRL=11 | `ENABLE_AUDIO=1` | `DEBUG_AUDIO=1` |
-| **RX8025T RTC** | ✅ Active | 0x32 | - | `ENABLE_RTC=1` | `DEBUG_RTC=1` |
-| **JD9165 Display** | ✅ Active | - | MIPI DSI (45-52) | `ENABLE_DISPLAY=1` | `DEBUG_DISPLAY=1` |
-| **GT911 Touch** | ✅ Active | 0x14 | RST=21, INT=22 | `ENABLE_TOUCH=1` | `DEBUG_TOUCH=1` |
-| **SD Card** | ✅ Active | - | Slot 0 (39-44), PWR=36 | `ENABLE_SD_CARD=1` | `DEBUG_SD_CARD=1` |
-| **WiFi ESP-Hosted** | ✅ Active | - | Slot 1 (14-19), RST=54 | `ENABLE_WIFI=1` | `DEBUG_WIFI=1` |
-| **Bootstrap Manager** | ✅ Active | - | SD_PWR=36 only | - | - |
-| **NVS Flash** | ✅ Active | - | - | `ENABLE_NVS=1` | `DEBUG_NVS=0` |
+| Component | Status | I2C Address | GPIO Pins | Kconfig Flag | Driver File |
+|-----------|--------|-------------|-----------|--------------|-------------|
+| **I2C Bus** | ✅ Active | - | SDA=7, SCL=8 | `BSP_ENABLE_I2C` | - |
+| **ES8311 Audio** | ✅ Active | 0x18 | PA_CTRL=11 | `BSP_ENABLE_AUDIO` | `es8311_bsp.c` |
+| **RX8025T RTC** | ✅ Active | 0x32 | - | `BSP_ENABLE_RTC` | `rx8025t_bsp.c` |
+| **JD9165 Display** | ✅ Active | - | MIPI DSI (45-52) | `BSP_ENABLE_DISPLAY` | `jd9165_bsp.c` |
+| **GT911 Touch** | ✅ Active | 0x14 | RST=21, INT=22 | `BSP_ENABLE_TOUCH` | `gt911_bsp.c` |
+| **SD Card** | ✅ Active | - | Slot 0 (39-44), PWR=36 | `BSP_ENABLE_SD_CARD` | - |
+| **WiFi ESP-Hosted** | ✅ Active | - | Slot 1 (14-19), RST=54 | `BSP_ENABLE_WIFI_HOSTED` | - |
+| **Bootstrap Manager** | ✅ Active | - | SD_PWR=36 only | - | `bootstrap_manager.c` |
+| **NVS Flash** | ✅ Active | - | - | `BSP_ENABLE_NVS` | - |
 
 ### 🧪 Advanced Features and Tests
 
-| Feature | Status | Flag | Requirements | Description |
-|---------|--------|------|--------------|-------------|
-| **WiFi Connection Test** | ✅ Available | `ENABLE_WIFI_CONNECT=1` | `wifi_config.h` | Connect to WiFi and display IP/RSSI |
-| **RTC Read/Write Test** | ✅ Active | `ENABLE_RTC_TEST=1` | - | Display current RTC time |
-| **RTC NTP Sync** | ⚙️ Available | `ENABLE_RTC_NTP_SYNC=0` | WiFi connected | Sync RTC with NTP server |
-| **RTC Hardware Test** | ⚙️ Available | `ENABLE_RTC_HW_TEST=0` | - | Advanced RTC diagnostics |
-| **Display RGB Test** | ⚙️ Available | `ENABLE_DISPLAY_TEST=0` | - | RGB test pattern |
-| **Touch Input Test** | ⚙️ Available | `ENABLE_TOUCH_TEST=0` | - | Continuous touch reading |
-| **I2C Bus Scan** | ❌ Disabled | `ENABLE_I2C_SCAN=0` | - | **DO NOT ENABLE** (interferes with GT911) |
+| Feature | Status | Kconfig Flag | Requirements | Description |
+|---------|--------|--------------|--------------|-------------|
+| **WiFi Connection Test** | ✅ Available | `APP_ENABLE_WIFI_CONNECT` | `wifi_config.h` | Connect to WiFi and display IP/RSSI |
+| **RTC Read/Write Test** | ✅ Available | `APP_ENABLE_RTC_TEST` | - | Display current RTC time |
+| **RTC NTP Sync** | ✅ Available | `APP_ENABLE_RTC_NTP_SYNC` | WiFi connected | Sync RTC with NTP server |
+| **Display RGB Test** | ⚙️ Available | `APP_ENABLE_DISPLAY_TEST` | - | RGB test pattern |
+| **Touch Input Test** | ⚙️ Available | `APP_ENABLE_TOUCH_TEST` | - | Continuous touch reading |
+| **SD Card Test** | ⚙️ Available | `APP_ENABLE_SD_TEST` | - | SD card read/write tests |
 
 ### 📋 Expected Boot Log Output
 
@@ -491,9 +524,9 @@ By default, the demo initializes WiFi without connecting. To enable full WiFi co
    ```
 
 3. **Enable connection test:**
-   ```c
-   // In main/feature_flags.h
-   #define ENABLE_WIFI_CONNECT 1  // Enable WiFi connection
+   ```bash
+   idf.py menuconfig
+   # Component config → Example Configuration → [*] WiFi Connection Test
    ```
 
 4. **Rebuild and flash:**
@@ -514,8 +547,8 @@ I (8833) GUITION_MAIN:    RSSI: -67 dBm
 
 > [!NOTE]
 > - `wifi_config.h` is gitignored for security
-- ESP32-C6 supports only 2.4GHz WiFi (802.11b/g/n)
-- 5GHz networks will not be visible
+> - ESP32-C6 supports only 2.4GHz WiFi (802.11b/g/n)
+> - 5GHz networks will not be visible
 
 ### RTC NTP Synchronization
 
@@ -524,11 +557,11 @@ Synchronize RTC with Network Time Protocol server (requires WiFi connection):
 1. **Enable WiFi connection** (see above)
 
 2. **Enable RTC NTP sync:**
-   ```c
-   // In main/feature_flags.h
-   #define ENABLE_RTC 1            // Enable RTC
-   #define ENABLE_RTC_NTP_SYNC 1   // Enable NTP sync
-   #define ENABLE_WIFI_CONNECT 1   // Required for NTP
+   ```bash
+   idf.py menuconfig
+   # Component config → Guition JC1060 BSP → [*] RTC (RX8025T)
+   # Component config → Example Configuration → [*] WiFi Connection Test
+   # Component config → Example Configuration → [*] RTC NTP Synchronization
    ```
 
 3. **Build and flash:**
@@ -554,7 +587,7 @@ Synchronize RTC with Network Time Protocol server (requires WiFi connection):
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| **ESP-IDF** | v5.5.3-dirty | Framework version |
+| **ESP-IDF** | v5.5.3 | Framework version |
 | **Target** | ESP32-P4 | Main chip |
 | **CPU Frequency** | 360 MHz | Clock speed |
 | **PSRAM** | 32 MB @ 200MHz | External RAM |
@@ -569,7 +602,8 @@ Synchronize RTC with Network Time Protocol server (requires WiFi connection):
 
 | File | Purpose | Git Tracked | Notes |
 |------|---------|-------------|-------|
-| `main/feature_flags.h` | Enable/disable peripherals | ✅ Yes | Edit to configure features |
+| `components/guition_jc1060_bsp/Kconfig.projbuild` | BSP features | ✅ Yes | Peripheral enable/disable |
+| `main/Kconfig.projbuild` | App features | ✅ Yes | Test/demo features |
 | `main/wifi_config.h` | WiFi credentials | ❌ No (.gitignore) | Copy from `.example` |
 | `sdkconfig.defaults` | Build defaults | ✅ Yes | ESP-IDF configuration |
 | `CMakeLists.txt` | Build system | ✅ Yes | Project name and dependencies |
@@ -599,7 +633,7 @@ Synchronize RTC with Network Time Protocol server (requires WiFi connection):
 
 ### Debugging Tips
 
-- Enable per-peripheral debug flags in `feature_flags.h`
+- Enable per-peripheral debug via menuconfig
 - Use `idf.py monitor` with filters: `idf.py monitor -p /dev/ttyUSB0 --print_filter="*:I GUITION_MAIN:D"`
 - Check bootstrap timing in logs (look for `BOOTSTRAP` tag)
 - Verify I2C devices are responding (check I2C addresses in logs)
@@ -650,13 +684,7 @@ E (6224) i2c.master: clear bus failed.
 E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 ```
 
-**Solution:** Disable I2C bus scan:
-```c
-// In main/feature_flags.h
-#define ENABLE_I2C_SCAN 0  // Must be disabled
-```
-
-**Reason:** I2C scanning interferes with GT911 hardware reset sequence.
+**Solution:** This error is typically harmless and occurs during GT911 initialization. The touch controller continues to work normally.
 
 **See [troubleshooting.md](troubleshooting.md#gt911-touch-controller-initialization-issues) for detailed explanation.**
 
@@ -672,24 +700,15 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 
 ### Important Notes
 
-⚠️ **I2C Scan Must Be Disabled**
-- `ENABLE_I2C_SCAN=0` is required
-- Scanning interferes with GT911 touch controller
-- Causes "clear bus failed" errors
-
-⚠️ **Single lwIP Reference Required**
-- CMakeLists.txt must have only ONE `lwip` in REQUIRES
-- Duplicate causes WiFi instability and SD card errors
-
-⚠️ **RTC NTP Sync Requires WiFi**
-- Enable `ENABLE_WIFI_CONNECT=1` first
-- Verify WiFi connection succeeds
-- Then enable `ENABLE_RTC_NTP_SYNC=1`
-
 ⚠️ **BSP Manages Only GPIO36**
 - GPIO54 (C6 reset) is owned by ESP-Hosted
 - GPIO18 (SDIO CLK) is owned by SDMMC driver
 - Never manipulate these pins outside their drivers
+
+⚠️ **RTC NTP Sync Requires WiFi**
+- Enable `APP_ENABLE_WIFI_CONNECT` first
+- Verify WiFi connection succeeds
+- Then enable `APP_ENABLE_RTC_NTP_SYNC`
 
 ---
 
@@ -716,9 +735,9 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 
 ## 🗺️ Roadmap
 
-### Current Status: Phase 1 Complete ✅
+### Current Status: v1.3.0 Complete ✅
 
-All onboard peripherals functional with deterministic bootstrap manager and comprehensive documentation.
+Complete BSP refactor with Kconfig configuration and all compilation issues resolved.
 
 ### Phase 2: Testing & Software Suite Completion (Q2 2026)
 
