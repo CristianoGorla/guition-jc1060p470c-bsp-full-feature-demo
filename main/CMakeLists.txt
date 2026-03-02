@@ -20,7 +20,6 @@ idf_component_register(
         "${CMAKE_CURRENT_BINARY_DIR}"
     REQUIRES 
         guition_jc1060_bsp
-        lvgl
         nvs_flash
         esp_netif
         esp_event
