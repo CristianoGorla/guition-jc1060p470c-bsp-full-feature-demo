@@ -17,6 +17,9 @@ static bool transport_initialized = false;
 static bool wifi_started = false;
 static esp_event_handler_instance_t ip_event_handler = NULL;
 
+/* C6 firmware boot delay after ESP-Hosted reset */
+#define C6_FIRMWARE_BOOT_DELAY_MS 2500
+
 static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP)
@@ -145,7 +148,7 @@ void init_wifi(void)
         }
     }
     
-    // Initialize WiFi stack
+    // Initialize WiFi stack (this triggers ESP-Hosted SDIO init + C6 reset)
     LOG_WIFI(TAG, "Initializing WiFi driver...");
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t ret = esp_wifi_init(&cfg);
@@ -153,6 +156,32 @@ void init_wifi(void)
         ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
         return;
     }
+    
+    // CRITICAL FIX: Wait for C6 firmware to boot after ESP-Hosted reset
+    // 
+    // Timeline without delay:
+    //   T+0ms:    esp_wifi_init() calls ESP-Hosted transport layer
+    //   T+0ms:    ESP-Hosted resets C6 via GPIO54
+    //   T+1520ms: ESP-Hosted initializes SDMMC Slot 1 for SDIO
+    //   T+1520ms: C6 firmware not ready → timeout 0x107
+    //
+    // Timeline with delay:
+    //   T+0ms:    esp_wifi_init() calls ESP-Hosted transport layer
+    //   T+0ms:    ESP-Hosted resets C6 via GPIO54
+    //   T+1520ms: ESP-Hosted initializes SDMMC Slot 1 for SDIO
+    //   T+2500ms: Wait here (firmware boot time)
+    //   T+4020ms: C6 firmware ready, SDIO link established
+    //
+    // C6 boot time breakdown:
+    // - Bootloader: ~300ms
+    // - App startup: ~500ms
+    // - SDIO slave init: ~700ms
+    // - State machine sync: ~500ms
+    // Total: ~2000ms (using 2500ms for safety margin)
+    //
+    ESP_LOGI(TAG, "Waiting %dms for C6 firmware boot + SDIO slave ready...", C6_FIRMWARE_BOOT_DELAY_MS);
+    vTaskDelay(pdMS_TO_TICKS(C6_FIRMWARE_BOOT_DELAY_MS));
+    ESP_LOGI(TAG, "C6 firmware boot complete, SDIO link should be stable");
     
     LOG_WIFI(TAG, "Setting WiFi mode to STA...");
     ret = esp_wifi_set_mode(WIFI_MODE_STA);
