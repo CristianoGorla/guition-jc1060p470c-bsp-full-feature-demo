@@ -406,4 +406,48 @@ menu "Guition JC1060P470C Board Configuration"
 
     endmenu # Power Management
 
+    menu "Application Features"
+
+        config APP_ENABLE_NVS
+            bool "Enable NVS (Non-Volatile Storage)"
+            default y
+            help
+                Enable NVS flash storage for WiFi credentials,
+                configuration persistence, and application data.
+
+        config APP_ENABLE_WIFI_CONNECT
+            bool "Enable WiFi Station Connection"
+            default y
+            depends on BSP_ENABLE_WIFI
+            help
+                Enable automatic WiFi station connection on boot.
+                Requires wifi_config.h with SSID/password.
+                Disable for WiFi scan-only mode.
+
+        config APP_ENABLE_RTC_NTP_SYNC
+            bool "Enable RTC NTP Time Sync"
+            default y
+            depends on BSP_ENABLE_RTC && APP_ENABLE_WIFI_CONNECT
+            help
+                Enable automatic NTP time synchronization to RTC.
+                Requires WiFi connection to be active.
+
+        config APP_ENABLE_RTC_TEST
+            bool "Enable RTC Test on Boot"
+            default n
+            depends on BSP_ENABLE_RTC
+            help
+                Run RTC validation tests during startup.
+                Useful for development and debugging.
+
+        config APP_ENABLE_SD_TEST
+            bool "Enable SD Card Test on Boot"
+            default n
+            depends on BSP_ENABLE_SDCARD
+            help
+                Run SD card read/write tests during startup.
+                Useful for development and debugging.
+
+    endmenu # Application Features
+
 endmenu # Guition JC1060P470C Board Configuration
