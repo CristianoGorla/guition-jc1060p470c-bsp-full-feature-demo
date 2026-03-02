@@ -1,7 +1,9 @@
 # Main application component
 
-set(BUILD_TIMESTAMP "${CMAKE_CURRENT_TIMESTAMP}")
+# Generate build timestamp
+string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%d %H:%M:%S" UTC)
 
+# Get git commit hash
 if(NOT DEFINED ENV{BUILD_GIT_COMMIT})
     execute_process(
         COMMAND git log -1 --format=%h
@@ -16,6 +18,7 @@ else()
     set(BUILD_GIT_COMMIT $ENV{BUILD_GIT_COMMIT})
 endif()
 
+# Generate build_info.h from template
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/build_info.h.in ${CMAKE_CURRENT_BINARY_DIR}/build_info.h @ONLY)
 
 idf_component_register(
