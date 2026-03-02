@@ -1,3 +1,35 @@
 # BSP configuration moved to Kconfig.projbuild
 # This creates a top-level "Guition JC1060P470C Board Configuration" menu
 # in menuconfig instead of being under "Component config"
+
+menu "Graphics Configuration"
+    config BSP_ENABLE_LVGL
+        bool "Enable LVGL v9.2.2"
+        default y
+        help
+          Enable LVGL graphics library for JD9165 display (1024x600)
+
+    config LVGL_DOUBLE_BUFFER_PSRAM
+        bool "Double buffering in PSRAM (required for 200MHz)"
+        default y
+        depends on BSP_ENABLE_LVGL
+        help
+          Use PSRAM (32MB @ 200MHz) for LVGL framebuffers.
+          Required for smooth 1024x600 rendering without flicker.
+
+    config LVGL_DISP_RES_X
+        int "Display horizontal resolution"
+        default 1024
+        range 320 1920
+        depends on BSP_ENABLE_LVGL
+        help
+          JD9165 display width
+
+    config LVGL_DISP_RES_Y
+        int "Display vertical resolution"
+        default 600
+        range 240 1080
+        depends on BSP_ENABLE_LVGL
+        help
+          JD9165 display height
+endmenu
