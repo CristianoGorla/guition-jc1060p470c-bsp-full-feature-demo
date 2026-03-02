@@ -30,7 +30,7 @@ esp_err_t rtc_reset_to_default(void)
         .second = 0
     };
     
-    esp_err_t ret = bsp_rx8025t_set_time(&default_time);
+    esp_err_t ret = bsp_rtc_set_time(&default_time);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "✓ RTC reset to: 2000-01-01 00:00:00");
     } else {
@@ -112,13 +112,13 @@ esp_err_t update_rtc_from_system_time(void)
              rtc_time.year, rtc_time.month, rtc_time.day,
              rtc_time.hour, rtc_time.minute, rtc_time.second);
     
-    esp_err_t ret = bsp_rx8025t_set_time(&rtc_time);
+    esp_err_t ret = bsp_rtc_set_time(&rtc_time);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "✓ RTC updated successfully");
         
         // Verify by reading back
         bsp_rtc_time_t verify_time;
-        if (bsp_rx8025t_get_time(&verify_time) == ESP_OK) {
+        if (bsp_rtc_get_time(&verify_time) == ESP_OK) {
             ESP_LOGI(TAG, "RTC readback: 20%02d-%02d-%02d %02d:%02d:%02d",
                      verify_time.year, verify_time.month, verify_time.day,
                      verify_time.hour, verify_time.minute, verify_time.second);
@@ -141,7 +141,7 @@ esp_err_t rtc_ntp_sync_test(void)
     // Step 1: Read current RTC time
     ESP_LOGI(TAG, "Step 1/4: Read current RTC time");
     bsp_rtc_time_t current_time;
-    ret = bsp_rx8025t_get_time(&current_time);
+    ret = bsp_rtc_get_time(&current_time);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "Current RTC: 20%02d-%02d-%02d %02d:%02d:%02d\n",
                  current_time.year, current_time.month, current_time.day,
@@ -161,7 +161,7 @@ esp_err_t rtc_ntp_sync_test(void)
     
     // Verify reset
     bsp_rtc_time_t reset_time;
-    bsp_rx8025t_get_time(&reset_time);
+    bsp_rtc_get_time(&reset_time);
     ESP_LOGI(TAG, "RTC after reset: 20%02d-%02d-%02d %02d:%02d:%02d\n",
              reset_time.year, reset_time.month, reset_time.day,
              reset_time.hour, reset_time.minute, reset_time.second);
