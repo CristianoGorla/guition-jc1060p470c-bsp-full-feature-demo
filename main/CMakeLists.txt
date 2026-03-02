@@ -19,7 +19,11 @@ else()
 endif()
 
 # Generate build_info.h from template
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/build_info.h.in ${CMAKE_CURRENT_BINARY_DIR}/build_info.h @ONLY)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/build_info.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/build_info.h
+    @ONLY
+)
 
 idf_component_register(
     SRCS 
