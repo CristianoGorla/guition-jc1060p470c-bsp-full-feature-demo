@@ -14,3 +14,10 @@ CONFIG_SPIRAM_SPEED_200M=y
 # Heap allocation defaults to PSRAM for large buffers
 CONFIG_SPIRAM_USE_MALLOC=y
 CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+
+# PPA (Pixel Processing Accelerator) for rotation
+CONFIG_ESP_LCD_PPA_ENABLE=y
+
+# esp_lvgl_port task configuration
+CONFIG_LV_PORT_TASK_STACK_SIZE=6144
+CONFIG_LV_PORT_TASK_PRIORITY=4
