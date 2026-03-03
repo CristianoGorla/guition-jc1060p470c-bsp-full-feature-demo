@@ -176,11 +176,11 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
     
-    /* LVGL Display Configuration (matches vendor config) */
+    /* LVGL Display Configuration (matches vendor main.c working config) */
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = NULL,  // DPI panel has no DBI I/O
         .panel_handle = display,
-        .buffer_size = 1024 * 50,  /* 51,200 pixels (vendor default) */
+        .buffer_size = 480 * 800,  /* 384,000 pixels (vendor main.c config) */
         .double_buffer = 0,         /* CRITICAL: Single buffer (vendor config) */
         .hres = 1024,
         .vres = 600,
