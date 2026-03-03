@@ -10,6 +10,8 @@
 #define BSP_BOARD_H
 
 #include "esp_err.h"
+#include "esp_lcd_types.h"
+#include "esp_lcd_touch.h"
 #include "driver/i2c_master.h"
 
 #ifdef __cplusplus
@@ -23,8 +25,8 @@ extern "C" {
  * - Phase A: Power Manager (hard reset, power rails)
  * - Phase D: Peripheral Drivers (I2C, Display HW, Touch HW, Audio, RTC)
  * 
- * NOTE: LVGL is NOT initialized by this function!
- *       Call bsp_lvgl_init() separately AFTER bootstrap completes.
+ * NOTE: Only initializes hardware drivers. Application layer (LVGL)
+ *       should be initialized separately in main.
  * 
  * @return
  *     - ESP_OK: Success
@@ -33,27 +35,25 @@ extern "C" {
 esp_err_t bsp_board_init(void);
 
 /**
+ * @brief Get display panel handle
+ * 
+ * @return Display panel handle (NULL if not initialized)
+ */
+esp_lcd_panel_handle_t bsp_display_get_handle(void);
+
+/**
+ * @brief Get touch controller handle
+ * 
+ * @return Touch handle (NULL if not initialized)
+ */
+esp_lcd_touch_handle_t bsp_touch_get_handle(void);
+
+/**
  * @brief Get I2C bus handle
  * 
  * @return I2C master bus handle (NULL if not initialized)
  */
 i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void);
-
-/**
- * @brief Initialize LVGL graphics library
- * 
- * Must be called AFTER:
- * 1. bsp_board_init() (hardware ready)
- * 2. Bootstrap manager completion (WiFi/SD initialized)
- * 
- * This separation prevents LVGL task from blocking during
- * SDMMC controller initialization for WiFi/SD.
- * 
- * @return
- *     - ESP_OK: Success
- *     - ESP_FAIL: Display or touch not initialized
- */
-esp_err_t bsp_lvgl_init(void);
 
 /**
  * @brief Deinitialize the board support package
