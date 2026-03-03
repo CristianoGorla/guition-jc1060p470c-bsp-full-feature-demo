@@ -246,6 +246,11 @@ esp_err_t bsp_board_init(void)
     return ESP_OK;
 }
 
+i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void)
+{
+    return g_i2c_bus_handle;
+}
+
 void bsp_board_deinit(void)
 {
     if (g_i2c_bus_handle) {
