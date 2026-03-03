@@ -3,12 +3,7 @@
 # in menuconfig instead of being under "Component config"
 
 menu "Graphics Configuration"
-    config BSP_ENABLE_LVGL
-        bool "Enable LVGL v9.2.2"
-        default y
-        help
-          Enable LVGL graphics library for JD9165 display (1024x600)
-
+    
     config LVGL_USE_ESP_LVGL_PORT
         bool "Use esp_lvgl_port (recommended)"
         default y
