@@ -130,3 +130,8 @@ CONFIG_GPIO_ESP32_SUPPORT_SWITCH_SLP_PULL=y
 
 # === I2C Configuration ===
 CONFIG_I2C_ENABLE_DEBUG_LOG=n
+
+# === Application Features ===
+CONFIG_APP_ENABLE_NVS=y
+# Enable display test for hardware validation
+CONFIG_APP_ENABLE_DISPLAY_TEST=y
