@@ -17,6 +17,7 @@ static esp_event_handler_instance_t ip_event_handler = NULL;
 
 // Transport suspension control for SDMMC slot arbitration
 static bool transport_paused = false;
+static bool wifi_was_started_before_pause = false;
 
 /* C6 firmware boot delay after BSP Phase A release */
 #define C6_FIRMWARE_BOOT_DELAY_MS 2500
@@ -36,9 +37,9 @@ static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *da
  * Slot 1 (WiFi) to Slot 0 (SD Card). Prevents race condition 0x108.
  * 
  * Mechanism:
- * - Disables WiFi TX/RX to stop SDIO transactions
- * - Allows pending operations to complete
- * - Makes bus IDLE for safe controller reinitialization
+ * - Fully deinitializes WiFi driver to stop ALL SDIO activity
+ * - Kills ESP-Hosted RX/TX tasks and frees SDMMC resources
+ * - Makes bus completely IDLE for safe controller reinitialization
  * 
  * Must be paired with esp_hosted_resume_transport() after slot switch.
  */
@@ -56,14 +57,35 @@ void esp_hosted_pause_transport(void)
     
     ESP_LOGI(TAG, "[TRANSPORT] Suspending for SDMMC slot arbitration...");
     
-    // Temporarily stop WiFi to halt SDIO transactions
-    // This prevents H_SDIO_DRV from attempting bus access during deinit
+    // Save WiFi state
+    wifi_was_started_before_pause = wifi_started;
+    
+    // AGGRESSIVE FIX: Fully deinitialize WiFi to kill ESP-Hosted tasks
+    // This is the ONLY way to guarantee SDIO bus is completely IDLE
+    
+    ESP_LOGI(TAG, "[TRANSPORT] Stopping WiFi...");
     esp_err_t ret = esp_wifi_stop();
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "WiFi stop failed: %s (continuing anyway)", esp_err_to_name(ret));
+        ESP_LOGW(TAG, "WiFi stop failed: %s (continuing)", esp_err_to_name(ret));
     }
     
+    // Allow WiFi stop event to propagate
+    vTaskDelay(pdMS_TO_TICKS(50));
+    
+    ESP_LOGI(TAG, "[TRANSPORT] Deinitializing WiFi driver...");
+    ret = esp_wifi_deinit();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "WiFi deinit failed: %s (continuing)", esp_err_to_name(ret));
+    }
+    
+    wifi_started = false;
     transport_paused = true;
+    
+    // CRITICAL: Wait for ESP-Hosted tasks to fully terminate
+    // ESP-Hosted deinit triggers async task cleanup - we MUST wait
+    ESP_LOGI(TAG, "[TRANSPORT] Waiting for ESP-Hosted tasks to terminate...");
+    vTaskDelay(pdMS_TO_TICKS(200));
+    
     ESP_LOGI(TAG, "[TRANSPORT] WiFi transport suspended, bus IDLE");
 }
 
@@ -71,7 +93,7 @@ void esp_hosted_pause_transport(void)
  * @brief Resume ESP-Hosted transport after SDMMC slot switch
  * 
  * Call this AFTER SD card mount completes to restore WiFi connectivity.
- * Controller will be on Slot 0 (SD), but WiFi driver state is preserved.
+ * Controller will be on Slot 0 (SD), WiFi will reinitialize on Slot 1.
  */
 void esp_hosted_resume_transport(void)
 {
@@ -82,14 +104,36 @@ void esp_hosted_resume_transport(void)
     
     ESP_LOGI(TAG, "[TRANSPORT] Resuming WiFi after slot switch...");
     
-    // Restart WiFi - ESP-Hosted will reinitialize Slot 1 if needed
-    esp_err_t ret = esp_wifi_start();
+    // Reinitialize WiFi - ESP-Hosted will reinit Slot 1 from scratch
+    ESP_LOGI(TAG, "[TRANSPORT] Reinitializing WiFi driver...");
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_err_t ret = esp_wifi_init(&cfg);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi restart failed: %s", esp_err_to_name(ret));
-        // Don't return - mark as resumed anyway to avoid stuck state
+        ESP_LOGE(TAG, "WiFi reinit failed: %s", esp_err_to_name(ret));
+        transport_paused = false;
+        return;
+    }
+    
+    ret = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Set mode failed: %s", esp_err_to_name(ret));
+        transport_paused = false;
+        return;
+    }
+    
+    // Restart WiFi if it was running before pause
+    if (wifi_was_started_before_pause) {
+        ESP_LOGI(TAG, "[TRANSPORT] Starting WiFi...");
+        ret = esp_wifi_start();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "WiFi restart failed: %s", esp_err_to_name(ret));
+        } else {
+            wifi_started = true;
+        }
     }
     
     transport_paused = false;
+    wifi_was_started_before_pause = false;
     ESP_LOGI(TAG, "[TRANSPORT] WiFi transport resumed on Slot 1");
 }
 
