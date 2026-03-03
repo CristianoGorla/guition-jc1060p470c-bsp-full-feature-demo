@@ -111,10 +111,9 @@ void app_main(void)
     ESP_LOGI(TAG, "✓ NVS ready\n");
 #endif
 
-    /* Step 3: Bootstrap - WiFi + SD (PSRAM allocations happen here) */
-    bootstrap_manager_t bootstrap_mgr = {0};
-    
+    /* Step 3: Bootstrap - WiFi + SD (PSRAM allocations happen here) */    
 #if defined(CONFIG_BSP_ENABLE_SDCARD) || defined(CONFIG_BSP_ENABLE_WIFI)
+        bootstrap_manager_t bootstrap_mgr = {0};
     ret = bootstrap_manager_init(&bootstrap_mgr);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Bootstrap init failed");
