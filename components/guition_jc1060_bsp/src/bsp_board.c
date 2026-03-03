@@ -193,9 +193,6 @@ esp_err_t bsp_board_init(void)
 
 /**
  * @brief Callback invoked when MIPI DSI color transfer completes
- {
- * @note This callback notifies LVGL that the flush operation is complete,
- *       allowing it to release the wait in lv_display_flush_wait_for_flushing()
  */
 static bool on_color_trans_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx)
 {
@@ -205,9 +202,7 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_
 }
 
 esp_err_t bsp_lvgl_init(void)
-
 {
-
 #ifdef CONFIG_BSP_ENABLE_LVGL
     if (!g_display_handle) {
         ESP_LOGE(TAG, "Display not initialized! Call bsp_board_init() first.");
@@ -237,6 +232,10 @@ esp_err_t bsp_lvgl_init(void)
 #ifndef CONFIG_BSP_DISPLAY_WIDTH
 #define CONFIG_BSP_DISPLAY_WIDTH 1024
 #endif
+#ifndef CONFIG_BSP_LVGL_DOUBLE_BUFFER
+#define CONFIG_BSP_LVGL_DOUBLE_BUFFER 1  // Default double buffering ON
+#endif
+
     const uint32_t buffer_pixels = CONFIG_BSP_DISPLAY_WIDTH * CONFIG_BSP_LVGL_BUFFER_LINES;
     
     /* LVGL Display Configuration */
@@ -250,14 +249,14 @@ esp_err_t bsp_lvgl_init(void)
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
         .rotation = { 
-            .swap_xy = false,    /* No swap for landscape */
+            .swap_xy = false,    /* No swap for landscape native */
             .mirror_x = false, 
             .mirror_y = false 
         },
         .flags = {
-            .buff_dma = CONFIG_BSP_LVGL_USE_DMA_BUFFER,
-            .buff_spiram = CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER,
-            .sw_rotate = CONFIG_BSP_LVGL_ENABLE_SW_ROTATE,
+            .buff_dma = true,       /* DMA buffers for DSI performance */
+            .buff_spiram = false,   /* Use DRAM, not SPIRAM for buffers */
+            .sw_rotate = false,     /* No software rotation (landscape native) */
         }
     };
     
@@ -302,7 +301,7 @@ esp_err_t bsp_lvgl_init(void)
 #else
     ESP_LOGW(TAG, "LVGL disabled in menuconfig");
     return ESP_ERR_NOT_SUPPORTED;
-    #endif
+#endif
 }
 
 i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void)
