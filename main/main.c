@@ -149,7 +149,12 @@ void app_main(void)
     /* Test 1: RTC */
 #ifdef CONFIG_BSP_ENABLE_RTC
     ESP_LOGI(TAG, "\n=== RTC Test ===");
-    rtc_test_read_only();
+    i2c_master_bus_handle_t i2c_bus = bsp_i2c_get_bus_handle();
+    if (i2c_bus) {
+        rtc_test_read_only(i2c_bus);
+    } else {
+        ESP_LOGW(TAG, "I2C bus not available");
+    }
     ESP_LOGI(TAG, "✓ RTC test complete\n");
 #endif
 
