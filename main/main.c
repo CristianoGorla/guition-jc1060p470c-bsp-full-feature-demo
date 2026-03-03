@@ -24,6 +24,7 @@
 #include "esp_hosted_wifi.h"
 #include "bootstrap_manager.h"
 #include "backlight_test.h"
+#include "esp_heap_caps.h"
 
 #ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
 #include "wifi_config.h"
@@ -37,6 +38,10 @@ static void lvgl_create_test_ui(void)
 {
     ESP_LOGI("LVGL_UI", "Attempting to lock LVGL...");
     
+    // Check heap before
+    size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    ESP_LOGI("LVGL_UI", "Free PSRAM: %zu KB", free_psram / 1024);
+    
     if (!lvgl_port_lock(5000)) {
         ESP_LOGE("LVGL_UI", "TIMEOUT: Failed to lock LVGL after 5s");
         return;
@@ -45,15 +50,33 @@ static void lvgl_create_test_ui(void)
     ESP_LOGI("LVGL_UI", "Lock acquired! Creating UI...");
     
     lv_obj_t *scr = lv_scr_act();
+    if (!scr) {
+        ESP_LOGE("LVGL_UI", "ERROR: lv_scr_act() returned NULL!");
+        lvgl_port_unlock();
+        return;
+    }
+    
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x003366), 0);
     
     lv_obj_t *label = lv_label_create(scr);
+    if (!label) {
+        ESP_LOGE("LVGL_UI", "ERROR: lv_label_create() returned NULL!");
+        lvgl_port_unlock();
+        return;
+    }
+    
     lv_label_set_text(label, "LVGL v9 Test");
     lv_obj_center(label);
     
-    ESP_LOGI("LVGL_UI", "UI created, unlocking...");
+    ESP_LOGI("LVGL_UI", "UI objects created, about to unlock...");
+    
     lvgl_port_unlock();
-    ESP_LOGI("LVGL_UI", "Unlock complete!");
+    
+    ESP_LOGI("LVGL_UI", "✓ Unlock complete!");
+    
+    // Give time for first refresh
+    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI("LVGL_UI", "✓ First refresh should be complete");
 }
 #endif
 
@@ -121,6 +144,7 @@ void app_main(void)
     
     ESP_LOGI(TAG, "Waiting 2s for LVGL task to stabilize...");
     vTaskDelay(pdMS_TO_TICKS(2000));
+    ESP_LOGI(TAG, "Stabilization complete");
 #endif
 
     /* Step 5: LVGL UI Creation */
@@ -134,6 +158,7 @@ void app_main(void)
 #else
     ESP_LOGI(TAG, "Creating minimal test UI...");
     lvgl_create_test_ui();
+    ESP_LOGI(TAG, "✓ lvgl_create_test_ui() returned");
 #endif
     ESP_LOGI(TAG, "✓ UI displayed\n");
 #endif
@@ -219,8 +244,14 @@ void app_main(void)
     ESP_LOGI(TAG, "=== System Ready ===");
     ESP_LOGI(TAG, "Entering main loop...\n");
     
+    uint32_t loop_count = 0;
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(10000));
-        ESP_LOGI(TAG, "Uptime: %lu s", xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        loop_count++;
+        size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        ESP_LOGI(TAG, "[%lu] Uptime: %lu s | Free PSRAM: %zu KB", 
+                 loop_count,
+                 xTaskGetTickCount() * portTICK_PERIOD_MS / 1000,
+                 free_psram / 1024);
     }
 }
