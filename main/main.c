@@ -33,6 +33,7 @@
 #ifdef CONFIG_BSP_ENABLE_LVGL
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
+#include "lvgl_init.h"
 
 static void lvgl_create_test_ui(void)
 {
@@ -134,7 +135,7 @@ void app_main(void)
     /* Step 4: LVGL Init - AFTER Bootstrap (safe PSRAM allocation) */
 #ifdef CONFIG_BSP_ENABLE_LVGL
     ESP_LOGI(TAG, "\n=== LVGL Init (Post-Bootstrap) ===");
-    ret = bsp_lvgl_init();
+    ret = lvgl_port_init_custom();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "LVGL init failed: %s", esp_err_to_name(ret));
     } else {
