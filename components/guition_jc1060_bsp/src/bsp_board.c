@@ -197,7 +197,14 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
         }
     };
     
-    lv_display_t *disp = lvgl_port_add_disp(&disp_cfg);
+    /* CRITICAL: Use lvgl_port_add_disp_dsi() for MIPI-DSI/DPI panels! */
+    const lvgl_port_display_dsi_cfg_t dsi_cfg = {
+        .flags = {
+            .avoid_tearing = true,  /* Enable for smooth rendering */
+        }
+    };
+    
+    lv_display_t *disp = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
     if (!disp) return ESP_FAIL;
     
 #ifdef CONFIG_LVGL_ENABLE_PPA
