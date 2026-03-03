@@ -7,6 +7,7 @@ set(COMPONENT_SRCS
 # Display driver (always needed if BSP enabled)
 if(CONFIG_BSP_ENABLE_DISPLAY)
     list(APPEND COMPONENT_SRCS "drivers/jd9165_bsp.c")
+    list(APPEND COMPONENT_SRCS "utils/backlight_test.c")
 endif()
 
 # Touch driver
