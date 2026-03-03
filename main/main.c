@@ -32,7 +32,14 @@
 #include "rtc_ntp_sync.h"
 #include "esp_hosted_wifi.h"
 #include "bootstrap_manager.h"
+
+#ifdef CONFIG_BSP_ENABLE_DISPLAY
+#include "jd9165_bsp.h"
+#endif
+
+#ifdef CONFIG_APP_ENABLE_DISPLAY_TEST
 #include "display_hw_test.h"
+#endif
 
 #ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
 #include "wifi_config.h"
@@ -219,9 +226,10 @@ void app_main(void)
     ESP_LOGI(TAG, "");
     
     // ========================================
-    // Display Hardware Test
+    // Hardware Tests
     // ========================================
-#ifdef CONFIG_BSP_ENABLE_DISPLAY
+    
+#ifdef CONFIG_APP_ENABLE_DISPLAY_TEST
     ESP_LOGI(TAG, "\n========================================");
     ESP_LOGI(TAG, "   Display Hardware Test");
     ESP_LOGI(TAG, "========================================\n");
@@ -240,18 +248,18 @@ void app_main(void)
         
         // Test 2: Software rendering
         ESP_LOGI(TAG, "\nTest 2: Software-rendered color bars");
-        ret = display_hw_test_color_bar(panel_handle, 1024, 600);
+        ret = display_hw_test_color_bar(panel_handle, CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_DISPLAY_HEIGHT);
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "✓ Software rendering test passed");
+            ESP_LOGI(TAG, "✓ Software rendering test passed\n");
         } else {
-            ESP_LOGW(TAG, "Software rendering test failed: %s", esp_err_to_name(ret));
+            ESP_LOGW(TAG, "Software rendering test failed: %s\n", esp_err_to_name(ret));
         }
     } else {
-        ESP_LOGW(TAG, "Display panel handle not available");
+        ESP_LOGW(TAG, "Display panel handle not available\n");
     }
 #endif
     
-    ESP_LOGI(TAG, "\nEntering main loop...\n");
+    ESP_LOGI(TAG, "Entering main loop...\n");
     
     // Main application loop
     while (1)
