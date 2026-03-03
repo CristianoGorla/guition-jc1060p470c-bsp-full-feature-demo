@@ -10,7 +10,6 @@
 #ifdef CONFIG_BSP_ENABLE_LVGL
 #ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
 
-#include "bsp_lvgl.h"
 #include "lvgl.h"
 #include "esp_log.h"
 
@@ -28,13 +27,12 @@ static void lvgl_demo_simple(void)
 {
     ESP_LOGI(TAG, "Running simple LVGL demo");
 
-    lv_display_t *disp = bsp_lvgl_get_display();
-    if (disp == NULL) {
-        ESP_LOGE(TAG, "LVGL display not initialized");
+    /* Get active screen (LVGL already initialized by bsp_board_init) */
+    lv_obj_t *scr = lv_scr_act();
+    if (scr == NULL) {
+        ESP_LOGE(TAG, "No active screen - LVGL not initialized?");
         return;
     }
-
-    lv_obj_t *scr = lv_display_get_screen_active(disp);
     
     /* Set background color */
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x003a57), LV_PART_MAIN);
@@ -74,11 +72,6 @@ static void lvgl_demo_simple(void)
  */
 void lvgl_demo_run_from_config(void)
 {
-    if (!bsp_lvgl_get_display()) {
-        ESP_LOGE(TAG, "LVGL not initialized, cannot run demo");
-        return;
-    }
-
     ESP_LOGI(TAG, "Starting LVGL demo...");
 
 #ifdef CONFIG_BSP_LVGL_DEMO_SIMPLE
