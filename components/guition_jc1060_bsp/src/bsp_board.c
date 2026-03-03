@@ -275,11 +275,11 @@ esp_err_t bsp_lvgl_init(void)
     
 #ifdef CONFIG_LVGL_ENABLE_PPA
     if (CONFIG_LVGL_DISP_ROTATION_DEGREES == 90) {
-        lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+//         lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
     } else if (CONFIG_LVGL_DISP_ROTATION_DEGREES == 180) {
-        lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
+//         lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
     } else if (CONFIG_LVGL_DISP_ROTATION_DEGREES == 270) {
-        lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_270);
+//         lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_270);
     }
 #endif
     
