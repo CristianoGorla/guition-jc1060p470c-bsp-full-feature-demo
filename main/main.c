@@ -149,7 +149,7 @@ void app_main(void)
     /* Test 1: RTC */
 #ifdef CONFIG_BSP_ENABLE_RTC
     ESP_LOGI(TAG, "\n=== RTC Test ===");
-    rtc_test_read_time();
+    rtc_test_read_only();
     ESP_LOGI(TAG, "✓ RTC test complete\n");
 #endif
 
@@ -158,13 +158,15 @@ void app_main(void)
     ESP_LOGI(TAG, "\n=== SD Card Test ===");
     sdmmc_card_t *card = bootstrap_mgr.sd_card;
     if (card) {
+        uint64_t capacity_mb = ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024);
         ESP_LOGI(TAG, "SD Card Info:");
         ESP_LOGI(TAG, "   Name: %s", card->cid.name);
-        ESP_LOGI(TAG, "   Type: %s", (card->ocr & SD_OCR_SDHC_CAP) ? "SDHC/SDXC" : "SDSC");
+        ESP_LOGI(TAG, "   Size: %llu MB", capacity_mb);
         ESP_LOGI(TAG, "   Speed: %s", (card->csd.tr_speed > 25000000) ? "High Speed" : "Default Speed");
-        ESP_LOGI(TAG, "   Size: %llu MB", ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
-        ESP_LOGI(TAG, "   CSD: ver=%d, sector_size=%d, capacity=%d read_bl_len=%d",
-                 card->csd.csd_ver, card->csd.sector_size, card->csd.capacity, card->csd.read_block_len);
+        ESP_LOGI(TAG, "   Sector size: %d bytes", card->csd.sector_size);
+        ESP_LOGI(TAG, "   Capacity: %d sectors", card->csd.capacity);
+    } else {
+        ESP_LOGW(TAG, "SD card not available");
     }
     ESP_LOGI(TAG, "✓ SD card test complete\n");
 #endif
@@ -181,24 +183,24 @@ void app_main(void)
     ESP_LOGI(TAG, "\n=== WiFi Connect Test ===");
     ESP_LOGI(TAG, "Connecting to: %s", WIFI_SSID);
     
-    ret = wifi_connect(WIFI_SSID, WIFI_PASSWORD);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi connect failed");
-    } else {
-        ESP_LOGI(TAG, "Waiting for IP address...");
-        ret = wait_for_ip();
-        if (ret == ESP_OK) {
-            esp_netif_ip_info_t ip_info;
-            esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-            if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-                ESP_LOGI(TAG, "✓ WiFi connected!");
-                ESP_LOGI(TAG, "   IP: " IPSTR, IP2STR(&ip_info.ip));
-                ESP_LOGI(TAG, "   GW: " IPSTR, IP2STR(&ip_info.gw));
-                ESP_LOGI(TAG, "   Netmask: " IPSTR "\n", IP2STR(&ip_info.netmask));
-            }
+    wifi_connect(WIFI_SSID, WIFI_PASSWORD);
+    ESP_LOGI(TAG, "Waiting for IP address...");
+    wait_for_ip();
+    
+    // Check if we got IP
+    esp_netif_ip_info_t ip_info;
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+        if (ip_info.ip.addr != 0) {
+            ESP_LOGI(TAG, "✓ WiFi connected!");
+            ESP_LOGI(TAG, "   IP: " IPSTR, IP2STR(&ip_info.ip));
+            ESP_LOGI(TAG, "   GW: " IPSTR, IP2STR(&ip_info.gw));
+            ESP_LOGI(TAG, "   Netmask: " IPSTR "\n", IP2STR(&ip_info.netmask));
         } else {
-            ESP_LOGW(TAG, "WiFi timeout\n");
+            ESP_LOGW(TAG, "WiFi connection timeout\n");
         }
+    } else {
+        ESP_LOGW(TAG, "Could not get IP info\n");
     }
 #endif
 
