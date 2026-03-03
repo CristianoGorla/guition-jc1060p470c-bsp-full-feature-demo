@@ -32,6 +32,7 @@
 #include "rtc_ntp_sync.h"
 #include "esp_hosted_wifi.h"
 #include "bootstrap_manager.h"
+#include "display_hw_test.h"
 
 #ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
 #include "wifi_config.h"
@@ -217,14 +218,40 @@ void app_main(void)
 #endif
     ESP_LOGI(TAG, "");
     
-    // TODO: Add application-specific initialization here
-    // Examples:
-    // - LVGL UI initialization (if using LVGL)
-    // - Application task creation
-    // - Sensor polling setup
-    // - Network service initialization
+    // ========================================
+    // Display Hardware Test
+    // ========================================
+#ifdef CONFIG_BSP_ENABLE_DISPLAY
+    ESP_LOGI(TAG, "\n========================================");
+    ESP_LOGI(TAG, "   Display Hardware Test");
+    ESP_LOGI(TAG, "========================================\n");
     
-    ESP_LOGI(TAG, "Entering main loop...\n");
+    esp_lcd_panel_handle_t panel_handle = bsp_display_get_panel_handle();
+    if (panel_handle) {
+        // Test 1: Hardware pattern (faster)
+        ESP_LOGI(TAG, "Test 1: Hardware color bar pattern");
+        ret = display_hw_test_pattern(panel_handle);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "✓ Hardware pattern test passed");
+            vTaskDelay(pdMS_TO_TICKS(3000)); // Show for 3 seconds
+        } else {
+            ESP_LOGW(TAG, "Hardware pattern test failed: %s", esp_err_to_name(ret));
+        }
+        
+        // Test 2: Software rendering
+        ESP_LOGI(TAG, "\nTest 2: Software-rendered color bars");
+        ret = display_hw_test_color_bar(panel_handle, 1024, 600);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "✓ Software rendering test passed");
+        } else {
+            ESP_LOGW(TAG, "Software rendering test failed: %s", esp_err_to_name(ret));
+        }
+    } else {
+        ESP_LOGW(TAG, "Display panel handle not available");
+    }
+#endif
+    
+    ESP_LOGI(TAG, "\nEntering main loop...\n");
     
     // Main application loop
     while (1)
