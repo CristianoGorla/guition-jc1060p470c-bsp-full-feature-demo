@@ -164,8 +164,7 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     ESP_LOGI(TAG, "[PHASE D] ✓ RTC");
 #endif
 
-/* TEMPORARILY DISABLED TO TEST HARDWARE */
-#if 0 && defined(CONFIG_BSP_ENABLE_LVGL)
+#ifdef CONFIG_BSP_ENABLE_LVGL
     ESP_LOGI(TAG, "[PHASE D] Init LVGL...");
     
     const lvgl_port_cfg_t lvgl_cfg = {
@@ -225,7 +224,6 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     ESP_LOGI(TAG, "[PHASE D] ✓ LVGL (1024x600, %d°)", CONFIG_LVGL_DISP_ROTATION_DEGREES);
 #endif
 
-    ESP_LOGW(TAG, "[PHASE D] ⚠️ LVGL DISABLED for hardware test");
     ESP_LOGI(TAG, "[PHASE D] ✓ Complete");
     return ESP_OK;
 }
@@ -240,7 +238,7 @@ esp_err_t bsp_board_init(void)
     ESP_ERROR_CHECK(bsp_phase_d_peripheral_drivers());
     
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ✓ BSP Ready (LVGL disabled for test)");
+    ESP_LOGI(TAG, "  ✓ BSP Ready");
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
