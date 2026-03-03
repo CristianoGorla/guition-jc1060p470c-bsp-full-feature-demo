@@ -10,13 +10,15 @@
 #ifdef CONFIG_BSP_ENABLE_LVGL
 
 #include "bsp_lvgl.h"
-#include "jd9165_bsp.h"
-#include "gt911_bsp.h"
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
+
+/* External handles from BSP components (already initialized in bsp_board_init) */
+extern esp_lcd_panel_handle_t g_panel_handle;  // From jd9165 driver
+extern esp_lcd_touch_handle_t g_touch_handle;  // From gt911 driver
 
 static const char *TAG = "bsp_lvgl";
 
@@ -36,16 +38,12 @@ static lv_display_t *bsp_lvgl_init_display(const bsp_lvgl_config_t *config)
 {
     ESP_LOGI(TAG, "Initializing LVGL display (1024x600, %d buffer lines)", config->buffer.buffer_lines);
 
-    /* Initialize BSP display (JD9165 MIPI-DSI) */
-    esp_lcd_panel_handle_t panel_handle = bsp_display_init();
-    if (panel_handle == NULL) {
-        ESP_LOGE(TAG, "Failed to initialize display");
+    /* Display already initialized by bsp_board_init() - just retrieve handle */
+    if (g_panel_handle == NULL) {
+        ESP_LOGE(TAG, "Display not initialized! Call bsp_board_init() first");
         return NULL;
     }
-
-    /* For MIPI-DSI, panel_handle IS the io_handle */
-    esp_lcd_panel_io_handle_t io_handle = (esp_lcd_panel_io_handle_t)panel_handle;
-    ESP_LOGI(TAG, "Using panel_handle as io_handle for MIPI-DSI");
+    ESP_LOGI(TAG, "Using existing display panel handle");
 
     /* Allocate LVGL draw buffers based on Kconfig */
     size_t buffer_size = LVGL_BUFFER_SIZE * sizeof(lv_color_t);
@@ -78,10 +76,11 @@ static lv_display_t *bsp_lvgl_init_display(const bsp_lvgl_config_t *config)
         ESP_LOGI(TAG, "Buffer 2 allocated: %zu bytes (double buffering enabled)", buffer_size);
     }
 
-    /* Create LVGL display configuration */
+    /* Create LVGL display configuration
+     * For MIPI-DSI: io_handle can be NULL, only panel_handle matters */
     const lvgl_port_display_cfg_t lvgl_disp_cfg = {
-        .io_handle = io_handle,         /* For MIPI-DSI, this is panel_handle */
-        .panel_handle = panel_handle,   /* Same as io_handle for DSI */
+        .io_handle = NULL,                /* Not used for MIPI-DSI */
+        .panel_handle = g_panel_handle,   /* Display handle from BSP */
         .buffer_size = buffer_size,
         .double_buffer = config->buffer.double_buffer,
         .hres = CONFIG_BSP_DISPLAY_WIDTH,
@@ -153,17 +152,17 @@ static lv_indev_t *bsp_lvgl_init_touch(lv_display_t *display)
 
     ESP_LOGI(TAG, "Initializing LVGL touch input (GT911)");
 
-    /* Initialize BSP touch (GT911) */
-    esp_lcd_touch_handle_t touch_handle = bsp_touch_init();
-    if (touch_handle == NULL) {
-        ESP_LOGE(TAG, "Failed to initialize touch");
+    /* Touch already initialized by bsp_board_init() - just retrieve handle */
+    if (g_touch_handle == NULL) {
+        ESP_LOGE(TAG, "Touch not initialized!");
         return NULL;
     }
+    ESP_LOGI(TAG, "Using existing touch handle");
 
     /* Add touch to LVGL */
     const lvgl_port_touch_cfg_t touch_cfg = {
         .disp = display,
-        .handle = touch_handle,
+        .handle = g_touch_handle,
     };
 
     lv_indev_t *indev = lvgl_port_add_touch(&touch_cfg);
