@@ -76,7 +76,7 @@ menu "Guition JC1060P470C Board Configuration"
             comment "──────────────────────────────────────────────────────────"
 
             config BSP_ENABLE_TOUCH
-                bool "  ├─ Enable GT911 Touch Controller (5-point capacitive)"
+                bool "Enable GT911 Touch Controller (5-point capacitive)"
                 default y
                 depends on BSP_ENABLE_I2C
                 help
@@ -108,7 +108,7 @@ menu "Guition JC1060P470C Board Configuration"
             endmenu
 
             config BSP_ENABLE_AUDIO
-                bool "  ├─ Enable ES8311 Audio Codec + NS4150 Amplifier"
+                bool "Enable ES8311 Audio Codec + NS4150 Amplifier"
                 default n
                 depends on BSP_ENABLE_I2C
                 help
@@ -149,7 +149,7 @@ menu "Guition JC1060P470C Board Configuration"
             endmenu
 
             config BSP_ENABLE_RTC
-                bool "  └─ Enable RX8025T Real-Time Clock"
+                bool "Enable RX8025T Real-Time Clock"
                 default n
                 depends on BSP_ENABLE_I2C
                 help
