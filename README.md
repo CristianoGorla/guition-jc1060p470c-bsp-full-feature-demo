@@ -127,8 +127,8 @@ idf.py build flash monitor
 >
 > Enabling both SD Card and WiFi causes SDMMC slot arbitration conflict:
 > - **Error 0x108 (SDIO timeout)** during slot switch (WiFi Slot 1 → SD Slot 0)
-> - **ESP-Hosted auto-restart** triggers boot loop
-> - **Clean Switch Protocol** implemented but insufficient to prevent restart
+> - **ESP-Hosted auto-restart** triggers boot loop (unless disabled - see workaround below)
+> - **Clean Switch Protocol** implemented but insufficient to prevent error
 >
 > **Current Status**: SD Card support **suspended** pending ESP-Hosted driver patch
 
@@ -198,7 +198,7 @@ Phase B: SD Manager (Priority 22) - ⚠️ DISABLED BY DEFAULT
   
   ⚠️ KNOWN ISSUE:
       - Step 2 (controller deinit) triggers Error 0x108
-      - ESP-Hosted detects error and restarts host
+      - ESP-Hosted detects error and restarts host (if CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE=y)
       - Causes boot loop
       - FIX SUSPENDED pending ESP-Hosted patch
 ```
@@ -455,7 +455,17 @@ I (8799) H_SDIO_DRV: Host is resetting itself
 I (8799) os_wrapper_esp: Restarting host
 ```
 
-**Solution:** Disable SD Card in menuconfig:
+**Root Cause:**
+
+The error occurs because:
+1. Bootstrap manager attempts to switch SDMMC controller from WiFi (Slot 1) to SD Card (Slot 0)
+2. During `sdmmc_host_deinit()`, ESP-Hosted detects communication error 0x108 (SDIO timeout)
+3. By default, ESP-Hosted is configured to restart the host when transport errors occur
+4. This triggers `esp_restart()`, causing infinite boot loop
+
+**Solution 1: Disable SD Card (Recommended)**
+
+Disable SD Card in menuconfig:
 ```bash
 idf.py menuconfig
 # Navigate to: Guition Board Config → Hardware Peripherals
@@ -463,11 +473,49 @@ idf.py menuconfig
 idf.py build flash
 ```
 
-**Why it happens:**
-- Error 0x108 (timeout) occurs during SDMMC slot switch
-- ESP-Hosted detects error and triggers automatic host restart
-- Clean Switch Protocol implemented but insufficient to prevent restart
-- Fix suspended pending ESP-Hosted driver patch
+**Solution 2: Disable ESP-Hosted Auto-Restart (Advanced)**
+
+If you need to experiment with SD Card support, disable the auto-restart behavior:
+
+```bash
+idf.py menuconfig
+# Navigate to: Component config → ESP-Hosted config
+# Find "Restart transport on failure"
+# Set to [ ] (disabled)
+idf.py build flash
+```
+
+> [!CAUTION]
+> **Critical Configuration for System Stability**
+>
+> The `CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE` option controls whether
+> ESP-Hosted automatically restarts the host system when SDIO communication errors occur.
+>
+> **When ENABLED (default):**
+> - Error 0x108 during SDMMC slot switching triggers automatic `esp_restart()`
+> - Causes infinite boot loop when SD Card is enabled
+> - Recommended for production WiFi-only configurations
+>
+> **When DISABLED:**
+> - System continues operation despite SDIO errors
+> - Allows experimentation with SD Card support
+> - May leave ESP-Hosted in undefined state if errors occur
+> - WiFi functionality may be degraded after error
+>
+> **This project REQUIRES this option DISABLED** when `CONFIG_BSP_ENABLE_SDCARD=y`
+
+**Recommended Configuration for WiFi-Only (Stable):**
+```bash
+CONFIG_BSP_ENABLE_SDCARD=n  # SD Card disabled
+CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE=n  # No auto-restart
+CONFIG_ESP_HOSTED_SLAVE_RESET_ONLY_IF_NECESSARY=y  # Smart reset
+```
+
+**Why this configuration works:**
+- SD Card disabled prevents slot arbitration errors
+- No auto-restart prevents boot loops if errors occur
+- Smart reset minimizes unnecessary ESP32-C6 resets
+- System remains stable and WiFi works perfectly
 
 #### WiFi connection timeout
 
