@@ -218,7 +218,7 @@ esp_err_t bsp_lvgl_init(void)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
     
-    /* LVGL Display Configuration (matches vendor demo exactly) */
+    /* LVGL Display Configuration - MATCHES VENDOR EXACTLY */
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = NULL,  // DPI panel has no DBI I/O
         .panel_handle = g_display_handle,
@@ -228,7 +228,11 @@ esp_err_t bsp_lvgl_init(void)
         .vres = 600,
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
-        .rotation = { .swap_xy = false, .mirror_x = false, .mirror_y = false },
+        .rotation = { 
+            .swap_xy = true,    /* 🔥 VENDOR: swap_xy=true! */
+            .mirror_x = false, 
+            .mirror_y = false 
+        },
         .flags = {
             .buff_dma = false,
             .buff_spiram = true,  /* Use PSRAM for LVGL buffer */
@@ -267,6 +271,7 @@ esp_err_t bsp_lvgl_init(void)
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600, %d°)", CONFIG_LVGL_DISP_ROTATION_DEGREES);
     ESP_LOGI(TAG, "  Buffer: 480x800 (384K pixels, double)");
+    ESP_LOGI(TAG, "  🔥 Rotation: swap_xy=true (vendor config)");
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
