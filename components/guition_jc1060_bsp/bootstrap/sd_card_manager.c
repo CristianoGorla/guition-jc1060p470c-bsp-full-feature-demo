@@ -2,8 +2,8 @@
  * @file sd_card_manager.c
  * @brief SD Card manager implementation for bootstrap system
  * 
- * v1.0.0-beta pattern: WiFi initializes SDMMC controller first,
- * then SD mounts using dummy init functions.
+ * CRITICAL FIX: WiFi initializes SDMMC for Slot 1, but SD needs Slot 0.
+ * Must deinit/reinit controller before accessing different slot.
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -45,29 +45,6 @@ static bool g_is_mounted = false;
 #endif
 
 /**
- * @brief Dummy host init function (ESP-Hosted compatibility)
- * 
- * When WiFi init_wifi() is called first, it initializes the SDMMC controller.
- * This dummy function prevents re-initialization.
- */
-static esp_err_t sdmmc_host_init_dummy(void)
-{
-    ESP_LOGI(TAG, "Skipping sdmmc_host_init (controller already initialized by WiFi)");
-    return ESP_OK;
-}
-
-/**
- * @brief Dummy host deinit function (ESP-Hosted compatibility)
- * 
- * Keeps SDMMC controller active for ESP-Hosted operation.
- */
-static esp_err_t sdmmc_host_deinit_dummy(void)
-{
-    ESP_LOGI(TAG, "Skipping sdmmc_host_deinit (keep controller active for WiFi)");
-    return ESP_OK;
-}
-
-/**
  * @brief Enable pull-ups on SDMMC data lines
  * 
  * Internal pull-ups prevent floating signals that cause 0x107 errors.
@@ -102,14 +79,33 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
     
     ESP_LOGI(TAG, "=== SD Card Mount (Phase B - after WiFi) ===");
     
-    // Step 1: Enable SD card power (managed by BSP Phase A, already on)
-    // Note: BSP Phase A already powered up SD card via GPIO 36
+    // Step 1: SD card power (managed by BSP Phase A, already on)
     ESP_LOGI(TAG, "SD Card power already enabled by BSP Phase A (GPIO%d)", CONFIG_BSP_PIN_SD_POWER_EN);
     
     // Step 2: Enable pull-ups BEFORE mount
     sd_card_enable_pullups();
     
-    // Step 3: Configure Slot 0 pins
+    // Step 3: CRITICAL - Reinitialize controller for Slot 0
+    // WiFi initialized SDMMC for Slot 1, we need to switch to Slot 0
+    ESP_LOGI(TAG, "Deinitializing SDMMC controller (release Slot 1 from WiFi)...");
+    esp_err_t ret = sdmmc_host_deinit();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "Host deinit failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    vTaskDelay(pdMS_TO_TICKS(200));  // Bus settling time
+    
+    ESP_LOGI(TAG, "Reinitializing SDMMC controller for Slot 0...");
+    ret = sdmmc_host_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Host init failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        return ret;
+    }
+    
+    vTaskDelay(pdMS_TO_TICKS(100));  // Controller stabilization
+    
+    // Step 4: Configure Slot 0 pins
     sdmmc_slot_config_t slot_config = {
         .clk = CONFIG_BSP_PIN_CLK,
         .cmd = CONFIG_BSP_PIN_CMD,
@@ -123,29 +119,27 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         .flags = 0,
     };
     
-    // Step 4: Init slot only (host already initialized by WiFi)
-    ESP_LOGI(TAG, "Initializing SDMMC Slot 0 (host already active)...");
-    esp_err_t ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
+    // Step 5: Init Slot 0
+    ESP_LOGI(TAG, "Initializing SDMMC Slot 0...");
+    ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Slot init failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        ESP_LOGE(TAG, "Slot 0 init failed: %s (0x%x)", esp_err_to_name(ret), ret);
         return ret;
     }
     
-    // Step 5: Configure mount options
+    // Step 6: Configure mount options
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = false,  // Don't auto-format
+        .format_if_mount_failed = false,
         .max_files = 5,
         .allocation_unit_size = 16 * 1024
     };
     
-    // Step 6: Create host config with dummy init/deinit
+    // Step 7: Mount filesystem
+    ESP_LOGI(TAG, "Mounting FAT filesystem on Slot 0...");
+    
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     host.slot = SDMMC_HOST_SLOT_0;
-    host.init = &sdmmc_host_init_dummy;    // Skip host init (WiFi already did it)
-    host.deinit = &sdmmc_host_deinit_dummy; // Skip host deinit (keep active)
     
-    // Step 7: Mount filesystem
-    ESP_LOGI(TAG, "Mounting FAT filesystem (using dummy host init)...");
     ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &g_sd_card);
     
     if (ret == ESP_OK) {
@@ -187,7 +181,6 @@ esp_err_t sd_card_unmount(void)
 
 esp_err_t sd_card_unmount_safe(void)
 {
-    // Wrapper for arbiter integration (same as sd_card_unmount)
     return sd_card_unmount();
 }
 
