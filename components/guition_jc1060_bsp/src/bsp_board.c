@@ -63,10 +63,6 @@ static const char *TAG = "BSP";
 
 i2c_master_bus_handle_t g_i2c_bus_handle = NULL;
 
-/* Global handles for LVGL initialization (stored by BSP, used later) */
-static esp_lcd_panel_handle_t g_display_handle = NULL;
-static esp_lcd_touch_handle_t g_touch_handle = NULL;
-
 static bool bsp_needs_hard_reset(void)
 {
 #ifndef CONFIG_BSP_ENABLE_HARD_RESET
@@ -146,14 +142,14 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     ESP_ERROR_CHECK(bsp_i2c_bus_init());
 
 #ifdef CONFIG_BSP_ENABLE_DISPLAY
-    g_display_handle = bsp_display_init();
-    if (!g_display_handle) return ESP_FAIL;
+    esp_lcd_panel_handle_t display = bsp_display_init();
+    if (!display) return ESP_FAIL;
     ESP_LOGI(TAG, "[PHASE D] ✓ Display");
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_TOUCH
-    g_touch_handle = bsp_touch_init();
-    if (!g_touch_handle) return ESP_FAIL;
+    esp_lcd_touch_handle_t touch = bsp_touch_init();
+    if (!touch) return ESP_FAIL;
     ESP_LOGI(TAG, "[PHASE D] ✓ Touch");
 #endif
 
@@ -168,36 +164,9 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     ESP_LOGI(TAG, "[PHASE D] ✓ RTC");
 #endif
 
-    ESP_LOGI(TAG, "[PHASE D] ✓ Complete (LVGL not yet initialized)");
-    return ESP_OK;
-}
-
-esp_err_t bsp_board_init(void)
-{
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Guition BSP v1.3.0");
-    ESP_LOGI(TAG, "========================================");
-    
-    ESP_ERROR_CHECK(bsp_phase_a_power_manager());
-    ESP_ERROR_CHECK(bsp_phase_d_peripheral_drivers());
-    
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ✓ BSP Hardware Ready");
-    ESP_LOGI(TAG, "  ⚠ Call bsp_lvgl_init() after bootstrap!");
-    ESP_LOGI(TAG, "========================================");
-    
-    return ESP_OK;
-}
-
-#ifdef CONFIG_BSP_ENABLE_LVGL
-esp_err_t bsp_lvgl_init(void)
-{
-    if (!g_display_handle || !g_touch_handle) {
-        ESP_LOGE(TAG, "Display or Touch not initialized! Call bsp_board_init() first.");
-        return ESP_FAIL;
-    }
-    
-    ESP_LOGI(TAG, "[LVGL] Initializing LVGL after bootstrap...");
+/* TEMPORARILY DISABLED TO TEST HARDWARE */
+#if 0 && defined(CONFIG_BSP_ENABLE_LVGL)
+    ESP_LOGI(TAG, "[PHASE D] Init LVGL...");
     
     const lvgl_port_cfg_t lvgl_cfg = {
         .task_priority = 4,
@@ -208,10 +177,10 @@ esp_err_t bsp_lvgl_init(void)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
     
-    /* LVGL Display Configuration (matches vendor config) */
+    /* LVGL Display Configuration (matches vendor main.c working config) */
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = NULL,  // DPI panel has no DBI I/O
-        .panel_handle = g_display_handle,
+        .panel_handle = display,
         .buffer_size = 480 * 800,  /* 384,000 pixels (vendor main.c config) */
         .double_buffer = 0,         /* CRITICAL: Single buffer (vendor config) */
         .hres = 1024,
@@ -250,14 +219,32 @@ esp_err_t bsp_lvgl_init(void)
     }
 #endif
     
-    const lvgl_port_touch_cfg_t touch_cfg = { .disp = disp, .handle = g_touch_handle };
+    const lvgl_port_touch_cfg_t touch_cfg = { .disp = disp, .handle = touch };
     lvgl_port_add_touch(&touch_cfg);
     
-    ESP_LOGI(TAG, "[LVGL] ✓ LVGL initialized (1024x600, %d°)", CONFIG_LVGL_DISP_ROTATION_DEGREES);
+    ESP_LOGI(TAG, "[PHASE D] ✓ LVGL (1024x600, %d°)", CONFIG_LVGL_DISP_ROTATION_DEGREES);
+#endif
+
+    ESP_LOGW(TAG, "[PHASE D] ⚠️ LVGL DISABLED for hardware test");
+    ESP_LOGI(TAG, "[PHASE D] ✓ Complete");
+    return ESP_OK;
+}
+
+esp_err_t bsp_board_init(void)
+{
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  Guition BSP v1.3.0");
+    ESP_LOGI(TAG, "========================================");
+    
+    ESP_ERROR_CHECK(bsp_phase_a_power_manager());
+    ESP_ERROR_CHECK(bsp_phase_d_peripheral_drivers());
+    
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  ✓ BSP Ready (LVGL disabled for test)");
+    ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
 }
-#endif
 
 void bsp_board_deinit(void)
 {
