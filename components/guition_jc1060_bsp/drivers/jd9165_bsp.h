@@ -33,6 +33,16 @@ extern "C" {
 esp_lcd_panel_handle_t bsp_display_init(void);
 
 /**
+ * @brief Get the LCD panel handle
+ * 
+ * Returns the handle to the initialized LCD panel.
+ * This allows applications to use LCD panel operations directly.
+ * 
+ * @return LCD panel handle if display is initialized, NULL otherwise
+ */
+esp_lcd_panel_handle_t bsp_display_get_panel_handle(void);
+
+/**
  * @brief Set display backlight brightness
  * 
  * @param brightness_percent Brightness level 0-100%
