@@ -176,20 +176,20 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
     
-    /* CRITICAL: io_handle = NULL for DPI panels (no GRAM)! */
+    /* LVGL Display Configuration (matches vendor config) */
     const lvgl_port_display_cfg_t disp_cfg = {
-        .io_handle = NULL,  // ✓ DPI panel has no DBI I/O!
+        .io_handle = NULL,  // DPI panel has no DBI I/O
         .panel_handle = display,
-        .buffer_size = 1024 * 50,
-        .double_buffer = 1,
+        .buffer_size = 1024 * 50,  /* 51,200 pixels (vendor default) */
+        .double_buffer = 0,         /* CRITICAL: Single buffer (vendor config) */
         .hres = 1024,
         .vres = 600,
         .monochrome = false,
-        .color_format = LV_COLOR_FORMAT_RGB565,  /* CRITICAL: Required for buffer allocation! */
+        .color_format = LV_COLOR_FORMAT_RGB565,
         .rotation = { .swap_xy = false, .mirror_x = false, .mirror_y = false },
         .flags = {
             .buff_dma = false,
-            .buff_spiram = true,
+            .buff_spiram = true,  /* Use PSRAM for LVGL buffer */
 #ifdef CONFIG_LVGL_ENABLE_PPA
             .sw_rotate = (CONFIG_LVGL_DISP_ROTATION_DEGREES != 0),
 #else
@@ -198,10 +198,10 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
         }
     };
     
-    /* CRITICAL: Use lvgl_port_add_disp_dsi() for MIPI-DSI/DPI panels! */
+    /* DSI-specific configuration */
     const lvgl_port_display_dsi_cfg_t dsi_cfg = {
         .flags = {
-            .avoid_tearing = true,  /* Enable for smooth rendering */
+            .avoid_tearing = true,  /* Enable anti-tearing (vendor config) */
         }
     };
     
