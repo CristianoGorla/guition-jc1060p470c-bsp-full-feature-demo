@@ -238,7 +238,7 @@ esp_err_t bsp_lvgl_init(void)
 
     const uint32_t buffer_pixels = CONFIG_BSP_DISPLAY_WIDTH * CONFIG_BSP_LVGL_BUFFER_LINES;
     
-    /* LVGL Display Configuration */
+    /* LVGL Display Configuration - VENDOR COMPATIBLE */
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = NULL,  // DPI panel has no DBI I/O
         .panel_handle = g_display_handle,
@@ -254,9 +254,9 @@ esp_err_t bsp_lvgl_init(void)
             .mirror_y = false 
         },
         .flags = {
-            .buff_dma = true,       /* DMA buffers for DSI performance */
-            .buff_spiram = false,   /* Use DRAM, not SPIRAM for buffers */
-            .sw_rotate = false,     /* No software rotation (landscape native) */
+            .buff_dma = true,       /* VENDOR: DMA enabled */
+            .buff_spiram = true,    /* VENDOR: Use PSRAM for buffers */
+            .sw_rotate = true,      /* VENDOR: SW rotation prevents hardware swap_xy calls */
         }
     };
     
@@ -271,6 +271,7 @@ esp_err_t bsp_lvgl_init(void)
     ESP_LOGI(TAG, "[LVGL] Buffer: %dx%d = %u pixels (%.1f KB per buffer)",
              CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
              buffer_pixels, (buffer_pixels * 2) / 1024.0f);
+    ESP_LOGI(TAG, "[LVGL] Config: buff_dma=true, buff_spiram=true, sw_rotate=true");
     
     lv_display_t *disp = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
     if (!disp) {
@@ -295,6 +296,7 @@ esp_err_t bsp_lvgl_init(void)
              CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
              (buffer_pixels * 2) / 1024.0f,
              CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
+    ESP_LOGI(TAG, "  Flags: DMA+SPIRAM, SW rotation enabled");
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
