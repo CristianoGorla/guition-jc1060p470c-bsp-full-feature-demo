@@ -31,6 +31,7 @@
 #ifdef CONFIG_BSP_ENABLE_LVGL
 #include "esp_lvgl_port.h"
 #include "lvgl.h"
+#include "esp_lcd_mipi_dsi.h"
 #endif
 
 static const char *TAG = "BSP";
@@ -193,6 +194,20 @@ esp_err_t bsp_board_init(void)
 esp_err_t bsp_lvgl_init(void)
 {
 #ifdef CONFIG_BSP_ENABLE_LVGL
+    #ifdef CONFIG_BSP_ENABLE_LVGL
+/**
+ * @brief Callback invoked when MIPI DSI color transfer completes
+ * @note This callback notifies LVGL that the flush operation is complete,
+ *       allowing it to release the wait in lv_display_flush_wait_for_flushing()
+ */
+static bool on_color_trans_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx)
+{
+    lv_display_t *disp = (lv_display_t *)user_ctx;
+    lv_display_flush_ready(disp);
+    return false;  // No yield needed
+}
+#endif
+
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  LVGL Software Layer Init");
     ESP_LOGI(TAG, "========================================");
@@ -253,6 +268,13 @@ esp_err_t bsp_lvgl_init(void)
         ESP_LOGE(TAG, "Failed to add LVGL display!");
         return ESP_FAIL;
     }
+
+        /* Register DSI on_color_trans_done callback to notify LVGL flush completion */
+    esp_lcd_dpi_panel_event_callbacks_t cbs = {
+        .on_color_trans_done = on_color_trans_done,
+    };
+    ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(g_display_handle, &cbs, disp));
+    ESP_LOGI(TAG, "[LVGL] DSI flush callback registered");
     
 #ifdef CONFIG_LVGL_ENABLE_PPA
     if (CONFIG_LVGL_DISP_ROTATION_DEGREES == 90) {
