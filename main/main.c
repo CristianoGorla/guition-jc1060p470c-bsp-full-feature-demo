@@ -31,7 +31,6 @@
 #ifdef CONFIG_BSP_ENABLE_LVGL
 #include "lvgl.h"
 #include "bsp_lvgl.h"
-#include "lvgl_demo.h"
 
 static void lvgl_create_test_ui(void)
 {
@@ -112,11 +111,7 @@ void app_main(void)
 #ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
         // Auto-run demo if enabled in menuconfig
         ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
-        ret = lvgl_demo_run_from_config();
-        if (ret != ESP_OK) {
-            ESP_LOGW(TAG, "Demo failed, showing test UI instead");
-            lvgl_create_test_ui();
-        }
+        lvgl_demo_run_from_config();
 #else
         // Manual test UI
         ESP_LOGI(TAG, "Creating test UI...");
