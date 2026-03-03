@@ -17,8 +17,10 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_SPEED_200M=y
 CONFIG_SPIRAM_XIP_FROM_PSRAM=y
 
-# Cache Configuration (Vendor optimized for display)
+# Cache Configuration (optimized for display)
+# Note: P4 rev < 3.0 uses 64B, rev >= 3.0 can use 128B
 CONFIG_CACHE_L2_CACHE_256KB=y
+CONFIG_CACHE_L2_CACHE_LINE_64B=y
 CONFIG_CACHE_L2_CACHE_LINE_128B=y
 
 # FreeRTOS
