@@ -172,30 +172,40 @@ menu "Guition JC1060P470C Board Configuration"
         endmenu # I2C Bus Configuration
 
         comment "────────────────────────────────────────────────────────────────"
-        comment "SD CARD (SDIO Slot 0) - ⚠️ EXPERIMENTAL"
+        comment "⚠️  SD CARD - DISABLED BY DEFAULT (EXPERIMENTAL)"
+        comment "────────────────────────────────────────────────────────────────"
+        comment "KNOWN ISSUE: Error 0x108 causes boot loop with WiFi enabled"
+        comment "RECOMMENDATION: Keep disabled for production use"
         comment "────────────────────────────────────────────────────────────────"
 
         config BSP_ENABLE_SDCARD
-            bool "▶ Enable SD Card (4-bit SDIO, GPIO36 power control)"
+            bool "Enable SD Card (SDIO Slot 0, 4-bit mode, GPIO36 power)"
             default n
             help
-                ⚠️ EXPERIMENTAL: SD Card support is currently DISABLED by default
-                due to unresolved SDMMC controller slot arbitration issues.
+                ⚠️ EXPERIMENTAL FEATURE - DISABLED BY DEFAULT
                 
+                SD Card support is currently disabled due to unresolved
+                SDMMC controller slot arbitration with ESP-Hosted WiFi.
+                
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 KNOWN ISSUE:
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                   • Error 0x108 (SDIO timeout) during WiFi→SD slot switch
-                  • Causes boot loop when switching from Slot 1 (WiFi) to Slot 0 (SD)
-                  • Clean Switch Protocol implemented but ESP-Hosted triggers restart
+                  • ESP-Hosted detects error and triggers host restart
+                  • Results in continuous boot loop
+                  • Clean Switch Protocol implemented but insufficient
                 
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 RECOMMENDATION:
-                  • Do NOT enable unless you need SD card support
-                  • Use WiFi-only configuration for production
-                  • SD card fix is suspended pending ESP-Hosted patch
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  ✅ Keep DISABLED for production (WiFi works perfectly)
+                  ⚠️ Enable ONLY for experimental testing
+                  🔧 Fix suspended pending ESP-Hosted driver patch
                 
-                If enabled, SD card will be mounted AFTER WiFi initialization.
-                This may cause system instability.
+                If you enable this despite warnings, SD card will be mounted
+                AFTER WiFi initialization, which may cause system instability.
 
-        menu "SD Card Configuration"
+        menu "SD Card Configuration (Experimental)"
             visible if BSP_ENABLE_SDCARD
 
             config BSP_SDMMC_SLOT
@@ -203,7 +213,7 @@ menu "Guition JC1060P470C Board Configuration"
                 default 0
                 range 0 0
                 help
-                    Only Slot 0 available (Slot 1 = WiFi)
+                    Only Slot 0 available (Slot 1 reserved for WiFi)
 
             choice BSP_SDMMC_BUS_WIDTH
                 prompt "SD bus width"
@@ -254,18 +264,18 @@ menu "Guition JC1060P470C Board Configuration"
         endmenu # SD Card Configuration
 
         comment "────────────────────────────────────────────────────────────────"
-        comment "WIFI CO-PROCESSOR (ESP32-C6 via ESP-Hosted on SDIO Slot 1)"
+        comment "WIFI CO-PROCESSOR (ESP32-C6 via ESP-Hosted)"
         comment "────────────────────────────────────────────────────────────────"
 
         config BSP_ENABLE_WIFI
-            bool "▶ Enable WiFi (ESP-Hosted SDIO @ 40MHz)"
+            bool "▶ Enable WiFi (ESP-Hosted SDIO @ 40MHz on Slot 1)"
             default y
             help
                 Enable WiFi using ESP-Hosted on SDIO Slot 1.
                 The ESP32-C6 WiFi co-processor communicates via SDIO.
                 
-                ✅ STABLE: WiFi works reliably when SD Card is disabled.
-                ⚠️ CONFLICT: Enabling both WiFi and SD may cause boot loops.
+                ✅ STABLE: Works reliably when SD Card is disabled
+                ⚠️ CONFLICT: Enabling SD Card may cause boot loops (0x108 error)
 
         menu "WiFi ESP-Hosted Configuration"
             visible if BSP_ENABLE_WIFI
