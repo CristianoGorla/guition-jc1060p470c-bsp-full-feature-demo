@@ -15,10 +15,7 @@
 #include "freertos/task.h"
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
-#include "bsp_board.h"
-
-// Access to BSP private display handle (extern from jd9165_bsp.c)
-extern void bsp_display_backlight_set(uint8_t duty_percent);
+#include "../components/guition_jc1060_bsp/drivers/jd9165_bsp.h"
 
 static const char *TAG = "BACKLIGHT_TEST";
 
@@ -61,7 +58,7 @@ void backlight_test_run(void)
     // SWEEP 1: 100% → 0% (fade out)
     ESP_LOGI(TAG, "[1/4] Sweep: 100%% → 0%% (fade out)");
     for (int duty = 100; duty >= 0; duty -= 2) {
-        bsp_display_backlight_set(duty);
+        bsp_display_set_brightness(duty);
         vTaskDelay(pdMS_TO_TICKS(50));
     }
     
@@ -71,7 +68,7 @@ void backlight_test_run(void)
     // SWEEP 2: 0% → 100% (fade in)
     ESP_LOGI(TAG, "[3/4] Sweep: 0%% → 100%% (fade in)");
     for (int duty = 0; duty <= 100; duty += 2) {
-        bsp_display_backlight_set(duty);
+        bsp_display_set_brightness(duty);
         vTaskDelay(pdMS_TO_TICKS(50));
     }
     
@@ -81,13 +78,13 @@ void backlight_test_run(void)
     // SWEEP 3: 100% → 0% (final fade out)
     ESP_LOGI(TAG, "[5/4] Sweep: 100%% → 0%% (final)");
     for (int duty = 100; duty >= 0; duty -= 2) {
-        bsp_display_backlight_set(duty);
+        bsp_display_set_brightness(duty);
         vTaskDelay(pdMS_TO_TICKS(50));
     }
     
     // Restore 100% brightness
     ESP_LOGI(TAG, "Restoring brightness to 100%%");
-    bsp_display_backlight_set(100);
+    bsp_display_set_brightness(100);
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ Backlight test complete");
