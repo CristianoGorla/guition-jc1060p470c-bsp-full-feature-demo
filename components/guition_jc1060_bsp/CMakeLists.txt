@@ -12,6 +12,7 @@ idf_component_register(
         "utils/rtc_ntp_sync.c"
         "utils/rtc_test.c"
         "utils/sd_card_functions.c"
+                "utils/display_hw_test.c"
     INCLUDE_DIRS 
         "include"
         "drivers"
