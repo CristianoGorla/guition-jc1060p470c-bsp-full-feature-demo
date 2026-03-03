@@ -17,9 +17,9 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_SPEED_200M=y
 CONFIG_SPIRAM_XIP_FROM_PSRAM=y
 
-# Cache Configuration (Required for display performance)
+# Cache Configuration (Vendor optimized for display)
 CONFIG_CACHE_L2_CACHE_256KB=y
-CONFIG_CACHE_L2_CACHE_LINE_128B=y
+CONFIG_CACHE_L2_CACHE_LINE_64B=y
 
 # FreeRTOS
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
