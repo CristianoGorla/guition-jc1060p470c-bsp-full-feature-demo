@@ -246,7 +246,7 @@ esp_err_t bsp_lvgl_init(void)
             .mirror_y = false 
         },
         .flags = {
-            .buff_dma = false,
+            .buff_dma = true,
             .buff_spiram = true,  /* Use PSRAM for LVGL buffer */
             .sw_rotate = true,    /* VENDOR: Software rotation enabled */
         }
