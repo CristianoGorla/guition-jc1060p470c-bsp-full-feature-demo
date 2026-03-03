@@ -196,6 +196,7 @@ esp_err_t bsp_lvgl_init(void)
 #ifdef CONFIG_BSP_ENABLE_LVGL
 /**
  * @brief Callback invoked when MIPI DSI color transfer completes
+ {
  * @note This callback notifies LVGL that the flush operation is complete,
  *       allowing it to release the wait in lv_display_flush_wait_for_flushing()
  */
@@ -296,8 +297,8 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_
     return ESP_OK;
 #else
     ESP_LOGW(TAG, "LVGL disabled in menuconfig");
-    return ESP_OK;
-#endif
+    return ESP_ERR_NOT_SUPPORTED;
+    #endif
 }
 
 i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void)
