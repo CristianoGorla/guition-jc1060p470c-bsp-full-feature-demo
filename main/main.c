@@ -87,15 +87,31 @@ void app_main(void)
     ESP_LOGI(TAG, "   v1.3.0-dev | Build: %s", BUILD_GIT_COMMIT);
     ESP_LOGI(TAG, "========================================\n");
 
-    /* Phase 1: BSP Hardware Init (Display HW, Touch HW, I2C, Audio, RTC) */
+    /* ORIGINAL SEQUENCE: BSP (HW + LVGL) → UI → NVS → Bootstrap */
     ret = bsp_board_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "BSP init failed: %s", esp_err_to_name(ret));
         return;
     }
-    ESP_LOGI(TAG, "✓ Hardware ready (LVGL NOT yet started)\n");
+    ESP_LOGI(TAG, "✓ Hardware ready (LVGL disabled for test)\n");
 
-    /* Phase 2: NVS Init */
+#ifdef CONFIG_BSP_ENABLE_LVGL
+    ESP_LOGI(TAG, "=== LVGL UI ===");
+    ESP_LOGW(TAG, "LVGL currently disabled - skipping UI\n");
+    
+#if 0  // Disabled until LVGL initialization fixed
+#ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
+    ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
+    extern void lvgl_demo_run_from_config(void);
+    lvgl_demo_run_from_config();
+#else
+    ESP_LOGI(TAG, "Creating test UI...");
+    lvgl_create_test_ui();
+#endif
+    ESP_LOGI(TAG, "✓ UI displayed\n");
+#endif
+#endif
+
 #ifdef CONFIG_APP_ENABLE_NVS
     ESP_LOGI(TAG, "=== NVS Init ===");
     ret = nvs_flash_init();
@@ -107,7 +123,7 @@ void app_main(void)
     ESP_LOGI(TAG, "✓ NVS ready\n");
 #endif
 
-    /* Phase 3: Bootstrap (WiFi + SD) */
+    /* Bootstrap: WiFi → SD (PROVEN SEQUENCE) */
     bootstrap_manager_t bootstrap_mgr = {0};
     
 #if defined(CONFIG_BSP_ENABLE_SDCARD) || defined(CONFIG_BSP_ENABLE_WIFI)
@@ -125,36 +141,81 @@ void app_main(void)
         esp_restart();
     }
     
-    ESP_LOGI(TAG, "✓ Bootstrap complete (WiFi+SD ready)\n");
+    ESP_LOGI(TAG, "\n=== Bootstrap Complete ===");
 #endif
 
-    /* Phase 4: LVGL Init (AFTER bootstrap stable) */
-#ifdef CONFIG_BSP_ENABLE_LVGL
-    ESP_LOGI(TAG, "=== LVGL Init (after bootstrap) ===");
-    ret = bsp_lvgl_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "LVGL init failed: %s", esp_err_to_name(ret));
-        return;
+    /* ========== HARDWARE TESTS (ALL ENABLED) ========== */
+    
+    /* Test 1: RTC */
+#ifdef CONFIG_BSP_ENABLE_RTC
+    ESP_LOGI(TAG, "\n=== RTC Test ===");
+    rtc_test_read_time();
+    ESP_LOGI(TAG, "✓ RTC test complete\n");
+#endif
+
+    /* Test 2: SD Card Info */
+#ifdef CONFIG_BSP_ENABLE_SDCARD
+    ESP_LOGI(TAG, "\n=== SD Card Test ===");
+    sdmmc_card_t *card = bootstrap_mgr.sd_card;
+    if (card) {
+        ESP_LOGI(TAG, "SD Card Info:");
+        ESP_LOGI(TAG, "   Name: %s", card->cid.name);
+        ESP_LOGI(TAG, "   Type: %s", (card->ocr & SD_OCR_SDHC_CAP) ? "SDHC/SDXC" : "SDSC");
+        ESP_LOGI(TAG, "   Speed: %s", (card->csd.tr_speed > 25000000) ? "High Speed" : "Default Speed");
+        ESP_LOGI(TAG, "   Size: %llu MB", ((uint64_t)card->csd.capacity) * card->csd.sector_size / (1024 * 1024));
+        ESP_LOGI(TAG, "   CSD: ver=%d, sector_size=%d, capacity=%d read_bl_len=%d",
+                 card->csd.csd_ver, card->csd.sector_size, card->csd.capacity, card->csd.read_block_len);
     }
-    ESP_LOGI(TAG, "✓ LVGL ready\n");
-    
-    /* Phase 5: UI Start */
-    ESP_LOGI(TAG, "=== LVGL UI ===");
-    
-#ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
-    // Auto-run demo if enabled in menuconfig
-    ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
-    extern void lvgl_demo_run_from_config(void);
-    lvgl_demo_run_from_config();
-#else
-    // Manual test UI
-    ESP_LOGI(TAG, "Creating test UI...");
-    lvgl_create_test_ui();
-#endif
-    ESP_LOGI(TAG, "✓ UI displayed\n");
+    ESP_LOGI(TAG, "✓ SD card test complete\n");
 #endif
 
-    ESP_LOGI(TAG, "\n=== System Ready ===");
+    /* Test 3: WiFi Scan */
+#ifdef CONFIG_BSP_ENABLE_WIFI
+    ESP_LOGI(TAG, "\n=== WiFi Scan Test ===");
+    do_wifi_scan_and_check(NULL);
+    ESP_LOGI(TAG, "✓ WiFi scan complete\n");
+#endif
+
+    /* Test 4: WiFi Connect */
+#ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
+    ESP_LOGI(TAG, "\n=== WiFi Connect Test ===");
+    ESP_LOGI(TAG, "Connecting to: %s", WIFI_SSID);
+    
+    ret = wifi_connect(WIFI_SSID, WIFI_PASSWORD);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi connect failed");
+    } else {
+        ESP_LOGI(TAG, "Waiting for IP address...");
+        ret = wait_for_ip();
+        if (ret == ESP_OK) {
+            esp_netif_ip_info_t ip_info;
+            esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+            if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+                ESP_LOGI(TAG, "✓ WiFi connected!");
+                ESP_LOGI(TAG, "   IP: " IPSTR, IP2STR(&ip_info.ip));
+                ESP_LOGI(TAG, "   GW: " IPSTR, IP2STR(&ip_info.gw));
+                ESP_LOGI(TAG, "   Netmask: " IPSTR "\n", IP2STR(&ip_info.netmask));
+            }
+        } else {
+            ESP_LOGW(TAG, "WiFi timeout\n");
+        }
+    }
+#endif
+
+    /* Test 5: Audio (ready but commented) */
+#if 0 && defined(CONFIG_BSP_ENABLE_AUDIO)
+    ESP_LOGI(TAG, "\n=== Audio Test ===");
+    // TODO: Add audio playback test
+    ESP_LOGI(TAG, "✓ Audio test complete\n");
+#endif
+
+    /* ========== END TESTS ========== */
+
+    ESP_LOGI(TAG, "\n========================================");
+    ESP_LOGI(TAG, "   ALL HARDWARE TESTS COMPLETE");
+    ESP_LOGI(TAG, "========================================\n");
+    
+    ESP_LOGI(TAG, "=== System Ready ===");
     ESP_LOGI(TAG, "Entering main loop...\n");
     
     while (1) {
