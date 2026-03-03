@@ -43,12 +43,9 @@ static lv_display_t *bsp_lvgl_init_display(const bsp_lvgl_config_t *config)
         return NULL;
     }
 
-    /* Get DSI I/O handle for LVGL port */
-    esp_lcd_panel_io_handle_t io_handle = bsp_jd9165_get_io();
-    if (io_handle == NULL) {
-        ESP_LOGE(TAG, "Failed to get DSI I/O handle");
-        return NULL;
-    }
+    /* For MIPI-DSI, panel_handle IS the io_handle */
+    esp_lcd_panel_io_handle_t io_handle = (esp_lcd_panel_io_handle_t)panel_handle;
+    ESP_LOGI(TAG, "Using panel_handle as io_handle for MIPI-DSI");
 
     /* Allocate LVGL draw buffers based on Kconfig */
     size_t buffer_size = LVGL_BUFFER_SIZE * sizeof(lv_color_t);
@@ -81,10 +78,10 @@ static lv_display_t *bsp_lvgl_init_display(const bsp_lvgl_config_t *config)
         ESP_LOGI(TAG, "Buffer 2 allocated: %zu bytes (double buffering enabled)", buffer_size);
     }
 
-    /* Create LVGL display */
+    /* Create LVGL display configuration */
     const lvgl_port_display_cfg_t lvgl_disp_cfg = {
-        .io_handle = io_handle,
-        .panel_handle = panel_handle,
+        .io_handle = io_handle,         /* For MIPI-DSI, this is panel_handle */
+        .panel_handle = panel_handle,   /* Same as io_handle for DSI */
         .buffer_size = buffer_size,
         .double_buffer = config->buffer.double_buffer,
         .hres = CONFIG_BSP_DISPLAY_WIDTH,
@@ -115,6 +112,7 @@ static lv_display_t *bsp_lvgl_init_display(const bsp_lvgl_config_t *config)
         }
     };
 
+    ESP_LOGI(TAG, "Creating LVGL display with DSI config...");
     lv_display_t *display = lvgl_port_add_disp_dsi(&lvgl_disp_cfg, &dsi_cfg);
     if (display == NULL) {
         ESP_LOGE(TAG, "Failed to create LVGL display");
