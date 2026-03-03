@@ -151,8 +151,11 @@ CONFIG_LV_USE_PERF_MONITOR=y
 # Extensions
 CONFIG_LV_USE_IMGFONT=y
 
-# LVGL Demos - Enable Widgets Demo
+# LVGL Demos - Enable Widgets Demo only
 CONFIG_LV_USE_DEMO_WIDGETS=y
+
+# LVGL Examples - Disable to reduce build size and time
+CONFIG_LV_BUILD_EXAMPLES=n
 
 # === GPIO Configuration ===
 CONFIG_GPIO_ESP32_SUPPORT_SWITCH_SLP_PULL=y
