@@ -7,7 +7,8 @@
  * 
  * RACE CONDITION FIX (0x108): Suspend ESP-Hosted transport BEFORE
  * sdmmc_host_deinit() to prevent H_SDIO_DRV from accessing bus during
- * controller reinitialization.
+ * controller reinitialization. Transport pause now performs full WiFi
+ * deinit to guarantee ALL tasks are terminated.
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -91,12 +92,12 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
     sd_card_enable_pullups();
     
     // Step 3: CRITICAL - Suspend ESP-Hosted transport BEFORE SDMMC deinit
-    // This prevents race condition 0x108 by making bus IDLE
+    // This fully deinitializes WiFi, killing ALL ESP-Hosted tasks
+    // The pause function includes proper delays for task termination
     ESP_LOGI(TAG, "[BUS ARBITRATION] WiFi transport suspended for bus arbitration");
     esp_hosted_pause_transport();
     
-    // Allow pending SDIO transactions to complete
-    vTaskDelay(pdMS_TO_TICKS(100));
+    // No extra delay needed - pause function handles task termination wait
     
     // Step 4: Reinitialize controller for Slot 0
     // WiFi initialized SDMMC for Slot 1, we need to switch to Slot 0
