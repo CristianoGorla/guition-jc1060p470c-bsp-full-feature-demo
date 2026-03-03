@@ -93,13 +93,11 @@ void app_main(void)
         ESP_LOGE(TAG, "BSP init failed: %s", esp_err_to_name(ret));
         return;
     }
-    ESP_LOGI(TAG, "✓ Hardware ready (LVGL disabled for test)\n");
+    ESP_LOGI(TAG, "✓ Hardware ready\n");
 
 #ifdef CONFIG_BSP_ENABLE_LVGL
     ESP_LOGI(TAG, "=== LVGL UI ===");
-    ESP_LOGW(TAG, "LVGL currently disabled - skipping UI\n");
     
-#if 0  // Disabled until LVGL initialization fixed
 #ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
     ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
     extern void lvgl_demo_run_from_config(void);
@@ -109,7 +107,6 @@ void app_main(void)
     lvgl_create_test_ui();
 #endif
     ESP_LOGI(TAG, "✓ UI displayed\n");
-#endif
 #endif
 
 #ifdef CONFIG_APP_ENABLE_NVS
