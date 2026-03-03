@@ -230,25 +230,34 @@ esp_err_t bsp_lvgl_init(void)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
     
-    /* LVGL Display Configuration - MATCHES VENDOR EXACTLY */
+    /* Calculate buffer size from Kconfig */
+#ifndef CONFIG_BSP_LVGL_BUFFER_LINES
+#define CONFIG_BSP_LVGL_BUFFER_LINES 100  // Default fallback
+#endif
+#ifndef CONFIG_BSP_DISPLAY_WIDTH
+#define CONFIG_BSP_DISPLAY_WIDTH 1024
+#endif
+    const uint32_t buffer_pixels = CONFIG_BSP_DISPLAY_WIDTH * CONFIG_BSP_LVGL_BUFFER_LINES;
+    
+    /* LVGL Display Configuration */
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = NULL,  // DPI panel has no DBI I/O
         .panel_handle = g_display_handle,
-        .buffer_size = 480 * 800,  /* 384,000 pixels - VENDOR CONFIG */
-        .double_buffer = 1,         /* VENDOR: Double buffer enabled */
+        .buffer_size = buffer_pixels,  /* USE KCONFIG VALUE */
+        .double_buffer = CONFIG_BSP_LVGL_DOUBLE_BUFFER,
         .hres = 1024,
         .vres = 600,
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
         .rotation = { 
-            .swap_xy = true,    /* 🔥 VENDOR: swap_xy=true! */
+            .swap_xy = false,    /* No swap for landscape */
             .mirror_x = false, 
             .mirror_y = false 
         },
         .flags = {
-            .buff_dma = true,
-            .buff_spiram = true,  /* Use PSRAM for LVGL buffer */
-            .sw_rotate = true,    /* VENDOR: Software rotation enabled */
+            .buff_dma = CONFIG_BSP_LVGL_USE_DMA_BUFFER,
+            .buff_spiram = CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER,
+            .sw_rotate = CONFIG_BSP_LVGL_ENABLE_SW_ROTATE,
         }
     };
     
@@ -260,37 +269,33 @@ esp_err_t bsp_lvgl_init(void)
     };
     
     ESP_LOGI(TAG, "[LVGL] Adding display...");
+    ESP_LOGI(TAG, "[LVGL] Buffer: %dx%d = %u pixels (%.1f KB per buffer)",
+             CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
+             buffer_pixels, (buffer_pixels * 2) / 1024.0f);
+    
     lv_display_t *disp = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
     if (!disp) {
         ESP_LOGE(TAG, "Failed to add LVGL display!");
         return ESP_FAIL;
     }
 
-        /* Register DSI on_color_trans_done callback to notify LVGL flush completion */
+    /* Register DSI on_color_trans_done callback to notify LVGL flush completion */
     esp_lcd_dpi_panel_event_callbacks_t cbs = {
         .on_color_trans_done = on_color_trans_done,
     };
     ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(g_display_handle, &cbs, disp));
     ESP_LOGI(TAG, "[LVGL] DSI flush callback registered");
     
-#ifdef CONFIG_LVGL_ENABLE_PPA
-    if (CONFIG_LVGL_DISP_ROTATION_DEGREES == 90) {
-//         lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
-    } else if (CONFIG_LVGL_DISP_ROTATION_DEGREES == 180) {
-//         lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
-    } else if (CONFIG_LVGL_DISP_ROTATION_DEGREES == 270) {
-//         lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_270);
-    }
-#endif
-    
     ESP_LOGI(TAG, "[LVGL] Adding touch...");
     const lvgl_port_touch_cfg_t touch_cfg = { .disp = disp, .handle = g_touch_handle };
     lvgl_port_add_touch(&touch_cfg);
     
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600, %d°)", CONFIG_LVGL_DISP_ROTATION_DEGREES);
-    ESP_LOGI(TAG, "  Buffer: 480x800 (384K pixels, double)");
-    ESP_LOGI(TAG, "  🔥 Rotation: swap_xy=true (vendor config)");
+    ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
+    ESP_LOGI(TAG, "  Buffer: %dx%d (%.1f KB, %s)",
+             CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
+             (buffer_pixels * 2) / 1024.0f,
+             CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
