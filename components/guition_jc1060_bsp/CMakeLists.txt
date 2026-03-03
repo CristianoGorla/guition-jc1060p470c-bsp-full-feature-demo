@@ -1,36 +1,89 @@
+# Build source list based on Kconfig
+set(COMPONENT_SRCS
+    "src/bsp_board.c"
+    "src/bsp_lvgl_demo.c"
+)
+
+# Display driver (always needed if BSP enabled)
+if(CONFIG_BSP_ENABLE_DISPLAY)
+    list(APPEND COMPONENT_SRCS "drivers/jd9165_bsp.c")
+endif()
+
+# Touch driver
+if(CONFIG_BSP_ENABLE_TOUCH)
+    list(APPEND COMPONENT_SRCS "drivers/gt911_bsp.c")
+endif()
+
+# Audio driver
+if(CONFIG_BSP_ENABLE_AUDIO)
+    list(APPEND COMPONENT_SRCS "drivers/es8311_bsp.c")
+endif()
+
+# RTC driver
+if(CONFIG_BSP_ENABLE_RTC)
+    list(APPEND COMPONENT_SRCS "drivers/rx8025t_bsp.c")
+    list(APPEND COMPONENT_SRCS "utils/rtc_test.c")
+endif()
+
+# Bootstrap manager (WiFi/SD)
+if(CONFIG_BSP_ENABLE_WIFI OR CONFIG_BSP_ENABLE_SDCARD)
+    list(APPEND COMPONENT_SRCS "bootstrap/bootstrap_manager.c")
+    list(APPEND COMPONENT_SRCS "bootstrap/sdmmc_arbiter.c")
+endif()
+
+# SD Card specific
+if(CONFIG_BSP_ENABLE_SDCARD)
+    list(APPEND COMPONENT_SRCS "bootstrap/sd_card_manager.c")
+    list(APPEND COMPONENT_SRCS "utils/sd_card_functions.c")
+endif()
+
+# WiFi specific
+if(CONFIG_BSP_ENABLE_WIFI)
+    list(APPEND COMPONENT_SRCS "bootstrap/esp_hosted_wifi.c")
+endif()
+
+# RTC NTP sync (requires both RTC and WiFi)
+if(CONFIG_APP_ENABLE_RTC_NTP_SYNC)
+    list(APPEND COMPONENT_SRCS "utils/rtc_ntp_sync.c")
+endif()
+
+# Build component requirements based on Kconfig
+set(COMPONENT_REQUIRES
+    driver
+    freertos
+    nvs_flash
+)
+
+if(CONFIG_BSP_ENABLE_DISPLAY)
+    list(APPEND COMPONENT_REQUIRES esp_lcd esp_lcd_jd9165)
+endif()
+
+if(CONFIG_BSP_ENABLE_TOUCH)
+    list(APPEND COMPONENT_REQUIRES esp_lcd_touch_gt911)
+endif()
+
+if(CONFIG_BSP_ENABLE_LVGL)
+    list(APPEND COMPONENT_REQUIRES esp_lvgl_port lvgl)
+endif()
+
+if(CONFIG_BSP_ENABLE_SDCARD)
+    list(APPEND COMPONENT_REQUIRES sdmmc fatfs)
+endif()
+
+if(CONFIG_BSP_ENABLE_WIFI)
+    list(APPEND COMPONENT_REQUIRES esp_netif esp_wifi lwip)
+endif()
+
+if(CONFIG_BSP_ENABLE_RTC OR CONFIG_BSP_ENABLE_AUDIO)
+    list(APPEND COMPONENT_REQUIRES esp_timer)
+endif()
+
 idf_component_register(
-    SRCS 
-        "src/bsp_board.c"
-        "src/bsp_lvgl_demo.c"
-        "drivers/jd9165_bsp.c"
-        "drivers/gt911_bsp.c"
-        "drivers/es8311_bsp.c"
-        "drivers/rx8025t_bsp.c"
-        "bootstrap/bootstrap_manager.c"
-        "bootstrap/sdmmc_arbiter.c"
-        "bootstrap/sd_card_manager.c"
-        "bootstrap/esp_hosted_wifi.c"
-        "utils/rtc_ntp_sync.c"
-        "utils/rtc_test.c"
-        "utils/sd_card_functions.c"
-    INCLUDE_DIRS 
+    SRCS ${COMPONENT_SRCS}
+    INCLUDE_DIRS
         "include"
         "drivers"
         "bootstrap"
         "utils"
-    REQUIRES
-        driver
-        esp_lcd
-        esp_lcd_touch_gt911
-        esp_lcd_jd9165
-        esp_lvgl_port
-        lvgl
-        freertos
-        nvs_flash
-        esp_netif
-        sdmmc
-        fatfs
-        esp_timer
-        esp_wifi
-        lwip
+    REQUIRES ${COMPONENT_REQUIRES}
 )
