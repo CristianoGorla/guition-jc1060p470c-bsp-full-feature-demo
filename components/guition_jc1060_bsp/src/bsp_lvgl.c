@@ -148,10 +148,10 @@ static lv_display_t *bsp_lvgl_init_display(const bsp_lvgl_config_t *config)
 static lv_indev_t *bsp_lvgl_init_touch(lv_display_t *display)
 {
 #ifdef CONFIG_BSP_LVGL_TOUCH_ENABLE
-    if (!IS_ENABLED(CONFIG_BSP_ENABLE_TOUCH)) {
+    #ifndef CONFIG_BSP_ENABLE_TOUCH
         ESP_LOGW(TAG, "Touch is disabled in BSP configuration");
         return NULL;
-    }
+    #endif
 
     ESP_LOGI(TAG, "Initializing LVGL touch input (GT911)");
 
@@ -322,11 +322,11 @@ size_t bsp_lvgl_get_buffer_size(void)
 {
     size_t single_buffer = LVGL_BUFFER_SIZE * sizeof(lv_color_t);
     
-    if (IS_ENABLED(CONFIG_BSP_LVGL_DOUBLE_BUFFER)) {
-        return single_buffer * 2;
-    }
-    
+#ifdef CONFIG_BSP_LVGL_DOUBLE_BUFFER
+    return single_buffer * 2;
+#else
     return single_buffer;
+#endif
 }
 
 void bsp_lvgl_print_stats(void)
@@ -335,11 +335,22 @@ void bsp_lvgl_print_stats(void)
     ESP_LOGI(TAG, "  Display: %dx%d", CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_DISPLAY_HEIGHT);
     ESP_LOGI(TAG, "  Buffer lines: %d", CONFIG_BSP_LVGL_BUFFER_LINES);
     ESP_LOGI(TAG, "  Buffer size: %zu KB (single)", LVGL_BUFFER_SIZE * sizeof(lv_color_t) / 1024);
-    ESP_LOGI(TAG, "  Double buffer: %s", IS_ENABLED(CONFIG_BSP_LVGL_DOUBLE_BUFFER) ? "Yes" : "No");
+    
+#ifdef CONFIG_BSP_LVGL_DOUBLE_BUFFER
+    ESP_LOGI(TAG, "  Double buffer: Yes");
+#else
+    ESP_LOGI(TAG, "  Double buffer: No");
+#endif
+
     ESP_LOGI(TAG, "  Total memory: %zu KB", bsp_lvgl_get_buffer_size() / 1024);
-    ESP_LOGI(TAG, "  Buffer location: %s", 
-             IS_ENABLED(CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER) ? "SPIRAM" : 
-             IS_ENABLED(CONFIG_BSP_LVGL_USE_DMA_BUFFER) ? "DMA" : "Internal");
+    
+#ifdef CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER
+    ESP_LOGI(TAG, "  Buffer location: SPIRAM");
+#elif defined(CONFIG_BSP_LVGL_USE_DMA_BUFFER)
+    ESP_LOGI(TAG, "  Buffer location: DMA");
+#else
+    ESP_LOGI(TAG, "  Buffer location: Internal");
+#endif
     
 #ifdef CONFIG_BSP_LVGL_ENABLE_SW_ROTATE
     ESP_LOGI(TAG, "  Rotation: %d degrees (SW rotate enabled)", bsp_lvgl_get_rotation());
