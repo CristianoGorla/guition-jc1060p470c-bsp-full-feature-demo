@@ -10,10 +10,10 @@
 #ifdef CONFIG_BSP_ENABLE_LVGL
 
 #include "lvgl_demo.h"
-#include "bsp_lvgl.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "lvgl.h"
+#include "esp_lvgl_port.h"
 
 /* Include LVGL demos if available */
 #if __has_include("lv_demos.h")
@@ -45,9 +45,9 @@ static void fps_timer_cb(lv_timer_t *timer)
     if (elapsed >= 1000000) { // 1 second
         float fps = (float)frame_count * 1000000.0f / (float)elapsed;
         
-        if (fps_label && bsp_lvgl_lock(10)) {
+        if (fps_label && lvgl_port_lock(10)) {
             lv_label_set_text_fmt(fps_label, "FPS: %.1f", fps);
-            bsp_lvgl_unlock();
+            lvgl_port_unlock();
         }
         
         frame_count = 0;
@@ -83,15 +83,9 @@ static void touch_event_cb(lv_event_t *e)
 
 esp_err_t lvgl_demo_simple(void)
 {
-    ESP_LOGI(TAG, "Starting simple LVGL demo");
-    
-    lv_display_t *display = bsp_lvgl_get_display();
-    if (!display) {
-        ESP_LOGE(TAG, "LVGL display not initialized");
-        return ESP_FAIL;
-    }
+    ESP_LOGI(TAG, "Running simple LVGL demo");
 
-    if (!bsp_lvgl_lock(1000)) {
+    if (!lvgl_port_lock(1000)) {
         ESP_LOGE(TAG, "Failed to lock LVGL");
         return ESP_FAIL;
     }
@@ -116,10 +110,10 @@ esp_err_t lvgl_demo_simple(void)
     
     /* Display info */
     lv_obj_t *info = lv_label_create(simple_demo_screen);
-    lv_label_set_text_fmt(info, "Resolution: 1024x600\nRotation: %d°\nColor: RGB565",
-                          bsp_lvgl_get_rotation());
+    lv_label_set_text(info, "Resolution: 1024x600\nRotation: 0\u00b0\nColor: RGB565");
     lv_obj_set_style_text_font(info, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(info, lv_color_hex(0xaaaaaa), 0);
+    lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(info, LV_ALIGN_TOP_MID, 0, 150);
     
     /* FPS counter */
@@ -171,7 +165,7 @@ esp_err_t lvgl_demo_simple(void)
     frame_count = 0;
     lv_timer_create(fps_timer_cb, 100, NULL);
     
-    bsp_lvgl_unlock();
+    lvgl_port_unlock();
     
     ESP_LOGI(TAG, "Simple demo started successfully");
     return ESP_OK;
@@ -182,14 +176,14 @@ esp_err_t lvgl_demo_widgets(void)
 #if LVGL_DEMOS_AVAILABLE && defined(LV_USE_DEMO_WIDGETS)
     ESP_LOGI(TAG, "Starting LVGL widgets demo");
     
-    if (!bsp_lvgl_lock(1000)) {
+    if (!lvgl_port_lock(1000)) {
         ESP_LOGE(TAG, "Failed to lock LVGL");
         return ESP_FAIL;
     }
     
     lv_demo_widgets();
     
-    bsp_lvgl_unlock();
+    lvgl_port_unlock();
     
     ESP_LOGI(TAG, "Widgets demo started");
     return ESP_OK;
@@ -205,14 +199,14 @@ esp_err_t lvgl_demo_benchmark(void)
 #if LVGL_DEMOS_AVAILABLE && defined(LV_USE_DEMO_BENCHMARK)
     ESP_LOGI(TAG, "Starting LVGL benchmark demo");
     
-    if (!bsp_lvgl_lock(1000)) {
+    if (!lvgl_port_lock(1000)) {
         ESP_LOGE(TAG, "Failed to lock LVGL");
         return ESP_FAIL;
     }
     
     lv_demo_benchmark();
     
-    bsp_lvgl_unlock();
+    lvgl_port_unlock();
     
     ESP_LOGI(TAG, "Benchmark demo started");
     return ESP_OK;
@@ -228,14 +222,14 @@ esp_err_t lvgl_demo_stress(void)
 #if LVGL_DEMOS_AVAILABLE && defined(LV_USE_DEMO_STRESS)
     ESP_LOGI(TAG, "Starting LVGL stress test demo");
     
-    if (!bsp_lvgl_lock(1000)) {
+    if (!lvgl_port_lock(1000)) {
         ESP_LOGE(TAG, "Failed to lock LVGL");
         return ESP_FAIL;
     }
     
     lv_demo_stress();
     
-    bsp_lvgl_unlock();
+    lvgl_port_unlock();
     
     ESP_LOGI(TAG, "Stress test demo started");
     return ESP_OK;
@@ -248,7 +242,7 @@ esp_err_t lvgl_demo_stress(void)
 
 esp_err_t lvgl_demo_stop(void)
 {
-    if (!bsp_lvgl_lock(1000)) {
+    if (!lvgl_port_lock(1000)) {
         return ESP_FAIL;
     }
     
@@ -263,7 +257,7 @@ esp_err_t lvgl_demo_stop(void)
     lv_obj_set_style_bg_color(screen, lv_color_black(), 0);
     lv_screen_load(screen);
     
-    bsp_lvgl_unlock();
+    lvgl_port_unlock();
     
     ESP_LOGI(TAG, "Demo stopped");
     return ESP_OK;
