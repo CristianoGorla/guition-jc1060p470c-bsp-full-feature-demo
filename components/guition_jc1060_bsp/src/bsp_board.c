@@ -11,6 +11,7 @@
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_sleep.h"
 #include "sdkconfig.h"
@@ -218,12 +219,12 @@ esp_err_t bsp_lvgl_init(void)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
     
-    /* LVGL Display Configuration (matches vendor main.c working config) */
+    /* LVGL Display Configuration for 1024x600 display */
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = NULL,  // DPI panel has no DBI I/O
         .panel_handle = g_display_handle,
-        .buffer_size = 480 * 800,  /* 384,000 pixels (vendor main.c config) */
-        .double_buffer = 0,         /* CRITICAL: Single buffer (vendor config) */
+        .buffer_size = 1024 * 100,  /* 102,400 pixels = 100 lines buffer (1/6 of screen) */
+        .double_buffer = 0,          /* Single buffer */
         .hres = 1024,
         .vres = 600,
         .monochrome = false,
@@ -243,7 +244,7 @@ esp_err_t bsp_lvgl_init(void)
     /* DSI-specific configuration */
     const lvgl_port_display_dsi_cfg_t dsi_cfg = {
         .flags = {
-            .avoid_tearing = true,  /* Enable anti-tearing (vendor config) */
+            .avoid_tearing = true,  /* Enable anti-tearing */
         }
     };
     
@@ -270,6 +271,7 @@ esp_err_t bsp_lvgl_init(void)
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600, %d°)", CONFIG_LVGL_DISP_ROTATION_DEGREES);
+    ESP_LOGI(TAG, "  Buffer: 102400 pixels (100 lines)");
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
