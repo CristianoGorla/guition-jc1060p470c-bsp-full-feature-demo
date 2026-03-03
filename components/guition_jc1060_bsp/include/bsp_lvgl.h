@@ -248,6 +248,22 @@ size_t bsp_lvgl_get_buffer_size(void);
  */
 void bsp_lvgl_print_stats(void);
 
+#ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
+/**
+ * @brief Run LVGL demo based on Kconfig selection
+ * 
+ * Launches the demo type selected in menuconfig:
+ * - CONFIG_BSP_LVGL_DEMO_SIMPLE: Basic test screen
+ * - CONFIG_BSP_LVGL_DEMO_WIDGETS: Full widgets showcase
+ * - CONFIG_BSP_LVGL_DEMO_BENCHMARK: Performance test
+ * - CONFIG_BSP_LVGL_DEMO_STRESS: Stability test
+ * 
+ * @note Requires CONFIG_BSP_LVGL_ENABLE_DEMO to be enabled
+ * @note LVGL must be initialized before calling this function
+ */
+void lvgl_demo_run_from_config(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif
