@@ -23,6 +23,7 @@
 #include "rtc_ntp_sync.h"
 #include "esp_hosted_wifi.h"
 #include "bootstrap_manager.h"
+#include "backlight_test.h"
 
 #ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
 #include "wifi_config.h"
@@ -137,6 +138,11 @@ void app_main(void)
     } else {
         ESP_LOGI(TAG, "✓ LVGL initialized\n");
     }
+    
+    /* Step 4.5: Backlight Test - Verify display HW works */
+    ESP_LOGI(TAG, "\n=== Backlight Test ===");
+    backlight_test_run();
+    ESP_LOGI(TAG, "");
 #endif
 
     /* Step 5: LVGL UI Creation */
