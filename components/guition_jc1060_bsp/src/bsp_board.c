@@ -241,14 +241,14 @@ esp_err_t bsp_lvgl_init(void)
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
         .rotation = { 
-            .swap_xy = true,    /* 🔥 VENDOR: swap_xy=true! */
+            .swap_xy = false,    /* 🔥 VENDOR: swap_xy=true! */
             .mirror_x = false, 
             .mirror_y = false 
         },
         .flags = {
             .buff_dma = false,
             .buff_spiram = true,  /* Use PSRAM for LVGL buffer */
-            .sw_rotate = true,    /* VENDOR: Software rotation enabled */
+            .sw_rotate = false,    /* VENDOR: Software rotation enabled */
         }
     };
     
