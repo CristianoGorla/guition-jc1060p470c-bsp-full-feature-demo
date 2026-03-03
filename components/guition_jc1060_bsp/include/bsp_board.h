@@ -18,16 +18,34 @@ extern "C" {
 /**
  * @brief Initialize the board support package
  * 
- * Performs Phase A (Power Manager) initialization:
- * - Deterministic hard reset sequence
- * - GPIO 18 strapping guard for ESP32-C6 boot mode
- * - Power rail stabilization
+ * Performs hardware initialization:
+ * - Phase A: Power Manager (hard reset, power rails)
+ * - Phase D: Peripheral Drivers (I2C, Display HW, Touch HW, Audio, RTC)
+ * 
+ * NOTE: LVGL is NOT initialized by this function!
+ *       Call bsp_lvgl_init() separately AFTER bootstrap completes.
  * 
  * @return
  *     - ESP_OK: Success
  *     - ESP_ERR_*: Failure
  */
 esp_err_t bsp_board_init(void);
+
+/**
+ * @brief Initialize LVGL graphics library
+ * 
+ * Must be called AFTER:
+ * 1. bsp_board_init() (hardware ready)
+ * 2. Bootstrap manager completion (WiFi/SD initialized)
+ * 
+ * This separation prevents LVGL task from blocking during
+ * SDMMC controller initialization for WiFi/SD.
+ * 
+ * @return
+ *     - ESP_OK: Success
+ *     - ESP_FAIL: Display or touch not initialized
+ */
+esp_err_t bsp_lvgl_init(void);
 
 /**
  * @brief Deinitialize the board support package
