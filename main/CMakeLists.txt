@@ -14,6 +14,8 @@ idf_component_register(
         esp_wifi
         fatfs
         driver
+        lvgl
+        esp_lvgl_port
     PRIV_REQUIRES
         esp_timer
         sdmmc
