@@ -10,6 +10,7 @@
 #define BSP_BOARD_H
 
 #include "esp_err.h"
+#include "driver/i2c_master.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,6 +31,13 @@ extern "C" {
  *     - ESP_ERR_*: Failure
  */
 esp_err_t bsp_board_init(void);
+
+/**
+ * @brief Get I2C bus handle
+ * 
+ * @return I2C master bus handle (NULL if not initialized)
+ */
+i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void);
 
 /**
  * @brief Initialize LVGL graphics library
