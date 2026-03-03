@@ -191,9 +191,6 @@ esp_err_t bsp_board_init(void)
     return ESP_OK;
 }
 
-esp_err_t bsp_lvgl_init(void)
-{
-
 /**
  * @brief Callback invoked when MIPI DSI color transfer completes
  {
@@ -206,6 +203,10 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_
     lv_display_flush_ready(disp);
     return false;  // No yield needed
 }
+
+esp_err_t bsp_lvgl_init(void)
+
+{
 
 #ifdef CONFIG_BSP_ENABLE_LVGL
     if (!g_display_handle) {
