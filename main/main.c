@@ -35,45 +35,25 @@
 
 static void lvgl_create_test_ui(void)
 {
-    if (!lvgl_port_lock(1000)) {
-        ESP_LOGE("LVGL_UI", "Failed to lock LVGL");
+    ESP_LOGI("LVGL_UI", "Attempting to lock LVGL...");
+    
+    if (!lvgl_port_lock(5000)) {
+        ESP_LOGE("LVGL_UI", "TIMEOUT: Failed to lock LVGL after 5s");
         return;
     }
+    
+    ESP_LOGI("LVGL_UI", "Lock acquired! Creating UI...");
     
     lv_obj_t *scr = lv_scr_act();
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x003366), 0);
     
     lv_obj_t *label = lv_label_create(scr);
-    lv_label_set_text(label, 
-        "LVGL v9.2.2 Ready!\n"
-        "Display: JD9165 (1024x600)\n"
-        "Touch: GT911 (I2C 0x14)\n"
-        "Memory: PSRAM 32MB @ 200MHz"
-    );
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(label, lv_color_white(), 0);
-    lv_obj_align(label, LV_ALIGN_CENTER, 0, -80);
+    lv_label_set_text(label, "LVGL v9 Test");
+    lv_obj_center(label);
     
-    lv_obj_t *btn = lv_btn_create(scr);
-    lv_obj_set_size(btn, 300, 100);
-    lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -80);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFF6600), LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFF9933), LV_STATE_PRESSED);
-    
-    lv_obj_t *btn_label = lv_label_create(btn);
-    lv_label_set_text(btn_label, "Touch Test");
-    lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_28, 0);
-    lv_obj_center(btn_label);
-    
-    lv_obj_t *version_label = lv_label_create(scr);
-    lv_label_set_text_fmt(version_label, "ESP32-P4 | BSP v1.3.0 | LVGL v%d.%d.%d",
-                          LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
-    lv_obj_set_style_text_color(version_label, lv_color_hex(0x888888), 0);
-    lv_obj_set_style_text_font(version_label, &lv_font_montserrat_14, 0);
-    lv_obj_align(version_label, LV_ALIGN_BOTTOM_LEFT, 10, -10);
-    
+    ESP_LOGI("LVGL_UI", "UI created, unlocking...");
     lvgl_port_unlock();
+    ESP_LOGI("LVGL_UI", "Unlock complete!");
 }
 #endif
 
@@ -139,10 +119,8 @@ void app_main(void)
         ESP_LOGI(TAG, "✓ LVGL initialized\n");
     }
     
-    /* Step 4.5: Backlight Test - Verify display HW works */
-    ESP_LOGI(TAG, "\n=== Backlight Test ===");
-    backlight_test_run();
-    ESP_LOGI(TAG, "");
+    ESP_LOGI(TAG, "Waiting 2s for LVGL task to stabilize...");
+    vTaskDelay(pdMS_TO_TICKS(2000));
 #endif
 
     /* Step 5: LVGL UI Creation */
@@ -154,7 +132,7 @@ void app_main(void)
     extern void lvgl_demo_run_from_config(void);
     lvgl_demo_run_from_config();
 #else
-    ESP_LOGI(TAG, "Creating test UI...");
+    ESP_LOGI(TAG, "Creating minimal test UI...");
     lvgl_create_test_ui();
 #endif
     ESP_LOGI(TAG, "✓ UI displayed\n");
