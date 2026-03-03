@@ -86,6 +86,7 @@ static const jd9165_lcd_init_cmd_t lcd_init_cmds[] = {
 };
 
 static ledc_channel_t g_bl_channel = LCD_LEDC_CHANNEL;
+static esp_lcd_panel_handle_t g_display_panel = NULL;
 
 static esp_err_t backlight_init(void)
 {
@@ -135,7 +136,6 @@ esp_lcd_panel_handle_t bsp_display_init(void)
 
     esp_lcd_dsi_bus_handle_t mipi_dsi_bus = NULL;
     esp_lcd_panel_io_handle_t io = NULL;
-    esp_lcd_panel_handle_t disp_panel = NULL;
 
     /* Configure 2-lane MIPI DSI bus @ 750 Mbps (51.2MHz pixel clock equivalent) */
     esp_lcd_dsi_bus_config_t bus_config = {
@@ -193,15 +193,20 @@ esp_lcd_panel_handle_t bsp_display_init(void)
         .vendor_config = &vendor_config,
     };
     
-    ESP_ERROR_CHECK(esp_lcd_new_panel_jd9165(io, &lcd_dev_config, &disp_panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(disp_panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_init(disp_panel));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_jd9165(io, &lcd_dev_config, &g_display_panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_reset(g_display_panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_init(g_display_panel));
 
     /* Set backlight to 100% brightness */
     bsp_display_set_brightness(100);
 
     ESP_LOGI(TAG, "Display initialized successfully");
-    return disp_panel;
+    return g_display_panel;
+}
+
+esp_lcd_panel_handle_t bsp_display_get_panel_handle(void)
+{
+    return g_display_panel;
 }
 
 esp_err_t bsp_display_set_brightness(uint8_t brightness_percent)
