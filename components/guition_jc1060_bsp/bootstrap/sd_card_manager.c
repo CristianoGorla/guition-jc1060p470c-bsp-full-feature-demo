@@ -1,21 +1,24 @@
 /**
  * @file sd_card_manager.c
- * @brief SD Card manager implementation for bootstrap system
+ * @brief SD Card manager with Clean Switch Protocol integration
  * 
- * CRITICAL FIX: WiFi initializes SDMMC for Slot 1, but SD needs Slot 0.
- * Must deinit/reinit controller before accessing different slot.
+ * Implements safe SDMMC controller slot switching using CCCR handshake
+ * protocol to prevent race condition 0x108 during WiFi→SD arbitration.
  * 
- * RACE CONDITION FIX (0x108): Suspend ESP-Hosted transport BEFORE
- * sdmmc_host_deinit() to prevent H_SDIO_DRV from accessing bus during
- * controller reinitialization. Transport pause now performs full WiFi
- * deinit to guarantee ALL tasks are terminated.
+ * PROTOCOL SEQUENCE:
+ * 1. esp_hosted_pause_transport() - Clean handshake with C6 slave
+ * 2. sdmmc_host_deinit() - Release Slot 1
+ * 3. 50ms settling delay - Allow bus capacitance to discharge
+ * 4. sdmmc_host_init() - Reinitialize for Slot 0
+ * 5. SD card mount
+ * 6. esp_hosted_resume_transport() - Restore WiFi on Slot 1
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
  */
 
 #include "sd_card_manager.h"
-#include "esp_hosted_wifi.h"  // For transport pause/resume during slot switch
+#include "esp_hosted_wifi.h"  // For Clean Switch Protocol
 #include "esp_vfs_fat.h"
 #include "driver/sdmmc_host.h"
 #include "driver/gpio.h"
@@ -91,17 +94,18 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
     // Step 2: Enable pull-ups BEFORE mount
     sd_card_enable_pullups();
     
-    // Step 3: CRITICAL - Suspend ESP-Hosted transport BEFORE SDMMC deinit
-    // This fully deinitializes WiFi, killing ALL ESP-Hosted tasks
-    // The pause function includes proper delays for task termination
-    ESP_LOGI(TAG, "[BUS ARBITRATION] WiFi transport suspended for bus arbitration");
+    // Step 3: CLEAN SWITCH PROTOCOL - Pause WiFi transport with CCCR handshake
+    // This performs:
+    //   - WiFi stack stop
+    //   - CCCR handshake to silence C6 interrupts
+    //   - WiFi driver deinit (kills ESP-Hosted tasks)
+    //   - Bus idle verification (DAT0 polling)
+    ESP_LOGI(TAG, "[BUS ARBITRATION] Initiating Clean Switch Protocol...");
     esp_hosted_pause_transport();
     
-    // No extra delay needed - pause function handles task termination wait
-    
-    // Step 4: Reinitialize controller for Slot 0
+    // Step 4: Deinitialize SDMMC controller (release Slot 1)
     // WiFi initialized SDMMC for Slot 1, we need to switch to Slot 0
-    ESP_LOGI(TAG, "Deinitializing SDMMC controller (release Slot 1 from WiFi)...");
+    ESP_LOGI(TAG, "Deinitializing SDMMC controller (release Slot 1)...");
     esp_err_t ret = sdmmc_host_deinit();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "Host deinit failed: %s", esp_err_to_name(ret));
@@ -110,8 +114,12 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         return ret;
     }
     
-    vTaskDelay(pdMS_TO_TICKS(200));  // Bus settling time
+    // Step 5: SETTLING DELAY - Allow bus capacitance to discharge
+    // Hardware requirement: GPIO states need time to stabilize after deinit
+    ESP_LOGI(TAG, "Bus settling delay (50ms)...");
+    vTaskDelay(pdMS_TO_TICKS(50));
     
+    // Step 6: Reinitialize controller for Slot 0
     ESP_LOGI(TAG, "Reinitializing SDMMC controller for Slot 0...");
     ret = sdmmc_host_init();
     if (ret != ESP_OK) {
@@ -123,7 +131,7 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
     
     vTaskDelay(pdMS_TO_TICKS(100));  // Controller stabilization
     
-    // Step 5: Configure Slot 0 pins
+    // Step 7: Configure Slot 0 pins
     sdmmc_slot_config_t slot_config = {
         .clk = CONFIG_BSP_PIN_CLK,
         .cmd = CONFIG_BSP_PIN_CMD,
@@ -137,7 +145,7 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         .flags = 0,
     };
     
-    // Step 6: Init Slot 0
+    // Step 8: Init Slot 0
     ESP_LOGI(TAG, "Initializing SDMMC Slot 0...");
     ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
     if (ret != ESP_OK) {
@@ -147,14 +155,14 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         return ret;
     }
     
-    // Step 7: Configure mount options
+    // Step 9: Configure mount options
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = 5,
         .allocation_unit_size = 16 * 1024
     };
     
-    // Step 8: Mount filesystem
+    // Step 10: Mount filesystem
     ESP_LOGI(TAG, "Mounting FAT filesystem on Slot 0...");
     
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -172,8 +180,8 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         ESP_LOGI(TAG, "   Capacity: %llu MB",
                 ((uint64_t)g_sd_card->csd.capacity) * g_sd_card->csd.sector_size / (1024 * 1024));
         
-        // Step 9: Resume WiFi transport after successful mount
-        ESP_LOGI(TAG, "[BUS ARBITRATION] WiFi transport resumed on Slot 1");
+        // Step 11: Resume WiFi transport (Clean Switch Protocol reverse)
+        ESP_LOGI(TAG, "[BUS ARBITRATION] Resuming WiFi transport on Slot 1...");
         esp_hosted_resume_transport();
         
         ESP_LOGI(TAG, "");  // Blank line for log readability
@@ -182,6 +190,7 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         ESP_LOGE(TAG, "Mount failed: %s (0x%x)", esp_err_to_name(ret), ret);
         
         // CRITICAL: Resume transport even on mount failure
+        ESP_LOGI(TAG, "[BUS ARBITRATION] Resuming WiFi transport (mount failed)...");
         esp_hosted_resume_transport();
         
         ESP_LOGI(TAG, "");
