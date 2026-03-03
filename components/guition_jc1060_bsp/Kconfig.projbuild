@@ -172,15 +172,28 @@ menu "Guition JC1060P470C Board Configuration"
         endmenu # I2C Bus Configuration
 
         comment "────────────────────────────────────────────────────────────────"
-        comment "SD CARD (SDIO Slot 0)"
+        comment "SD CARD (SDIO Slot 0) - ⚠️ EXPERIMENTAL"
         comment "────────────────────────────────────────────────────────────────"
 
         config BSP_ENABLE_SDCARD
             bool "▶ Enable SD Card (4-bit SDIO, GPIO36 power control)"
-            default y
+            default n
             help
-                Enable SD Card support on SDIO Slot 0.
-                The SD card is powered via GPIO 36 (external MOSFET).
+                ⚠️ EXPERIMENTAL: SD Card support is currently DISABLED by default
+                due to unresolved SDMMC controller slot arbitration issues.
+                
+                KNOWN ISSUE:
+                  • Error 0x108 (SDIO timeout) during WiFi→SD slot switch
+                  • Causes boot loop when switching from Slot 1 (WiFi) to Slot 0 (SD)
+                  • Clean Switch Protocol implemented but ESP-Hosted triggers restart
+                
+                RECOMMENDATION:
+                  • Do NOT enable unless you need SD card support
+                  • Use WiFi-only configuration for production
+                  • SD card fix is suspended pending ESP-Hosted patch
+                
+                If enabled, SD card will be mounted AFTER WiFi initialization.
+                This may cause system instability.
 
         menu "SD Card Configuration"
             visible if BSP_ENABLE_SDCARD
@@ -250,6 +263,9 @@ menu "Guition JC1060P470C Board Configuration"
             help
                 Enable WiFi using ESP-Hosted on SDIO Slot 1.
                 The ESP32-C6 WiFi co-processor communicates via SDIO.
+                
+                ✅ STABLE: WiFi works reliably when SD Card is disabled.
+                ⚠️ CONFLICT: Enabling both WiFi and SD may cause boot loops.
 
         menu "WiFi ESP-Hosted Configuration"
             visible if BSP_ENABLE_WIFI
@@ -533,6 +549,7 @@ menu "Guition JC1060P470C Board Configuration"
             depends on BSP_ENABLE_SDCARD
             help
                 Test SD card read/write during startup.
+                ⚠️ May cause boot loop if slot arbitration fails.
 
     endmenu # Application Features
 
