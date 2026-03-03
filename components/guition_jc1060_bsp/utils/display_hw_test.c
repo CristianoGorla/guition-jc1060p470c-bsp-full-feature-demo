@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "esp_lcd_mipi_dsi.h"
+#include <string.h>
 
 static const char *TAG = "display_hw_test";
 
@@ -121,13 +122,17 @@ esp_err_t display_hw_test_color_bar(esp_lcd_panel_handle_t panel_handle, uint16_
 
     ESP_LOGI(TAG, "Drawing bitmap to display...");
     
-    // Draw the bitmap
-    esp_err_t ret = esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, h_res, v_res, frame_buffer);
+    // Get the DPI panel frame buffer and copy our data
+    void *dpi_frame_buffer = NULL;
+    esp_err_t ret = esp_lcd_dpi_panel_get_frame_buffer(panel_handle, 1, &dpi_frame_buffer);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to draw bitmap: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Failed to get DPI frame buffer: %s", esp_err_to_name(ret));
         heap_caps_free(frame_buffer);
         return ret;
     }
+
+    // Copy our color bar data to the DPI frame buffer
+    memcpy(dpi_frame_buffer, frame_buffer, buffer_size);
 
     // Wait for refresh to complete
     ESP_LOGI(TAG, "Waiting for display refresh...");
@@ -136,7 +141,7 @@ esp_err_t display_hw_test_color_bar(esp_lcd_panel_handle_t panel_handle, uint16_
     ESP_LOGI(TAG, "Software color bar test completed successfully");
     ESP_LOGI(TAG, "You should see 8 vertical color bars on the display");
     
-    // Free the frame buffer
+    // Free the temporary frame buffer
     heap_caps_free(frame_buffer);
     
     return ESP_OK;
