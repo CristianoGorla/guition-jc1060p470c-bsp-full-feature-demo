@@ -63,6 +63,10 @@ static const char *TAG = "BSP";
 
 i2c_master_bus_handle_t g_i2c_bus_handle = NULL;
 
+/* Hardware handles (retained for LVGL init) */
+static esp_lcd_panel_handle_t g_display_handle = NULL;
+static esp_lcd_touch_handle_t g_touch_handle = NULL;
+
 static bool bsp_needs_hard_reset(void)
 {
 #ifndef CONFIG_BSP_ENABLE_HARD_RESET
@@ -142,15 +146,15 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     ESP_ERROR_CHECK(bsp_i2c_bus_init());
 
 #ifdef CONFIG_BSP_ENABLE_DISPLAY
-    esp_lcd_panel_handle_t display = bsp_display_init();
-    if (!display) return ESP_FAIL;
-    ESP_LOGI(TAG, "[PHASE D] ✓ Display");
+    g_display_handle = bsp_display_init();
+    if (!g_display_handle) return ESP_FAIL;
+    ESP_LOGI(TAG, "[PHASE D] ✓ Display HW");
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_TOUCH
-    esp_lcd_touch_handle_t touch = bsp_touch_init();
-    if (!touch) return ESP_FAIL;
-    ESP_LOGI(TAG, "[PHASE D] ✓ Touch");
+    g_touch_handle = bsp_touch_init();
+    if (!g_touch_handle) return ESP_FAIL;
+    ESP_LOGI(TAG, "[PHASE D] ✓ Touch HW");
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_AUDIO
@@ -164,8 +168,46 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     ESP_LOGI(TAG, "[PHASE D] ✓ RTC");
 #endif
 
+    ESP_LOGI(TAG, "[PHASE D] ✓ Complete");
+    return ESP_OK;
+}
+
+esp_err_t bsp_board_init(void)
+{
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  Guition BSP v1.3.0");
+    ESP_LOGI(TAG, "  Hardware Layer Only");
+    ESP_LOGI(TAG, "========================================");
+    
+    ESP_ERROR_CHECK(bsp_phase_a_power_manager());
+    ESP_ERROR_CHECK(bsp_phase_d_peripheral_drivers());
+    
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  ✓ BSP Ready (HW only)");
+    ESP_LOGI(TAG, "  Call bsp_lvgl_init() after Bootstrap");
+    ESP_LOGI(TAG, "========================================");
+    
+    return ESP_OK;
+}
+
+esp_err_t bsp_lvgl_init(void)
+{
 #ifdef CONFIG_BSP_ENABLE_LVGL
-    ESP_LOGI(TAG, "[PHASE D] Init LVGL...");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  LVGL Software Layer Init");
+    ESP_LOGI(TAG, "========================================");
+    
+    if (!g_display_handle) {
+        ESP_LOGE(TAG, "Display not initialized! Call bsp_board_init() first.");
+        return ESP_FAIL;
+    }
+    
+    if (!g_touch_handle) {
+        ESP_LOGE(TAG, "Touch not initialized! Call bsp_board_init() first.");
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGI(TAG, "[LVGL] Initializing port...");
     
     const lvgl_port_cfg_t lvgl_cfg = {
         .task_priority = 4,
@@ -179,7 +221,7 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     /* LVGL Display Configuration (matches vendor main.c working config) */
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = NULL,  // DPI panel has no DBI I/O
-        .panel_handle = display,
+        .panel_handle = g_display_handle,
         .buffer_size = 480 * 800,  /* 384,000 pixels (vendor main.c config) */
         .double_buffer = 0,         /* CRITICAL: Single buffer (vendor config) */
         .hres = 1024,
@@ -205,8 +247,12 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
         }
     };
     
+    ESP_LOGI(TAG, "[LVGL] Adding display...");
     lv_display_t *disp = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
-    if (!disp) return ESP_FAIL;
+    if (!disp) {
+        ESP_LOGE(TAG, "Failed to add LVGL display!");
+        return ESP_FAIL;
+    }
     
 #ifdef CONFIG_LVGL_ENABLE_PPA
     if (CONFIG_LVGL_DISP_ROTATION_DEGREES == 90) {
@@ -218,30 +264,19 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     }
 #endif
     
-    const lvgl_port_touch_cfg_t touch_cfg = { .disp = disp, .handle = touch };
+    ESP_LOGI(TAG, "[LVGL] Adding touch...");
+    const lvgl_port_touch_cfg_t touch_cfg = { .disp = disp, .handle = g_touch_handle };
     lvgl_port_add_touch(&touch_cfg);
     
-    ESP_LOGI(TAG, "[PHASE D] ✓ LVGL (1024x600, %d°)", CONFIG_LVGL_DISP_ROTATION_DEGREES);
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600, %d°)", CONFIG_LVGL_DISP_ROTATION_DEGREES);
+    ESP_LOGI(TAG, "========================================");
+    
+    return ESP_OK;
+#else
+    ESP_LOGW(TAG, "LVGL disabled in menuconfig");
+    return ESP_OK;
 #endif
-
-    ESP_LOGI(TAG, "[PHASE D] ✓ Complete");
-    return ESP_OK;
-}
-
-esp_err_t bsp_board_init(void)
-{
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Guition BSP v1.3.0");
-    ESP_LOGI(TAG, "========================================");
-    
-    ESP_ERROR_CHECK(bsp_phase_a_power_manager());
-    ESP_ERROR_CHECK(bsp_phase_d_peripheral_drivers());
-    
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ✓ BSP Ready");
-    ESP_LOGI(TAG, "========================================");
-    
-    return ESP_OK;
 }
 
 i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void)
