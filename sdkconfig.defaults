@@ -25,6 +25,23 @@ CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID=y
 CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
 
 # ========================================
+# DEBUG: Panic & Crash Handling (CRITICAL!)
+# ========================================
+
+# Show full crash info instead of silent reboot
+CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
+# CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT is not set
+# CONFIG_ESP_SYSTEM_NO_BACKTRACE is not set
+
+# Enable coredump to UART for debugging
+CONFIG_ESP_COREDUMP_ENABLE_TO_UART=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
+
+# Increase LVGL task stack for debugging
+CONFIG_FREERTOS_ISR_STACKSIZE=2048
+
+# ========================================
 # LVGL v9 Configuration (Vendor Optimized)
 # ========================================
 
