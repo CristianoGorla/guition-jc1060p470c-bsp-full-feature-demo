@@ -192,9 +192,8 @@ esp_err_t bsp_board_init(void)
 }
 
 esp_err_t bsp_lvgl_init(void)
-{
+
 #ifdef CONFIG_BSP_ENABLE_LVGL
-    #ifdef CONFIG_BSP_ENABLE_LVGL
 /**
  * @brief Callback invoked when MIPI DSI color transfer completes
  * @note This callback notifies LVGL that the flush operation is complete,
@@ -208,10 +207,8 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_
 }
 #endif
 
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  LVGL Software Layer Init");
-    ESP_LOGI(TAG, "========================================");
-    
+{
+#ifdef CONFIG_BSP_ENABLE_LVGL
     if (!g_display_handle) {
         ESP_LOGE(TAG, "Display not initialized! Call bsp_board_init() first.");
         return ESP_FAIL;
