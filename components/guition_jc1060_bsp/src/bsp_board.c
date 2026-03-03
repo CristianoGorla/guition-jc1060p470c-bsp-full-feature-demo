@@ -185,6 +185,7 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
         .hres = 1024,
         .vres = 600,
         .monochrome = false,
+        .color_format = LV_COLOR_FORMAT_RGB565,  /* CRITICAL: Required for buffer allocation! */
         .rotation = { .swap_xy = false, .mirror_x = false, .mirror_y = false },
         .flags = {
             .buff_dma = false,
