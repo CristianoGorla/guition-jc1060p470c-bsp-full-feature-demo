@@ -241,7 +241,7 @@ esp_err_t bsp_lvgl_init(void)
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
         .rotation = { 
-            .swap_xy = false,    /* 🔥 VENDOR: swap_xy=true! */
+            .swap_xy = true,    /* 🔥 VENDOR: swap_xy=true! */
             .mirror_x = false, 
             .mirror_y = false 
         },
