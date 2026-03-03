@@ -3,6 +3,7 @@ dependencies:
   esp_lcd_ili9881c: 1.*
   esp_lcd_touch_gt911: ^1
   esp_lcd_jd9165: '*'
+  lvgl__lvgl: ~9.2.2
   espressif/esp_hosted: ^2.12.0
   idf: '>=5.3'
   espressif/esp_wifi_remote: ^1.4.0
