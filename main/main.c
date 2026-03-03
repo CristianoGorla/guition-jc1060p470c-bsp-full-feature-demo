@@ -87,7 +87,7 @@ void app_main(void)
     ESP_LOGI(TAG, "   v1.3.0-dev | Build: %s", BUILD_GIT_COMMIT);
     ESP_LOGI(TAG, "========================================\n");
 
-    /* ORIGINAL SEQUENCE: BSP (HW + LVGL) → UI → NVS → Bootstrap */
+    /* Step 1: BSP - Hardware Only (Display/Touch/Audio/RTC drivers) */
     ret = bsp_board_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "BSP init failed: %s", esp_err_to_name(ret));
@@ -95,20 +95,7 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "✓ Hardware ready\n");
 
-#ifdef CONFIG_BSP_ENABLE_LVGL
-    ESP_LOGI(TAG, "=== LVGL UI ===");
-    
-#ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
-    ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
-    extern void lvgl_demo_run_from_config(void);
-    lvgl_demo_run_from_config();
-#else
-    ESP_LOGI(TAG, "Creating test UI...");
-    lvgl_create_test_ui();
-#endif
-    ESP_LOGI(TAG, "✓ UI displayed\n");
-#endif
-
+    /* Step 2: NVS Init */
 #ifdef CONFIG_APP_ENABLE_NVS
     ESP_LOGI(TAG, "=== NVS Init ===");
     ret = nvs_flash_init();
@@ -120,7 +107,7 @@ void app_main(void)
     ESP_LOGI(TAG, "✓ NVS ready\n");
 #endif
 
-    /* Bootstrap: WiFi → SD (PROVEN SEQUENCE) */
+    /* Step 3: Bootstrap - WiFi + SD (PSRAM allocations happen here) */
     bootstrap_manager_t bootstrap_mgr = {0};
     
 #if defined(CONFIG_BSP_ENABLE_SDCARD) || defined(CONFIG_BSP_ENABLE_WIFI)
@@ -139,6 +126,32 @@ void app_main(void)
     }
     
     ESP_LOGI(TAG, "\n=== Bootstrap Complete ===");
+#endif
+
+    /* Step 4: LVGL Init - AFTER Bootstrap (safe PSRAM allocation) */
+#ifdef CONFIG_BSP_ENABLE_LVGL
+    ESP_LOGI(TAG, "\n=== LVGL Init (Post-Bootstrap) ===");
+    ret = bsp_lvgl_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL init failed: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "✓ LVGL initialized\n");
+    }
+#endif
+
+    /* Step 5: LVGL UI Creation */
+#ifdef CONFIG_BSP_ENABLE_LVGL
+    ESP_LOGI(TAG, "=== LVGL UI ===");
+    
+#ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
+    ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
+    extern void lvgl_demo_run_from_config(void);
+    lvgl_demo_run_from_config();
+#else
+    ESP_LOGI(TAG, "Creating test UI...");
+    lvgl_create_test_ui();
+#endif
+    ESP_LOGI(TAG, "✓ UI displayed\n");
 #endif
 
     /* ========== HARDWARE TESTS (ALL ENABLED) ========== */
