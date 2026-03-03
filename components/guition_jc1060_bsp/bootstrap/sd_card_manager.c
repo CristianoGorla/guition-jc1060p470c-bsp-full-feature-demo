@@ -5,11 +5,16 @@
  * CRITICAL FIX: WiFi initializes SDMMC for Slot 1, but SD needs Slot 0.
  * Must deinit/reinit controller before accessing different slot.
  * 
+ * RACE CONDITION FIX (0x108): Suspend ESP-Hosted transport BEFORE
+ * sdmmc_host_deinit() to prevent H_SDIO_DRV from accessing bus during
+ * controller reinitialization.
+ * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
  */
 
 #include "sd_card_manager.h"
+#include "esp_hosted_wifi.h"  // For transport pause/resume during slot switch
 #include "esp_vfs_fat.h"
 #include "driver/sdmmc_host.h"
 #include "driver/gpio.h"
@@ -85,12 +90,22 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
     // Step 2: Enable pull-ups BEFORE mount
     sd_card_enable_pullups();
     
-    // Step 3: CRITICAL - Reinitialize controller for Slot 0
+    // Step 3: CRITICAL - Suspend ESP-Hosted transport BEFORE SDMMC deinit
+    // This prevents race condition 0x108 by making bus IDLE
+    ESP_LOGI(TAG, "[BUS ARBITRATION] WiFi transport suspended for bus arbitration");
+    esp_hosted_pause_transport();
+    
+    // Allow pending SDIO transactions to complete
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // Step 4: Reinitialize controller for Slot 0
     // WiFi initialized SDMMC for Slot 1, we need to switch to Slot 0
     ESP_LOGI(TAG, "Deinitializing SDMMC controller (release Slot 1 from WiFi)...");
     esp_err_t ret = sdmmc_host_deinit();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "Host deinit failed: %s", esp_err_to_name(ret));
+        // CRITICAL: Resume transport even on failure
+        esp_hosted_resume_transport();
         return ret;
     }
     
@@ -100,12 +115,14 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
     ret = sdmmc_host_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Host init failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        // CRITICAL: Resume transport even on failure
+        esp_hosted_resume_transport();
         return ret;
     }
     
     vTaskDelay(pdMS_TO_TICKS(100));  // Controller stabilization
     
-    // Step 4: Configure Slot 0 pins
+    // Step 5: Configure Slot 0 pins
     sdmmc_slot_config_t slot_config = {
         .clk = CONFIG_BSP_PIN_CLK,
         .cmd = CONFIG_BSP_PIN_CMD,
@@ -119,22 +136,24 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         .flags = 0,
     };
     
-    // Step 5: Init Slot 0
+    // Step 6: Init Slot 0
     ESP_LOGI(TAG, "Initializing SDMMC Slot 0...");
     ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Slot 0 init failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        // CRITICAL: Resume transport even on failure
+        esp_hosted_resume_transport();
         return ret;
     }
     
-    // Step 6: Configure mount options
+    // Step 7: Configure mount options
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = 5,
         .allocation_unit_size = 16 * 1024
     };
     
-    // Step 7: Mount filesystem
+    // Step 8: Mount filesystem
     ESP_LOGI(TAG, "Mounting FAT filesystem on Slot 0...");
     
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -149,11 +168,22 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         }
         ESP_LOGI(TAG, "✓ SD card mounted successfully");
         ESP_LOGI(TAG, "   Card: %s", g_sd_card->cid.name);
-        ESP_LOGI(TAG, "   Capacity: %llu MB\n",
+        ESP_LOGI(TAG, "   Capacity: %llu MB",
                 ((uint64_t)g_sd_card->csd.capacity) * g_sd_card->csd.sector_size / (1024 * 1024));
+        
+        // Step 9: Resume WiFi transport after successful mount
+        ESP_LOGI(TAG, "[BUS ARBITRATION] WiFi transport resumed on Slot 1");
+        esp_hosted_resume_transport();
+        
+        ESP_LOGI(TAG, "");  // Blank line for log readability
         return ESP_OK;
     } else {
-        ESP_LOGE(TAG, "Mount failed: %s (0x%x)\n", esp_err_to_name(ret), ret);
+        ESP_LOGE(TAG, "Mount failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        
+        // CRITICAL: Resume transport even on mount failure
+        esp_hosted_resume_transport();
+        
+        ESP_LOGI(TAG, "");
         return ret;
     }
 }
