@@ -28,11 +28,6 @@
 #ifdef CONFIG_BSP_ENABLE_RTC
 #include "../drivers/rx8025t_bsp.h"
 #endif
-#ifdef CONFIG_BSP_ENABLE_LVGL
-#include "esp_lvgl_port.h"
-#include "lvgl.h"
-#include "esp_lcd_mipi_dsi.h"
-#endif
 
 static const char *TAG = "BSP";
 
@@ -64,7 +59,7 @@ static const char *TAG = "BSP";
 
 i2c_master_bus_handle_t g_i2c_bus_handle = NULL;
 
-/* Hardware handles (retained for LVGL init) */
+/* Hardware handles */
 static esp_lcd_panel_handle_t g_display_handle = NULL;
 static esp_lcd_touch_handle_t g_touch_handle = NULL;
 
@@ -184,126 +179,21 @@ esp_err_t bsp_board_init(void)
     ESP_ERROR_CHECK(bsp_phase_d_peripheral_drivers());
     
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ✓ BSP Ready (HW only)");
-    ESP_LOGI(TAG, "  Call bsp_lvgl_init() after Bootstrap");
+    ESP_LOGI(TAG, "  ✓ BSP Ready (Hardware only)");
+    ESP_LOGI(TAG, "  App must init LVGL separately");
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
 }
 
-/**
- * @brief Callback invoked when MIPI DSI color transfer completes
- */
-static bool on_color_trans_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx)
+esp_lcd_panel_handle_t bsp_display_get_handle(void)
 {
-    lv_display_t *disp = (lv_display_t *)user_ctx;
-    lv_display_flush_ready(disp);
-    return false;  // No yield needed
+    return g_display_handle;
 }
 
-esp_err_t bsp_lvgl_init(void)
+esp_lcd_touch_handle_t bsp_touch_get_handle(void)
 {
-#ifdef CONFIG_BSP_ENABLE_LVGL
-    if (!g_display_handle) {
-        ESP_LOGE(TAG, "Display not initialized! Call bsp_board_init() first.");
-        return ESP_FAIL;
-    }
-    
-    if (!g_touch_handle) {
-        ESP_LOGE(TAG, "Touch not initialized! Call bsp_board_init() first.");
-        return ESP_FAIL;
-    }
-    
-    ESP_LOGI(TAG, "[LVGL] Initializing port...");
-    
-    const lvgl_port_cfg_t lvgl_cfg = {
-        .task_priority = 4,
-        .task_stack = 6144,
-        .task_affinity = -1,
-        .task_max_sleep_ms = 500,
-        .timer_period_ms = 5
-    };
-    ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
-    
-    /* Calculate buffer size from Kconfig */
-#ifndef CONFIG_BSP_LVGL_BUFFER_LINES
-#define CONFIG_BSP_LVGL_BUFFER_LINES 100  // Default fallback
-#endif
-#ifndef CONFIG_BSP_DISPLAY_WIDTH
-#define CONFIG_BSP_DISPLAY_WIDTH 1024
-#endif
-#ifndef CONFIG_BSP_LVGL_DOUBLE_BUFFER
-#define CONFIG_BSP_LVGL_DOUBLE_BUFFER 1  // Default double buffering ON
-#endif
-
-    const uint32_t buffer_pixels = CONFIG_BSP_DISPLAY_WIDTH * CONFIG_BSP_LVGL_BUFFER_LINES;
-    
-    /* LVGL Display Configuration - VENDOR COMPATIBLE */
-    const lvgl_port_display_cfg_t disp_cfg = {
-        .io_handle = NULL,  // DPI panel has no DBI I/O
-        .panel_handle = g_display_handle,
-        .buffer_size = buffer_pixels,  /* USE KCONFIG VALUE */
-        .double_buffer = CONFIG_BSP_LVGL_DOUBLE_BUFFER,
-        .hres = 1024,
-        .vres = 600,
-        .monochrome = false,
-        .color_format = LV_COLOR_FORMAT_RGB565,
-        .rotation = { 
-            .swap_xy = false,    /* No swap for landscape native */
-            .mirror_x = false, 
-            .mirror_y = false 
-        },
-        .flags = {
-            .buff_dma = true,       /* VENDOR: DMA enabled */
-            .buff_spiram = true,    /* VENDOR: Use PSRAM for buffers */
-            .sw_rotate = true,      /* VENDOR: SW rotation prevents hardware swap_xy calls */
-        }
-    };
-    
-    /* DSI-specific configuration */
-    const lvgl_port_display_dsi_cfg_t dsi_cfg = {
-        .flags = {
-            .avoid_tearing = true,  /* Enable anti-tearing */
-        }
-    };
-    
-    ESP_LOGI(TAG, "[LVGL] Adding display...");
-    ESP_LOGI(TAG, "[LVGL] Buffer: %dx%d = %u pixels (%.1f KB per buffer)",
-             CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
-             buffer_pixels, (buffer_pixels * 2) / 1024.0f);
-    ESP_LOGI(TAG, "[LVGL] Config: buff_dma=true, buff_spiram=true, sw_rotate=true");
-    
-    lv_display_t *disp = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
-    if (!disp) {
-        ESP_LOGE(TAG, "Failed to add LVGL display!");
-        return ESP_FAIL;
-    }
-
-    /* Register DSI on_color_trans_done callback to notify LVGL flush completion */
-    esp_lcd_dpi_panel_event_callbacks_t cbs = {
-        .on_color_trans_done = on_color_trans_done,
-    };
-    ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(g_display_handle, &cbs, disp));
-    ESP_LOGI(TAG, "[LVGL] DSI flush callback registered");
-    
-    ESP_LOGI(TAG, "[LVGL] Adding touch...");
-    const lvgl_port_touch_cfg_t touch_cfg = { .disp = disp, .handle = g_touch_handle };
-    lvgl_port_add_touch(&touch_cfg);
-    
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
-    ESP_LOGI(TAG, "  Buffer: %dx%d (%.1f KB, %s)",
-             CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
-             (buffer_pixels * 2) / 1024.0f,
-             CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
-    ESP_LOGI(TAG, "  Flags: DMA+SPIRAM, SW rotation enabled");
-    ESP_LOGI(TAG, "========================================");
-    
-    return ESP_OK;
-#else
-    ESP_LOGW(TAG, "LVGL disabled in menuconfig");
-    return ESP_ERR_NOT_SUPPORTED;
-#endif
+    return g_touch_handle;
 }
 
 i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void)
