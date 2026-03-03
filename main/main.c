@@ -30,11 +30,11 @@
 
 #ifdef CONFIG_BSP_ENABLE_LVGL
 #include "lvgl.h"
-#include "bsp_lvgl.h"
+#include "esp_lvgl_port.h"
 
 static void lvgl_create_test_ui(void)
 {
-    if (!bsp_lvgl_lock(1000)) {
+    if (!lvgl_port_lock(1000)) {
         ESP_LOGE("LVGL_UI", "Failed to lock LVGL");
         return;
     }
@@ -72,7 +72,7 @@ static void lvgl_create_test_ui(void)
     lv_obj_set_style_text_font(version_label, &lv_font_montserrat_14, 0);
     lv_obj_align(version_label, LV_ALIGN_BOTTOM_LEFT, 10, -10);
     
-    bsp_lvgl_unlock();
+    lvgl_port_unlock();
 }
 #endif
 
@@ -92,33 +92,22 @@ void app_main(void)
         ESP_LOGE(TAG, "BSP init failed: %s", esp_err_to_name(ret));
         return;
     }
-    ESP_LOGI(TAG, "✓ Hardware ready\n");
+    ESP_LOGI(TAG, "✓ Hardware ready (LVGL initialized by BSP)\n");
 
 #ifdef CONFIG_BSP_ENABLE_LVGL
-    ESP_LOGI(TAG, "=== LVGL Initialization ===");
+    ESP_LOGI(TAG, "=== LVGL UI ===");
     
-    // Initialize LVGL with BSP (reads config from menuconfig)
-    lv_display_t *lv_display = bsp_lvgl_init_default();
-    if (lv_display == NULL) {
-        ESP_LOGE(TAG, "❌ LVGL initialization FAILED");
-        ESP_LOGW(TAG, "Check menuconfig: CONFIG_BSP_ENABLE_LVGL=y");
-        ESP_LOGW(TAG, "Check memory: Free heap=%lu DMA=%lu", 
-                 esp_get_free_heap_size(), 
-                 heap_caps_get_free_size(MALLOC_CAP_DMA));
-    } else {
-        ESP_LOGI(TAG, "✅ LVGL initialized successfully");
-        
 #ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
-        // Auto-run demo if enabled in menuconfig
-        ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
-        lvgl_demo_run_from_config();
+    // Auto-run demo if enabled in menuconfig
+    ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
+    extern void lvgl_demo_run_from_config(void);
+    lvgl_demo_run_from_config();
 #else
-        // Manual test UI
-        ESP_LOGI(TAG, "Creating test UI...");
-        lvgl_create_test_ui();
+    // Manual test UI
+    ESP_LOGI(TAG, "Creating test UI...");
+    lvgl_create_test_ui();
 #endif
-        ESP_LOGI(TAG, "✓ UI displayed\n");
-    }
+    ESP_LOGI(TAG, "✓ UI displayed\n");
 #endif
 
 #ifdef CONFIG_APP_ENABLE_NVS
