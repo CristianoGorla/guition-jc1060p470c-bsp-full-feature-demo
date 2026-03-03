@@ -473,6 +473,16 @@ menu "Guition JC1060P470C Board Configuration"
                 Run SD card read/write tests during startup.
                 Useful for development and debugging.
 
+        config APP_ENABLE_DISPLAY_TEST
+            bool "Enable Display Hardware Test on Boot"
+            default n
+            depends on BSP_ENABLE_DISPLAY
+            help
+                Run display hardware tests during startup:
+                - Hardware pattern test (MIPI DSI color bars)
+                - Software rendering test (color bar pattern)
+                Useful for development and hardware validation.
+
     endmenu # Application Features
 
 endmenu # Guition JC1060P470C Board Configuration
