@@ -156,10 +156,19 @@ static void touch_debug_task(void *arg)
                         first_touch_logged = true;
                     }
                     
-                    /* Parse first touch point - LITTLE ENDIAN per GT911 datasheet */
-                    uint16_t x_le = point_data[0] | (point_data[1] << 8);
-                    uint16_t y_le = point_data[2] | (point_data[3] << 8);
-                    uint16_t size_le = point_data[4] | (point_data[5] << 8);
+                    /* Parse first touch point - LITTLE ENDIAN per GT911 datasheet
+                     * Register layout (per ESP-IDF driver implementation):
+                     * 0x814F: point_data[0] = Track ID (reserved, skip)
+                     * 0x8150: point_data[1] = X_LOW
+                     * 0x8151: point_data[2] = X_HIGH
+                     * 0x8152: point_data[3] = Y_LOW
+                     * 0x8153: point_data[4] = Y_HIGH
+                     * 0x8154: point_data[5] = SIZE_LOW
+                     * 0x8155: point_data[6] = SIZE_HIGH
+                     */
+                    uint16_t x_le = point_data[1] | (point_data[2] << 8);  // FIX: Skip Track ID at [0]
+                    uint16_t y_le = point_data[3] | (point_data[4] << 8);  // FIX: Correct offset
+                    uint16_t size_le = point_data[5] | (point_data[6] << 8);  // FIX: Correct offset
                     
                     touch_count++;
                     
@@ -167,9 +176,9 @@ static void touch_debug_task(void *arg)
                     ESP_LOGI(TAG, "   X=%4d Y=%4d size=%4d %s", 
                              x_le, y_le, size_le,
                              (x_le <= TOUCH_MAX_X && y_le <= TOUCH_MAX_Y) ? "✅ IN RANGE" : "❌ OUT OF RANGE");
-                    ESP_LOGI(TAG, "   RAW: [%02X %02X] [%02X %02X] [%02X %02X] [%02X %02X]",
-                             point_data[0], point_data[1], point_data[2], point_data[3],
-                             point_data[4], point_data[5], point_data[6], point_data[7]);
+                    ESP_LOGI(TAG, "   RAW: [%02X %02X %02X] [%02X %02X] [%02X %02X] [%02X %02X]",
+                             point_data[0], point_data[1], point_data[2], point_data[3], point_data[4],
+                             point_data[5], point_data[6], point_data[7], point_data[8]);
                 }
                 
                 /* Clear status register */
