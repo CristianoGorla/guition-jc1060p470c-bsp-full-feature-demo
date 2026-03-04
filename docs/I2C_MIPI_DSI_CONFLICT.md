@@ -23,8 +23,9 @@ E (1481) GT911: touch_gt911_read_cfg(410): GT911 read error!
 
 - ❌ **GPIO check alone is NOT sufficient** (pins show correct levels)
 - ✅ **I2C bus reinitalization is REQUIRED** (resets peripheral hardware)
+- ✅ **GT911 must be reset after I2C recovery** (restores I2C address 0x14)
 
-## Solution: Unconditional I2C Recovery
+## Solution: I2C Recovery + GT911 Reset
 
 ### Implementation
 
@@ -39,7 +40,14 @@ E (1481) GT911: touch_gt911_read_cfg(410): GT911 read error!
     
     if (i2c_reinit_bus(&g_i2c_bus_handle) == ESP_OK) {
         vTaskDelay(pdMS_TO_TICKS(100));
-        ESP_LOGI(TAG, "✓ I2C bus recovered successfully");
+        ESP_LOGI(TAG, "✓ I2C bus hardware recovered");
+        
+        /* CRITICAL: Reset GT911 to restore I2C address */
+#ifdef CONFIG_BSP_ENABLE_TOUCH
+        if (bsp_touch_reset() == ESP_OK) {
+            ESP_LOGI(TAG, "✓ GT911 reset complete (address 0x14)");
+        }
+#endif
         
         /* Re-test peripherals */
         i2c_test_peripherals(g_i2c_bus_handle);
@@ -54,7 +62,24 @@ E (1481) GT911: touch_gt911_read_cfg(410): GT911 read error!
 2. **Reset GPIO pins** (SDA=7, SCL=8)
 3. **Wait 100ms** for hardware to stabilize
 4. **Re-create I2C bus** with same configuration
-5. **Verify peripherals respond**
+5. **✨ NEW: Reset GT911 touch controller** (restores address 0x14)
+6. **Verify all peripherals respond**
+
+### Why GT911 Reset is Required
+
+The **GT911 touch controller uses a special reset sequence** to configure its I2C address:
+
+- **INT pin state during reset determines address:**
+  - INT = LOW → Address 0x14 ✅ (our target)
+  - INT = HIGH → Address 0x5D ❌ (wrong)
+
+When we reinitialize the I2C bus:
+1. GPIO pins are reconfigured
+2. GT911 INT pin state may change
+3. **GT911 may revert to wrong I2C address**
+4. Touch controller becomes unreachable at 0x14
+
+**Solution:** Always call `bsp_touch_reset()` after I2C bus recovery to force address back to 0x14.
 
 ## Configuration
 
@@ -68,34 +93,42 @@ CONFIG_DEBUG_I2C_TEST_PERIPHERALS=y   # Test devices before/after recovery
 
 **Located in:** `menuconfig → Guition Board Configuration → Debug Logging → I2C Debug & Testing`
 
-### Expected Boot Log (With Recovery)
+### Expected Boot Log (With Recovery + GT911 Reset)
 
 ```
-I (1101) BSP: [I2C] ✓ Ready
-I (1101) I2C_TEST: ========== I2C PERIPHERAL TEST ==========
-I (1101) I2C_TEST: [0x14] ✓ GT911 Touch
-I (1101) I2C_TEST: [0x18] ✓ ES8311 Audio Codec
-I (1102) I2C_TEST: [0x32] ✓ RX8025T RTC
-I (1102) I2C_TEST: Total devices: 3
-I (1102) I2C_TEST: =========================================
+I (1087) BSP: [I2C] ✓ Ready
+I (1087) I2C_TEST: ========== I2C PERIPHERAL TEST ==========
+I (1087) I2C_TEST: [0x14] ✓ GT911 Touch
+I (1088) I2C_TEST: [0x18] ✓ ES8311 Audio Codec
+I (1088) I2C_TEST: [0x32] ✓ RX8025T RTC
+I (1088) I2C_TEST: Total devices: 3
+I (1088) I2C_TEST: =========================================
 
-I (1386) BSP: [PHASE D] ✓ Display HW
-W (1386) BSP: ⚠ Display initialized - I2C recovery required
-W (1386) BSP: Performing I2C bus recovery...
+I (1372) BSP: [PHASE D] ✓ Display HW
+W (1372) BSP: ⚠ Display initialized - I2C recovery required
+W (1382) BSP: Performing I2C bus recovery...
 
-I (1387) I2C_TEST: === I2C BUS RE-INITIALIZATION ===
-I (1387) I2C_TEST: Deleting existing I2C bus...
-I (1497) I2C_TEST: Creating new I2C bus (SDA=7, SCL=8)...
-I (1502) I2C_TEST: ✓ I2C bus re-initialized successfully
+I (1382) I2C_TEST: === I2C BUS RE-INITIALIZATION ===
+I (1382) I2C_TEST: Deleting existing I2C bus...
+I (1532) I2C_TEST: Creating new I2C bus (SDA=7, SCL=8)...
+I (1532) I2C_TEST: ✓ I2C bus re-initialized successfully
+I (1642) BSP: ✓ I2C bus hardware recovered successfully
 
-I (1607) I2C_TEST: ========== I2C PERIPHERAL TEST ==========
-I (1607) I2C_TEST: [0x14] ✓ GT911 Touch           ← NOW WORKING!
-I (1607) I2C_TEST: [0x18] ✓ ES8311 Audio Codec
-I (1608) I2C_TEST: [0x32] ✓ RX8025T RTC
-I (1608) I2C_TEST: Total devices: 3
+I (1642) BSP: Resetting GT911 to restore I2C address...
+I (1642) BSP_GT911: Re-executing GT911 reset sequence (post I2C recovery)
+I (1642) BSP_GT911: Starting GT911 reset sequence (forcing address 0x14)
+I (1707) BSP_GT911: Reset sequence complete, GT911 address set to 0x14
+I (1707) BSP: ✓ GT911 reset complete (address 0x14)
 
-I (1608) BSP_GT911: Initializing GT911 touch controller
-I (1673) BSP: [PHASE D] ✓ Touch HW                ← SUCCESS!
+I (1707) I2C_TEST: ========== I2C PERIPHERAL TEST ==========
+I (1707) I2C_TEST: [0x14] ✓ GT911 Touch           ← NOW WORKING!
+I (1708) I2C_TEST: [0x18] ✓ ES8311 Audio Codec
+I (1708) I2C_TEST: [0x32] ✓ RX8025T RTC
+I (1708) I2C_TEST: Total devices: 3
+I (1708) I2C_TEST: =========================================
+
+I (1708) BSP_GT911: Initializing GT911 touch controller
+I (1773) BSP: [PHASE D] ✓ Touch HW                ← SUCCESS!
 ```
 
 ## Technical Details
@@ -119,11 +152,30 @@ int scl_level = gpio_get_level(GPIO_NUM_8);  // Returns 1 (HIGH) ✓
 
 **Lesson:** Hardware conflicts can be internal to the chip, invisible to GPIO-level checks.
 
+### GT911 I2C Address Selection
+
+From GT911 datasheet:
+
+```
+Reset Sequence:
+1. INT = LOW (hold)
+2. RST = LOW (10ms)
+3. RST = HIGH (release, 5ms)
+4. INT = INPUT with pullup
+5. Wait 50ms
+
+Result: I2C Address = 0x14 (0x28 in 8-bit format)
+```
+
+If this sequence is not performed correctly, GT911 defaults to **address 0x5D** which breaks communication.
+
 ## Files Modified
 
 ### Core Implementation
 
-- `components/guition_jc1060_bsp/src/bsp_board.c` - Unconditional recovery logic
+- `components/guition_jc1060_bsp/src/bsp_board.c` - Recovery + GT911 reset logic
+- `components/guition_jc1060_bsp/drivers/gt911_bsp.c` - Added `bsp_touch_reset()`
+- `components/guition_jc1060_bsp/drivers/gt911_bsp.h` - Public reset API
 - `components/guition_jc1060_bsp/utils/i2c_test.c` - Test utilities
 - `components/guition_jc1060_bsp/utils/i2c_test.h` - Public API
 
@@ -174,11 +226,11 @@ Bit-banged I2C would work but causes:
 
 ## Conclusion
 
-**Unconditional I2C recovery after display init is the correct solution.**
+**I2C recovery + GT911 reset after display init is the complete solution.**
 
 This approach:
-- ✅ Reliable (always fixes the issue)
-- ✅ Fast (100ms delay)
+- ✅ Reliable (always fixes I2C + GT911)
+- ✅ Fast (150ms delay total)
 - ✅ Clean (no init order dependencies)
 - ✅ Safe for production
 
@@ -186,5 +238,5 @@ This approach:
 
 **Last Updated:** March 4, 2026  
 **Issue First Observed:** March 4, 2026  
-**Solution Verified:** March 4, 2026  
-**Hardware:** Guition JC1060P470C (ESP32-P4 + JD9165 MIPI-DSI)
+**Solution Verified:** March 4, 2026 (GT911 reset added)  
+**Hardware:** Guition JC1060P470C (ESP32-P4 + JD9165 MIPI-DSI + GT911)
