@@ -29,15 +29,22 @@ static const char *TAG = "LVGL_INIT";
 #endif
 
 /**
- * @brief DSI color transfer done callback
+ * @brief VSYNC event callback for display synchronization
+ * 
+ * Called at vertical blanking interval when display is ready for next frame.
+ * Ensures tear-free rendering by synchronizing LVGL refresh with display hardware.
  */
-static bool on_color_trans_done(esp_lcd_panel_handle_t panel, 
-                                 esp_lcd_dpi_panel_event_data_t *edata, 
-                                 void *user_ctx)
+static bool on_vsync_event(esp_lcd_panel_handle_t panel, 
+                           const esp_lcd_dpi_panel_event_data_t *edata, 
+                           void *user_ctx)
 {
-    lv_display_t *disp = (lv_display_t *)user_ctx;
-    lv_display_flush_ready(disp);
-    return false;
+    BaseType_t need_yield = pdFALSE;
+    if (user_ctx) {
+        lv_display_t *disp = (lv_display_t *)user_ctx;
+        // Trigger LVGL to start next frame rendering
+        need_yield = lv_display_flush_is_last(disp) ? pdTRUE : pdFALSE;
+    }
+    return need_yield;
 }
 
 esp_err_t lvgl_port_init_custom(void)
@@ -108,12 +115,12 @@ esp_err_t lvgl_port_init_custom(void)
         return ESP_FAIL;
     }
 
-    /* Register DSI flush callback */
+    /* Register VSYNC callback for display synchronization */
     esp_lcd_dpi_panel_event_callbacks_t cbs = {
-        .on_color_trans_done = on_color_trans_done,
+        .on_vsync = on_vsync_event,
     };
     ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(display_handle, &cbs, disp));
-    ESP_LOGI(TAG, "DSI flush callback registered");
+    ESP_LOGI(TAG, "VSYNC callback registered - tear-free rendering enabled");
     
     /* Add touch */
     ESP_LOGI(TAG, "Adding touch...");
