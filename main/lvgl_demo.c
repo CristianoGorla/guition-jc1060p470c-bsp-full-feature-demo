@@ -62,7 +62,6 @@ static void fps_timer_cb(lv_timer_t *timer)
 static void touch_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *obj = (lv_obj_t *)lv_event_get_target(e);
     
     if (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING) {
         lv_indev_t *indev = lv_indev_active();
@@ -71,7 +70,7 @@ static void touch_event_cb(lv_event_t *e)
             lv_indev_get_point(indev, &point);
             
             if (touch_label) {
-                lv_label_set_text_fmt(touch_label, "Touch: X=%d Y=%d", point.x, point.y);
+                lv_label_set_text_fmt(touch_label, "Touch: X=%ld Y=%ld", (long)point.x, (long)point.y);
             }
         }
     } else if (code == LV_EVENT_RELEASED) {
