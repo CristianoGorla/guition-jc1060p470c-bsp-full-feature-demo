@@ -160,7 +160,7 @@ esp_lcd_panel_handle_t bsp_display_init(void)
         .dpi_clock_freq_mhz = LCD_PIXEL_CLOCK_MHZ,
         .virtual_channel = 0,
         .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
-        .num_fbs = 1,  /* FIX: Single frame buffer (vendor config verified) */
+        .num_fbs = 2,  /* FIX: Dual framebuffer required for avoid_tearing=true */
         .video_timing = {
             .h_size = LCD_H_RES,
             .v_size = LCD_V_RES,
@@ -200,7 +200,7 @@ esp_lcd_panel_handle_t bsp_display_init(void)
     /* Set backlight to 100% brightness */
     bsp_display_set_brightness(100);
 
-    ESP_LOGI(TAG, "Display initialized successfully");
+    ESP_LOGI(TAG, "Display initialized successfully (dual FB mode)");
     return disp_panel;
 }
 
