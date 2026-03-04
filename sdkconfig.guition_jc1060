@@ -1,0 +1,17 @@
+# Board-specific overrides for Guition JC1060P470C
+# These settings override Kconfig defaults for optimal performance
+
+# ===== LVGL BUFFER FIX FOR FLICKERING =====
+# Increased from default 100 lines to 400 lines
+# Analysis: Demo uses 480*800=384000 pixels (~375 lines for 1024px width)
+# Root cause: Small buffer couldn't keep up with DSI transfer rate
+CONFIG_BSP_LVGL_BUFFER_LINES=400
+
+# Double buffering for smooth rendering
+CONFIG_BSP_LVGL_DOUBLE_BUFFER=y
+
+# DMA buffers DISABLED for MIPI-DSI (required)
+CONFIG_BSP_LVGL_USE_DMA_BUFFER=n
+
+# Use SPIRAM for framebuffers
+CONFIG_BSP_LVGL_USE_SPIRAM_BUFFER=y
