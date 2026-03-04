@@ -23,6 +23,11 @@ static const char *TAG = "BSP_GT911";
 #define GT911_REG_STATUS       0x814E  /* Status register */
 #define GT911_REG_POINT1       0x814F  /* First touch point data */
 #define GT911_REG_CONFIG       0x8047  /* Config register start */
+#define GT911_REG_X_MAX_LOW    0x8048  /* X resolution low byte */
+#define GT911_REG_X_MAX_HIGH   0x8049  /* X resolution high byte */
+#define GT911_REG_Y_MAX_LOW    0x804A  /* Y resolution low byte */
+#define GT911_REG_Y_MAX_HIGH   0x804B  /* Y resolution high byte */
+#define GT911_REG_TOUCH_NUM    0x804C  /* Max touch points */
 
 /* External I2C handle (initialized by bsp_i2c_init) */
 extern i2c_master_bus_handle_t g_i2c_bus_handle;
@@ -69,6 +74,50 @@ static void dump_hex(const char *label, const uint8_t *data, size_t len)
 }
 
 /**
+ * @brief Read and display GT911 configuration registers
+ */
+static void read_gt911_config(void)
+{
+    uint8_t config_data[16];
+    
+    ESP_LOGI(TAG, "");
+    ESP_LOGI(TAG, "========== GT911 CONFIGURATION ==========");
+    
+    /* Read configuration block (0x8047-0x804C) */
+    if (gt911_read_register(GT911_REG_CONFIG, config_data, 6) == ESP_OK) {
+        uint16_t x_max = config_data[1] | (config_data[2] << 8);
+        uint16_t y_max = config_data[3] | (config_data[4] << 8);
+        uint8_t touch_num = config_data[5];
+        
+        ESP_LOGI(TAG, "Config Version: 0x%02X", config_data[0]);
+        ESP_LOGI(TAG, "X Resolution: %d (expected %d) %s", x_max, TOUCH_MAX_X, 
+                 (x_max == TOUCH_MAX_X) ? "✅" : "❌ MISMATCH!");
+        ESP_LOGI(TAG, "Y Resolution: %d (expected %d) %s", y_max, TOUCH_MAX_Y,
+                 (y_max == TOUCH_MAX_Y) ? "✅" : "❌ MISMATCH!");
+        ESP_LOGI(TAG, "Max Touch Points: %d (expected %d) %s", touch_num, TOUCH_MAX_POINTS,
+                 (touch_num == TOUCH_MAX_POINTS) ? "✅" : "❌ MISMATCH!");
+        
+        /* Display raw config bytes */
+        dump_hex("  Config bytes (0x8047-0x804C)", config_data, 6);
+        
+        if (x_max != TOUCH_MAX_X || y_max != TOUCH_MAX_Y) {
+            ESP_LOGE(TAG, "");
+            ESP_LOGE(TAG, "⚠️  RESOLUTION MISMATCH DETECTED!");
+            ESP_LOGE(TAG, "⚠️  GT911 is configured for %dx%d but display is %dx%d", 
+                     x_max, y_max, TOUCH_MAX_X, TOUCH_MAX_Y);
+            ESP_LOGE(TAG, "⚠️  Touch coordinates will be WRONG!");
+            ESP_LOGE(TAG, "⚠️  Solution: Write correct resolution to GT911 config");
+            ESP_LOGE(TAG, "");
+        }
+    } else {
+        ESP_LOGE(TAG, "❌ Failed to read GT911 configuration!");
+    }
+    
+    ESP_LOGI(TAG, "=========================================");
+    ESP_LOGI(TAG, "");
+}
+
+/**
  * @brief Aggressive touch debug task - polls GT911 status register
  */
 static void touch_debug_task(void *arg)
@@ -78,11 +127,18 @@ static void touch_debug_task(void *arg)
     uint32_t touch_count = 0;
     uint32_t last_status_log = 0;
     bool first_touch_logged = false;
+    bool config_read = false;
     
     ESP_LOGI(TAG, "🔍 Touch debug task started - polling GT911 status register");
     ESP_LOGI(TAG, "Display resolution: %dx%d", TOUCH_MAX_X, TOUCH_MAX_Y);
     
     while (1) {
+        /* Read configuration on first touch */
+        if (!config_read && touch_count > 0) {
+            read_gt911_config();
+            config_read = true;
+        }
+        
         /* Read status register */
         if (gt911_read_register(GT911_REG_STATUS, &status, 1) == ESP_OK) {
             uint8_t touch_points = status & 0x0F;
@@ -100,36 +156,17 @@ static void touch_debug_task(void *arg)
                         first_touch_logged = true;
                     }
                     
-                    /* Parse first touch point */
-                    /* GT911 datasheet: each point is 8 bytes:
-                     * [0-1]: X coordinate (little-endian)
-                     * [2-3]: Y coordinate (little-endian)  
-                     * [4-5]: Size (little-endian)
-                     * [6]: Reserved
-                     * [7]: Track ID
-                     */
-                    
-                    /* Method 1: Little-endian (correct per datasheet) */
+                    /* Parse first touch point - LITTLE ENDIAN per GT911 datasheet */
                     uint16_t x_le = point_data[0] | (point_data[1] << 8);
                     uint16_t y_le = point_data[2] | (point_data[3] << 8);
                     uint16_t size_le = point_data[4] | (point_data[5] << 8);
                     
-                    /* Method 2: Big-endian (in case driver is wrong) */
-                    uint16_t x_be = (point_data[0] << 8) | point_data[1];
-                    uint16_t y_be = (point_data[2] << 8) | point_data[3];
-                    uint16_t size_be = (point_data[4] << 8) | point_data[5];
-                    
                     touch_count++;
                     
                     ESP_LOGI(TAG, "👆 TOUCH #%u: points=%d, buf=%d", touch_count, touch_points, buffer_status);
-                    ESP_LOGI(TAG, "   LE: X=%4d Y=%4d size=%4d %s", 
+                    ESP_LOGI(TAG, "   X=%4d Y=%4d size=%4d %s", 
                              x_le, y_le, size_le,
                              (x_le <= TOUCH_MAX_X && y_le <= TOUCH_MAX_Y) ? "✅ IN RANGE" : "❌ OUT OF RANGE");
-                    ESP_LOGI(TAG, "   BE: X=%4d Y=%4d size=%4d %s", 
-                             x_be, y_be, size_be,
-                             (x_be <= TOUCH_MAX_X && y_be <= TOUCH_MAX_Y) ? "✅ IN RANGE" : "❌ OUT OF RANGE");
-                    
-                    /* Show raw bytes for first 8 bytes (one touch point) */
                     ESP_LOGI(TAG, "   RAW: [%02X %02X] [%02X %02X] [%02X %02X] [%02X %02X]",
                              point_data[0], point_data[1], point_data[2], point_data[3],
                              point_data[4], point_data[5], point_data[6], point_data[7]);
@@ -273,6 +310,9 @@ esp_lcd_touch_handle_t bsp_touch_init(void)
 
     ESP_LOGI(TAG, "GT911 initialized (address 0x%02X, %dx%d, %d points)",
              TOUCH_I2C_ADDRESS, TOUCH_MAX_X, TOUCH_MAX_Y, TOUCH_MAX_POINTS);
+
+    /* Read GT911 configuration to verify settings */
+    read_gt911_config();
 
     /* Store global handle for debug task */
     g_touch_handle = touch_handle;
