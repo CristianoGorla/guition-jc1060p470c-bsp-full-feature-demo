@@ -84,7 +84,7 @@ esp_err_t lvgl_demo_simple(void)
 {
     ESP_LOGI(TAG, "Running simple LVGL demo");
 
-    if (!lvgl_port_lock(1000)) {
+    if (!lvgl_port_lock(portMAX_DELAY)) {
         ESP_LOGE(TAG, "Failed to lock LVGL");
         return ESP_FAIL;
     }
@@ -175,7 +175,7 @@ esp_err_t lvgl_demo_widgets(void)
 #if LVGL_DEMOS_AVAILABLE && defined(LV_USE_DEMO_WIDGETS)
     ESP_LOGI(TAG, "Starting LVGL widgets demo");
     
-    if (!lvgl_port_lock(1000)) {
+    if (!lvgl_port_lock(portMAX_DELAY)) {
         ESP_LOGE(TAG, "Failed to lock LVGL");
         return ESP_FAIL;
     }
@@ -200,7 +200,7 @@ esp_err_t lvgl_demo_benchmark(void)
 #if LVGL_DEMOS_AVAILABLE && defined(LV_USE_DEMO_BENCHMARK)
     ESP_LOGI(TAG, "Starting LVGL benchmark demo");
     
-    if (!lvgl_port_lock(1000)) {
+    if (!lvgl_port_lock(portMAX_DELAY)) {
         ESP_LOGE(TAG, "Failed to lock LVGL");
         return ESP_FAIL;
     }
@@ -226,7 +226,7 @@ esp_err_t lvgl_demo_stress(void)
 #if LVGL_DEMOS_AVAILABLE && defined(LV_USE_DEMO_STRESS)
     ESP_LOGI(TAG, "Starting LVGL stress test demo");
     
-    if (!lvgl_port_lock(1000)) {
+    if (!lvgl_port_lock(portMAX_DELAY)) {
         ESP_LOGE(TAG, "Failed to lock LVGL");
         return ESP_FAIL;
     }
@@ -247,7 +247,7 @@ esp_err_t lvgl_demo_stress(void)
 
 esp_err_t lvgl_demo_stop(void)
 {
-    if (!lvgl_port_lock(1000)) {
+    if (!lvgl_port_lock(portMAX_DELAY)) {
         return ESP_FAIL;
     }
     
