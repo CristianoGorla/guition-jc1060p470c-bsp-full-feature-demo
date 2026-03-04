@@ -1,7 +1,6 @@
 # Build source list based on Kconfig
 set(COMPONENT_SRCS
     "src/bsp_board.c"
-    "src/bsp_lvgl_demo.c"
 )
 
 # Display driver (always needed if BSP enabled)
@@ -63,9 +62,7 @@ if(CONFIG_BSP_ENABLE_TOUCH)
     list(APPEND COMPONENT_REQUIRES esp_lcd_touch_gt911)
 endif()
 
-if(CONFIG_BSP_ENABLE_LVGL)
-    list(APPEND COMPONENT_REQUIRES esp_lvgl_port lvgl)
-endif()
+# LVGL moved to main component - BSP only handles hardware
 
 if(CONFIG_BSP_ENABLE_SDCARD)
     list(APPEND COMPONENT_REQUIRES sdmmc fatfs)
