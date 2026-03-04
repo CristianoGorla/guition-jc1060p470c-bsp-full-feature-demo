@@ -18,12 +18,19 @@ menu "Graphics Configuration"
         default y
         depends on BSP_ENABLE_LVGL
         select LVGL_PORT_ENABLE_PPA
+        select LCD_RGB_ISR_IRAM_SAFE
+        select LCD_RGB_RESTART_IN_VSYNC
         help
           Enable ESP32-P4 PPA hardware accelerator for:
           - Software rotation (90/180/270 degrees)
           - Scaling operations
           - Color format conversion
           - DMA2D accelerated transfers
+          
+          Also enables:
+          - LCD ISR in IRAM for zero-latency interrupts
+          - LCD restart synchronized with VSYNC
+          
           Required for display rotation without performance penalty
           and smooth rendering without flicker.
 
@@ -74,4 +81,16 @@ menu "Graphics Configuration"
         default 90 if LVGL_DISP_ROTATION_90
         default 180 if LVGL_DISP_ROTATION_180
         default 270 if LVGL_DISP_ROTATION_270
+
+    # Font configuration matching vendor demo
+    config LV_FONT_MONTSERRAT_28
+        bool
+        default y
+        depends on BSP_ENABLE_LVGL
+
+    config LV_FONT_MONTSERRAT_32
+        bool
+        default y
+        depends on BSP_ENABLE_LVGL
+
 endmenu
