@@ -3,6 +3,9 @@
 idf_component_register(
     SRCS 
         "main.c"
+        "lvgl_init.c"
+        "lvgl_demo.c"
+        "backlight_test.c"
     INCLUDE_DIRS 
         "."
         "${CMAKE_CURRENT_BINARY_DIR}"
