@@ -86,9 +86,9 @@ esp_err_t lvgl_port_init_custom(void)
             .mirror_y = false 
         },
         .flags = {
-            .buff_dma = false,      // FIX: Changed from true - MIPI-DSI doesn't work with DMA buffers
-            .buff_spiram = true,    // Keep PSRAM allocation
-            .sw_rotate = true,      // Keep software rotation support
+            .buff_dma = true,       // Match vendor demo config (CONFIG_BSP_LVGL_USE_DMA_BUFFER=y)
+            .buff_spiram = true,
+            .sw_rotate = true,
         }
     };
     
@@ -125,7 +125,7 @@ esp_err_t lvgl_port_init_custom(void)
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
-    ESP_LOGI(TAG, "  Buffer: %dx%d (%.1f KB, %s)",
+    ESP_LOGI(TAG, "  Buffer: %dx%d (%.1f KB, %s, DMA)",
              CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
              (buffer_pixels * 2) / 1024.0f,
              CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
