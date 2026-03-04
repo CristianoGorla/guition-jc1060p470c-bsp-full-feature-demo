@@ -110,6 +110,9 @@ CONFIG_LCD_RGB_ISR_IRAM_SAFE=y
 CONFIG_LCD_RGB_RESTART_IN_VSYNC=y
 
 # === LVGL v9 Performance Optimizations (CRITICAL) ===
+# Hardware Acceleration
+CONFIG_LVGL_PORT_ENABLE_PPA=y
+
 # C Library Integration
 CONFIG_LV_USE_CLIB_MALLOC=y
 CONFIG_LV_USE_CLIB_STRING=y
