@@ -8,14 +8,42 @@
 
 **Complete Board Support Package demonstration for the Guition JC1060P470C_I_W_Y development board featuring ESP32-P4.**
 
-This project provides a comprehensive demonstration of all hardware capabilities of the Guition JC1060P470C board, featuring advanced peripheral management, reliable initialization sequences, and a deterministic three-phase bootstrap manager to handle complex SDMMC bus arbitration.
+This project provides a comprehensive demonstration of all hardware capabilities of the Guition JC1060P470C board, featuring advanced peripheral management, reliable initialization sequences, optimized LVGL v9 graphics integration, and a deterministic three-phase bootstrap manager to handle complex SDMMC bus arbitration.
 
 ---
 
-## ⚠️ Important Notice: SD Card Support Status
+## ⚠️ Important Notices
+
+### 🎨 LVGL v9 Integration Status (This Branch)
+
+> [!NOTE]
+> **Branch**: `feature/lvgl-v9-integration`
+>
+> This branch features **LVGL v9.2.2 integration** with optimized memory configuration.
+>
+> **Recent Fix (2026-03-04)**:
+> - ✅ LVGL DSI configuration optimized (`avoid_tearing = false`)
+> - ✅ Memory usage reduced: **~2.0 MB** (saved 800 KB vs previous config)
+> - ✅ Compatible with `num_fbs = 1` (single hardware frame buffer)
+> - ✅ Display 1024×600 MIPI DSI fully functional with touch input
+> - 📄 See [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md) for technical details
+
+**What works on this branch:**
+- ✅ LVGL v9.2.2 fully integrated with display and touch
+- ✅ Optimized memory configuration (2.0 MB vs 2.8 MB)
+- ✅ All I2C peripherals (Touch GT911, Audio ES8311, RTC RX8025T)
+- ✅ WiFi (ESP-Hosted) fully functional on SDMMC Slot 1
+- ⚠️ SD Card support disabled by default (see below)
+
+**For LVGL-less configuration with SD Card working, use**:
+- Branch: `main` or release `v1.0.0-beta`
+
+---
+
+### 💾 SD Card Support Status
 
 > [!WARNING]
-> **SD Card support is currently DISABLED by default** due to an unresolved SDMMC controller slot arbitration issue.
+> **SD Card support is currently DISABLED by default** on this branch due to an unresolved SDMMC controller slot arbitration issue.
 >
 > **Known Issue:**
 > - Error **0x108 (SDIO timeout)** occurs during WiFi→SD slot switch
@@ -29,8 +57,8 @@ This project provides a comprehensive demonstration of all hardware capabilities
 
 **What works:**
 - ✅ WiFi (ESP-Hosted) fully functional on SDMMC Slot 1
-- ✅ All I2C peripherals (Touch, Audio, RTC) fully functional
-- ✅ Display (MIPI-DSI) fully functional
+- ✅ All I2C peripherals (Touch, Audio, RTC) fully functional  
+- ✅ Display (MIPI-DSI) with LVGL v9 fully functional
 - ⚠️ SD Card (SDMMC Slot 0) **disabled by default** due to slot switching issue
 
 ---
@@ -46,6 +74,7 @@ This project provides a comprehensive demonstration of all hardware capabilities
 - ✅ WiFi connection and RTC NTP synchronization
 - ✅ Comprehensive documentation and troubleshooting guide
 - ⚠️ Beta status: Production testing ongoing
+- ❌ No LVGL integration (use `feature/lvgl-v9-integration` branch for LVGL)
 
 **Installation:**
 ```bash
@@ -55,11 +84,30 @@ git checkout v1.0.0-beta
 idf.py build flash monitor
 ```
 
-### Development Version
+### Development Version - LVGL Branch
+
+**feature/lvgl-v9-integration** (this branch)
+
+- ✅ LVGL v9.2.2 fully integrated
+- ✅ Optimized memory configuration (avoid_tearing=false)
+- ✅ Display 1024×600 with touch input
+- ✅ WiFi (ESP-Hosted) fully functional
+- ⚠️ **SD Card disabled by default** (slot arbitration issue)
+- 📄 See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for latest updates
+
+**Installation:**
+```bash
+git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
+cd guition-jc1060p470c-bsp-full-feature-demo
+git checkout feature/lvgl-v9-integration
+idf.py build flash monitor
+```
+
+### Development Version - Main Line
 
 **v1.3.0-dev** (develop/v1.3.0 branch)
 
-- 🚧 Active development with latest features
+- 🚧 Active development with latest features (no LVGL)
 - ✅ Fixed NTP sync with ESP-Hosted (callback-based detection)
 - ✅ Enhanced NTP diagnostic tools (DNS, ping, detailed logging)
 - ⚠️ **SD Card disabled by default** (slot arbitration issue)
@@ -79,7 +127,9 @@ idf.py build flash monitor
 
 ## 📋 Table of Contents
 
-- [Important Notice: SD Card Support Status](#️-important-notice-sd-card-support-status)
+- [Important Notices](#️-important-notices)
+  - [LVGL v9 Integration Status](#-lvgl-v9-integration-status-this-branch)
+  - [SD Card Support Status](#-sd-card-support-status)
 - [Versions](#-versions)
 - [Features](#-features)
 - [Hardware Support](#-hardware-support)
@@ -89,7 +139,6 @@ idf.py build flash monitor
 - [Hardware Pinout](#-hardware-pinout)
 - [Advanced Features](#-advanced-features)
 - [Build Configuration](#️-build-configuration)
-- [Development Workflow](#-development-workflow)
 - [Troubleshooting](#-troubleshooting)
 - [Documentation](#-documentation)
 - [Roadmap](#-roadmap)
@@ -103,22 +152,35 @@ idf.py build flash monitor
 ### Hardware Support
 
 - **🖥️ Display**: JD9165 4.7" 1024x600 MIPI DSI touchscreen with full graphics acceleration
-- **👆 Touch Controller**: GT911 capacitive multi-touch (up to 5 points) with gesture support
+- **🎨 LVGL v9**: Integrated graphics library with optimized memory config (this branch) - ✅ **WORKING**
+- **👆 Touch Controller**: GT911 capacitive multi-touch (up to 5 points) with gesture support - ✅ **WORKING**
 - **🔊 Audio Codec**: ES8311 I2S audio codec with integrated speaker amplifier control
 - **⏰ Real-Time Clock**: RX8025T I2C RTC with battery backup and automatic NTP synchronization
-- **💾 Storage**: SD card (SDMMC Slot 0) - **⚠️ DISABLED BY DEFAULT** (see notice above)
-- **📡 Connectivity**: WiFi 802.11b/g/n via ESP-Hosted on ESP32-C6 (SDMMC Slot 1) - **✅ STABLE**
+- **💾 Storage**: SD card (SDMMC Slot 0) - ⚠️ **DISABLED BY DEFAULT** (see notice above)
+- **📡 Connectivity**: WiFi 802.11b/g/n via ESP-Hosted on ESP32-C6 (SDMMC Slot 1) - ✅ **STABLE**
 - **🔌 I2C Bus**: Fast-mode (400 kHz) with multiple peripheral support
 - **💾 NVS Storage**: Non-Volatile Storage for persistent configuration
 
 ### Software Features
 
+- **🎨 LVGL v9.2.2 Integration** (this branch): Memory-optimized configuration with DSI display support
 - **⚡ Three-Phase Bootstrap Manager**: Deterministic initialization preventing SDMMC bus conflicts
 - **🔄 Automatic Power Sequencing**: Hardware reset cycle on warm boot for clean initialization
 - **🏛️ Feature Flags System**: Easy enable/disable of peripherals via Kconfig (menuconfig)
 - **🐛 Debug Tracing**: Per-peripheral debug output control for detailed diagnostics
 - **📊 System Monitoring**: Real-time boot timing analysis and hardware status tracking
 - **🛡️ Error Handling**: Robust error recovery for all peripherals with detailed logging
+
+### LVGL Configuration (This Branch)
+
+**Memory-Optimized Setup**:
+- Hardware frame buffer: `num_fbs = 1` (single buffer, 1.2 MB)
+- LVGL draw buffers: 2 × (1024×200 pixels) in PSRAM (~800 KB)
+- Total memory: **~2.0 MB** (saved 800 KB vs `avoid_tearing=true` config)
+- DMA2D acceleration enabled
+- Anti-tearing managed by LVGL (software)
+
+**See [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md) for complete configuration guide.**
 
 ### Known Issues
 
@@ -140,14 +202,14 @@ idf.py build flash monitor
 
 **Guition JC1060P470C_I_W_Y** - ESP32-P4 Development Board
 
-| Component | Specification | Status |
-|-----------|--------------|--------|
+| Component | Specification | Status (This Branch) |
+|-----------|--------------|----------------------|
 | **Main Processor** | ESP32-P4 @ 360 MHz | ✅ Stable |
 | **WiFi Coprocessor** | ESP32-C6 | ✅ Stable (WiFi works) |
 | **PSRAM** | 32 MB @ 200 MHz | ✅ Stable |
 | **Flash** | 16 MB @ 40 MHz | ✅ Stable |
-| **Display** | 4.7" 1024x600 | ✅ Stable |
-| **Touch** | Capacitive multi-touch | ✅ Stable |
+| **Display** | 4.7" 1024x600 MIPI DSI | ✅ Stable + LVGL v9 |
+| **Touch** | GT911 capacitive multi-touch | ✅ Stable + LVGL input |
 | **Audio** | I2S codec + amplifier | ✅ Stable |
 | **RTC** | Battery-backed I2C RTC | ✅ Stable |
 | **Storage** | MicroSD slot | ⚠️ **Disabled (see notice)** |
@@ -208,7 +270,7 @@ Phase B: SD Manager (Priority 22) - ⚠️ DISABLED BY DEFAULT
 **Disable SD Card by default** (`CONFIG_BSP_ENABLE_SDCARD=n`) to avoid slot arbitration:
 - WiFi (Slot 1) works perfectly
 - All I2C peripherals work perfectly
-- Display and touch work perfectly
+- Display with LVGL v9 works perfectly
 - SD Card support disabled until driver fix available
 
 **See [troubleshooting.md](troubleshooting.md) for complete technical details.**
@@ -256,12 +318,13 @@ Phase B: SD Manager (Priority 22) - ⚠️ DISABLED BY DEFAULT
    # Expected: ESP-IDF v5.5.3 or later
    ```
 
-### Quick Start
+### Quick Start (This Branch - LVGL Enabled)
 
 1. **Clone this repository**
    ```bash
    git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
    cd guition-jc1060p470c-bsp-full-feature-demo
+   git checkout feature/lvgl-v9-integration
    ```
 
 2. **Set ESP-IDF target**
@@ -297,13 +360,13 @@ Navigate to: **Guition JC1060P470C Board Configuration → Hardware Peripherals*
 | Peripheral | Config Option | Default | Notes |
 |------------|--------------|---------|-------|
 | **Display** | `BSP_ENABLE_DISPLAY` | ✅ ON | MIPI-DSI 1024x600 |
+| **LVGL** | `BSP_ENABLE_LVGL` | ✅ ON | Graphics library v9.2.2 |
 | **I2C Bus** | `BSP_ENABLE_I2C` | ✅ ON | Required for Touch/Audio/RTC |
-| **Touch** | `BSP_ENABLE_TOUCH` | ✅ ON | GT911 capacitive |
+| **Touch** | `BSP_ENABLE_TOUCH` | ✅ ON | GT911 capacitive + LVGL input |
 | **Audio** | `BSP_ENABLE_AUDIO` | ✅ ON | ES8311 codec |
 | **RTC** | `BSP_ENABLE_RTC` | ✅ ON | RX8025T battery-backed |
 | **WiFi** | `BSP_ENABLE_WIFI` | ✅ ON | ESP-Hosted SDIO |
 | **SD Card** | `BSP_ENABLE_SDCARD` | ❌ **OFF** | **Experimental** (see notice) |
-| **LVGL** | `BSP_ENABLE_LVGL` | ✅ ON | Graphics library |
 
 > [!WARNING]
 > Do NOT enable SD Card (`BSP_ENABLE_SDCARD`) unless you understand the slot arbitration issue and accept potential boot loops.
@@ -319,11 +382,12 @@ Navigate to: **Guition JC1060P470C Board Configuration → Hardware Peripherals*
 | **I2C Bus** | ✅ Stable | SDA=GPIO7, SCL=GPIO8 @ 400kHz |
 | **ES8311 Audio** | ✅ Stable | I2C 0x18, PA control GPIO11 |
 | **RX8025T RTC** | ✅ Stable | I2C 0x32, battery backup |
-| **JD9165 Display** | ✅ Stable | MIPI-DSI 1024x600 |
-| **GT911 Touch** | ✅ Stable | I2C 0x14, 5-point capacitive |
+| **JD9165 Display** | ✅ Stable | MIPI-DSI 1024x600 + LVGL v9 |
+| **GT911 Touch** | ✅ Stable | I2C 0x14, 5-point + LVGL input |
 | **WiFi ESP-Hosted** | ✅ Stable | SDMMC Slot 1, ESP32-C6 |
 | **Bootstrap Manager** | ✅ Stable | Three-phase init (WiFi-only) |
 | **NVS Flash** | ✅ Stable | Non-volatile storage |
+| **LVGL v9.2.2** | ✅ Stable | Optimized memory config |
 
 ### ⚠️ Experimental/Disabled Components
 
@@ -367,6 +431,18 @@ Navigate to: **Guition JC1060P470C Board Configuration → Hardware Peripherals*
 ---
 
 ## 🚀 Advanced Features
+
+### LVGL Demo Applications (This Branch)
+
+This branch includes LVGL v9 integration. You can test various LVGL demos:
+
+**Available demos:**
+- `lv_demo_widgets()` - UI component showcase
+- `lv_demo_music()` - Music player UI
+- `lv_demo_stress()` - Performance stress test
+- Custom applications with touch input
+
+**To run demos**, modify `main/main.c` and call the desired demo function.
 
 ### WiFi Connection Test
 
@@ -438,12 +514,25 @@ Synchronize RTC with Network Time Protocol (requires WiFi connection):
 | **Flash** | 16 MB @ 40MHz | SPI flash |
 | **SDMMC Slot 1** | 4-bit @ 40MHz | WiFi (STABLE) |
 | **SDMMC Slot 0** | Disabled | SD Card (EXPERIMENTAL) |
+| **LVGL** | v9.2.2 | Graphics library (this branch) |
 
 ---
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
+
+#### LVGL display not working
+
+**Symptoms:**
+```
+E (1464) lcd.dsi: esp_lcd_dpi_panel_get_frame_buffer(409): invalid frame buffer number
+E (1464) LVGL: lvgl_port_add_disp_priv(341): Get RGB buffers failed
+```
+
+**Solution**: Already fixed in this branch! See [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md)
+
+The fix sets `avoid_tearing = false` to work with `num_fbs = 1`, saving 800 KB of memory.
 
 #### SD Card enabled causes boot loop
 
@@ -541,7 +630,18 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 
 ## 📚 Documentation
 
-### Additional Resources
+### Technical Documentation (This Branch)
+
+- **[docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md)** - ✨ **NEW (2026-03-04)**
+  - Complete LVGL DSI configuration guide
+  - `avoid_tearing` flag behavior and memory optimization
+  - Configuration comparison and best practices
+  
+- **[docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)** - Current project status and recent fixes
+
+- **[docs/LVGL_V9_FRAME_BUFFER_FIX.md](docs/LVGL_V9_FRAME_BUFFER_FIX.md)** - Original frame buffer fix documentation
+
+### General Documentation
 
 - **[troubleshooting.md](troubleshooting.md)** - Complete troubleshooting guide
 - **[SDMMC_ARBITER_README.md](SDMMC_ARBITER_README.md)** - SDMMC bus arbitration details
@@ -552,19 +652,22 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 
 ## 🗺️ Roadmap
 
-### Current Status: WiFi-Only Configuration Stable ✅
+### Current Status: LVGL v9 + WiFi Configuration Stable ✅
 
+- ✅ LVGL v9.2.2 fully integrated with optimized memory
 - ✅ WiFi (ESP-Hosted) fully functional
 - ✅ All I2C peripherals working
-- ✅ Display and touch working
+- ✅ Display 1024×600 with touch input working
 - ⚠️ SD Card support suspended (slot arbitration issue)
 
 ### Next Steps
 
+- [ ] Test complex LVGL demos (widgets, music, stress)
+- [ ] Audio integration with LVGL
 - [ ] ESP-Hosted patch for 0x108 error handling
 - [ ] SD Card + WiFi simultaneous support
-- [ ] LVGL integration enhancements
-- [ ] Example applications
+- [ ] Example LVGL applications
+- [ ] Power management integration
 
 ---
 
@@ -580,4 +683,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ---
 
-**Project Status**: ✅ WiFi-Only Configuration Stable | **Last Updated**: 2026-03-03
+**Project Status**: ✅ LVGL v9 + WiFi Stable | **Last Updated**: 2026-03-04
