@@ -72,7 +72,7 @@ esp_err_t lvgl_port_init_custom(void)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
     
-    /* Display configuration - MATCH VENDOR EXACTLY */
+    /* Display configuration - MATCH WORKING DEMO */
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = NULL,
         .panel_handle = display_handle,
@@ -89,7 +89,7 @@ esp_err_t lvgl_port_init_custom(void)
         },
         .flags = {
             .buff_dma = true,
-            .buff_spiram = false,   // VENDOR: uses internal RAM for small buffer
+            .buff_spiram = true,    // FIXED: Use PSRAM like working demo
             .sw_rotate = true,
         }
     };
@@ -135,7 +135,7 @@ esp_err_t lvgl_port_init_custom(void)
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
-    ESP_LOGI(TAG, "  Buffer: 1024x50 (%.1f KB, %s, internal RAM)",
+    ESP_LOGI(TAG, "  Buffer: 1024x50 (%.1f KB, %s, PSRAM)",
              (BSP_LCD_DRAW_BUFF_SIZE * 2) / 1024.0f,
              BSP_LCD_DRAW_BUFF_DOUBLE ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: esp_lvgl_port helper (timer-based polling)");
