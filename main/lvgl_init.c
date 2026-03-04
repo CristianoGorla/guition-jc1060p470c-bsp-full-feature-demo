@@ -28,12 +28,8 @@ static const char *TAG = "LVGL_INIT";
 #define CONFIG_BSP_LVGL_DOUBLE_BUFFER 1
 #endif
 
-/* Callback removed - handled internally by lvgl_port_add_disp_dsi() */
-#if 0
 /**
  * @brief DSI color transfer done callback
- * NOTE: This callback is now handled internally by esp_lvgl_port.
- * Manual registration caused double callback invocation leading to flickering.
  */
 static bool on_color_trans_done(esp_lcd_panel_handle_t panel, 
                                  esp_lcd_dpi_panel_event_data_t *edata, 
@@ -43,7 +39,6 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel,
     lv_display_flush_ready(disp);
     return false;
 }
-#endif
 
 esp_err_t lvgl_port_init_custom(void)
 {
@@ -113,10 +108,12 @@ esp_err_t lvgl_port_init_custom(void)
         return ESP_FAIL;
     }
 
-    /* DSI flush callback registration removed */
-    /* The esp_lvgl_port handles DSI callbacks internally via lvgl_port_add_disp_dsi() */
-    /* Manual registration caused double callback execution leading to flickering */
-    ESP_LOGI(TAG, "DSI flush callback handled by LVGL port (no manual registration)");
+    /* Register DSI flush callback */
+    esp_lcd_dpi_panel_event_callbacks_t cbs = {
+        .on_color_trans_done = on_color_trans_done,
+    };
+    ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(display_handle, &cbs, disp));
+    ESP_LOGI(TAG, "DSI flush callback registered");
     
     /* Add touch */
     ESP_LOGI(TAG, "Adding touch...");
