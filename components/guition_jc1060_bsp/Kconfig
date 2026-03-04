@@ -17,12 +17,15 @@ menu "Graphics Configuration"
         bool "Enable PPA (Pixel Processing Accelerator)"
         default y
         depends on BSP_ENABLE_LVGL
+        select LVGL_PORT_ENABLE_PPA
         help
           Enable ESP32-P4 PPA hardware accelerator for:
           - Software rotation (90/180/270 degrees)
           - Scaling operations
           - Color format conversion
-          Required for display rotation without performance penalty.
+          - DMA2D accelerated transfers
+          Required for display rotation without performance penalty
+          and smooth rendering without flicker.
 
     config LVGL_DOUBLE_BUFFER_PSRAM
         bool "Double buffering in PSRAM (required for 200MHz)"
