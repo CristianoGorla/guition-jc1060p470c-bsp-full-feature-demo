@@ -103,12 +103,12 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     esp_err_t ret = esp_lcd_touch_read_data(ctx->touch_handle);
     
     if (ret == ESP_OK) {
-        /* Get touch points from GT911 */
+        /* Get touch points from GT911 using new API */
         uint16_t x[1], y[1], strength[1];
         uint8_t touch_cnt = 0;
         
         bool touched = false;
-        if (esp_lcd_touch_get_coordinates(ctx->touch_handle, x, y, strength, &touch_cnt, 1)) {
+        if (esp_lcd_touch_get_data(ctx->touch_handle, x, y, strength, &touch_cnt, 1)) {
             touched = (touch_cnt > 0);
         }
         
