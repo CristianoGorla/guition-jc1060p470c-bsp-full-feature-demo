@@ -160,7 +160,7 @@ esp_lcd_panel_handle_t bsp_display_init(void)
         .dpi_clock_freq_mhz = LCD_PIXEL_CLOCK_MHZ,
         .virtual_channel = 0,
         .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
-        .num_fbs = 2,  /* CRITICAL: 2 hardware frame buffers (vendor config) */
+        .num_fbs = 1,  /* FIX: Single frame buffer (vendor config verified) */
         .video_timing = {
             .h_size = LCD_H_RES,
             .v_size = LCD_V_RES,
