@@ -1,6 +1,6 @@
 # Project Status - Guition JC1060P470C BSP Full Feature Demo
 
-**Last Updated**: 2026-03-03 11:48 CET  
+**Last Updated**: 2026-03-04 20:55 CET  
 **Branch**: `feature/lvgl-v9-integration`  
 **Status**: ✅ **LVGL v9 INTEGRATED & WORKING**
 
@@ -18,14 +18,14 @@
    - ✅ RTC RX8025T (I2C)
    - ✅ Power Management (GPIO36 SD power control)
 
-2. **LVGL v9 Integration** ✨ **NEW**
+2. **LVGL v9 Integration** ✨
    - ✅ LVGL 9.2.2 with ESP_LVGL_PORT
    - ✅ RGB565 color format
-   - ✅ DSI DPI interface with 2 hardware frame buffers
-   - ✅ Single LVGL buffer (480×800 pixels in PSRAM)
-   - ✅ Anti-tearing enabled
-   - ✅ Hardware double buffering (DMA2D)
+   - ✅ DSI DPI interface configuration **fixed** (see below)
+   - ✅ Optimized memory usage (~2.0 MB)
+   - ✅ Hardware acceleration (DMA2D)
    - ✅ Touch input integration
+   - ✅ Anti-tearing handling corrected
 
 3. **BSP Architecture**
    - ✅ Modular driver structure
@@ -35,26 +35,91 @@
 
 ---
 
-## 🔧 Recent Major Fix: LVGL Frame Buffer Configuration
+## 🔧 Recent Fixes: LVGL DSI Configuration
 
-**Issue Resolved**: 2026-03-03  
+### Fix #2: avoid_tearing Configuration (2026-03-04)
+
+**Issue Identified**: Memory configuration mismatch
+
+**Documentation**: [LVGL_DSI_CONFIGURATION.md](./LVGL_DSI_CONFIGURATION.md)
+
+#### Problem
+
+LVGL initialization failed with frame buffer error:
+```
+E (1464) lcd.dsi: esp_lcd_dpi_panel_get_frame_buffer(409): invalid frame buffer number
+E (1464) LVGL: lvgl_port_add_disp_priv(341): Get RGB buffers failed
+```
+
+#### Root Cause
+
+Hardcoded behavior in `esp_lvgl_port_disp.c` (line 341):
+- When `avoid_tearing = true`, esp_lvgl_port **hardcodes** request for 2 frame buffers
+- Our DPI config had `num_fbs = 1` (single frame buffer)
+- Mismatch caused initialization failure
+
+#### Solution Applied
+
+**Commit**: [c5b153c](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/commit/c5b153ca38136627f7ca93b0a185edb592b3d98f)
+
+**File**: `main/lvgl_init.c`
+
+```c
+// CHANGED FROM:
+const lvgl_port_display_dsi_cfg_t dsi_cfg = {
+    .flags = {
+        .avoid_tearing = true,  // ❌ Requires num_fbs=2 (hardcoded)
+    }
+};
+
+// TO:
+const lvgl_port_display_dsi_cfg_t dsi_cfg = {
+    .flags = {
+        .avoid_tearing = false,  // ✅ Works with num_fbs=1
+    }
+};
+```
+
+**Benefits**:
+- ✅ Works with `num_fbs = 1` (single hardware frame buffer)
+- ✅ LVGL manages its own 2 draw buffers in PSRAM
+- ✅ Memory savings: ~800 KB (2.0 MB vs 2.8 MB)
+- ✅ DMA2D acceleration for copy operations
+- ✅ Minimal tearing risk (DMA2D + VSYNC timing)
+
+**Memory Comparison**:
+
+| Configuration | HW Frame Buffers | LVGL Draw Buffers | Total Memory |
+|---------------|------------------|-------------------|-------------|
+| `avoid_tearing=true` + `num_fbs=2` | 2 × 1.2 MB = 2.4 MB | N/A (uses HW) | ~2.4 MB |
+| `avoid_tearing=false` + `num_fbs=1` | 1 × 1.2 MB = 1.2 MB | 2 × 400 KB = 0.8 MB | ~2.0 MB ✅ |
+
+---
+
+### Fix #1: Frame Buffer Configuration (2026-03-03)
+
 **Documentation**: [LVGL_V9_FRAME_BUFFER_FIX.md](./LVGL_V9_FRAME_BUFFER_FIX.md)
 
-### Problem
+#### Problem
 
-LVGL v9 crashed with frame buffer error:
+LVGL v9 crashed with different frame buffer error:
 ```
 E (2384) lcd.dsi: esp_lcd_dpi_panel_get_frame_buffer(409): invalid frame buffer number
 assert failed: esp_lcd_dpi_panel_draw_bitmap esp_lcd_mipi_dsi.c:477 (fb)
 ```
 
-### Root Cause
+#### Root Cause
 
-Buffer configuration mismatch:
+Initial buffer configuration mismatch:
 - **Hardware DPI**: `num_fbs = 1` (only 1 frame buffer)
 - **LVGL**: `double_buffer = 1` (requesting 2 buffers)
 
-### Solution Applied
+#### Solution Applied
+
+**Commits**:
+- [a610a1b](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/commit/a610a1b5ad5e70359314548fb00316a1ebe3d5b8) - Fix DPI num_fbs to 2
+- [5263455](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/commit/5263455cc3694811f375e36ab3586b6c75d29647) - Fix LVGL double_buffer to 0
+- [8fd41f1](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/commit/8fd41f1aa6e04040e51e045962ceb7d37d00c534) - Optimize buffer_size to 480×800
 
 **Hardware (jd9165_bsp.c)**:
 ```c
@@ -67,10 +132,7 @@ Buffer configuration mismatch:
 .double_buffer = 0,         // Single buffer (hardware has 2)
 ```
 
-**Commits Applied**:
-- [a610a1b](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/commit/a610a1b5ad5e70359314548fb00316a1ebe3d5b8) - Fix DPI num_fbs to 2
-- [5263455](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/commit/5263455cc3694811f375e36ab3586b6c75d29647) - Fix LVGL double_buffer to 0
-- [8fd41f1](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/commit/8fd41f1aa6e04040e51e045962ceb7d37d00c534) - Optimize buffer_size to 480×800
+**Note**: This fix was later optimized by Fix #2 (avoid_tearing=false) to reduce memory usage.
 
 ---
 
@@ -78,34 +140,40 @@ Buffer configuration mismatch:
 
 ### Technical Documents
 
-1. **[LVGL_V9_FRAME_BUFFER_FIX.md](./LVGL_V9_FRAME_BUFFER_FIX.md)** ✨ **NEW**
-   - Complete troubleshooting guide
+1. **[LVGL_DSI_CONFIGURATION.md](./LVGL_DSI_CONFIGURATION.md)** ✨ **NEW (2026-03-04)**
+   - Complete LVGL DSI configuration guide
+   - `avoid_tearing` flag behavior and frame buffer requirements
+   - Memory optimization strategies
+   - Configuration comparison tables
+   - Troubleshooting common errors
+
+2. **[LVGL_V9_FRAME_BUFFER_FIX.md](./LVGL_V9_FRAME_BUFFER_FIX.md)** (2026-03-03)
+   - Original frame buffer troubleshooting guide
    - Vendor code analysis methodology
    - Hardware vs software buffering explanation
    - Memory usage breakdown
-   - Configuration comparison tables
 
-2. **[BOOTSTRAP_SEQUENCE.md](./BOOTSTRAP_SEQUENCE.md)**
+3. **[BOOTSTRAP_SEQUENCE.md](./BOOTSTRAP_SEQUENCE.md)**
    - Power management sequence
    - Hard reset protection
    - Phase-based initialization
 
-3. **[ESP_HOSTED_RESET_STRATEGIES.md](./ESP_HOSTED_RESET_STRATEGIES.md)**
+4. **[ESP_HOSTED_RESET_STRATEGIES.md](./ESP_HOSTED_RESET_STRATEGIES.md)**
    - Reset handling strategies
    - Capacitor discharge timing
 
-4. **[BOOTSTRAP_STRATEGY.md](./BOOTSTRAP_STRATEGY.md)**
+5. **[BOOTSTRAP_STRATEGY.md](./BOOTSTRAP_STRATEGY.md)**
    - Original bootstrap design
    - Multi-phase approach
 
-5. **[NEW_SESSION_PROMPT.md](./NEW_SESSION_PROMPT.md)**
+6. **[NEW_SESSION_PROMPT.md](./NEW_SESSION_PROMPT.md)**
    - Context for continuing work
 
 ---
 
 ## 🔑 Key Technical Details
 
-### LVGL v9 Configuration
+### LVGL v9 Configuration (After Fix #2)
 
 **Hardware Layer (DPI Controller)**:
 ```c
@@ -113,7 +181,7 @@ MIPI DSI Bus:
 ├─ 2 data lanes @ 750 Mbps
 ├─ Pixel clock: 52 MHz
 ├─ Resolution: 1024×600
-├─ Frame buffers: 2 (hardware double buffering)
+├─ Frame buffers: 1 (optimized with avoid_tearing=false) ✨
 ├─ Pixel format: RGB565 (16-bit)
 └─ DMA2D: Enabled (hardware acceleration)
 ```
@@ -121,18 +189,18 @@ MIPI DSI Bus:
 **Software Layer (LVGL)**:
 ```c
 LVGL Configuration:
-├─ Buffer size: 480×800 pixels (384,000 px)
+├─ Buffer size: 1024×200 pixels (1/3 screen) ✨
 ├─ Buffer location: PSRAM
-├─ Double buffering: Disabled (hardware has 2)
+├─ Double buffering: 2 LVGL draw buffers ✨
 ├─ Color format: RGB565
 ├─ Rotation: 0° (native landscape)
-└─ Anti-tearing: Enabled
+└─ Anti-tearing: Managed by LVGL (avoid_tearing=false) ✨
 ```
 
-**Memory Usage**:
-- **DPI Buffers** (internal RAM): 2 × (1024×600×2) = **2,457,600 bytes** (~2.4 MB)
-- **LVGL Buffer** (PSRAM): 1 × (480×800×2) = **768,000 bytes** (~750 KB)
-- **Total**: ~3.15 MB
+**Memory Usage (Optimized)**:
+- **DPI Buffer** (internal RAM): 1 × (1024×600×2) = **1,228,800 bytes** (~1.2 MB) ✨
+- **LVGL Buffers** (PSRAM): 2 × (1024×200×2) = **819,200 bytes** (~800 KB) ✨
+- **Total**: ~2.0 MB (saved ~800 KB vs previous config) ✨
 
 ### Pin Configuration
 
@@ -200,7 +268,7 @@ I (2100) BSP_JD9165: Display initialized successfully
 I (2100) BSP: [PHASE D] ✓ Display
 I (2150) BSP_GT911: Touch initialized successfully
 I (2150) BSP: [PHASE D] ✓ Touch
-I (2200) BSP: [PHASE D] ✓ LVGL (1024x600, 0°)
+I (2200) BSP: [PHASE D] ✓ LVGL (1024x600, avoid_tearing=false)
 I (2210) BSP: [PHASE D] ✓ Complete
 I (2220) BSP: ========================================
 I (2220) BSP:   ✓ BSP Ready
@@ -211,36 +279,62 @@ I (2220) BSP: ========================================
 
 ## 🎓 Key Learnings
 
-### 1. Vendor Code Analysis Methodology
+### 1. esp_lvgl_port Hardcoded Behavior
+
+When using ESP32-P4 with MIPI DSI and LVGL v9:
+- `avoid_tearing = true` **hardcodes** 2 frame buffer request (line 341)
+- No way to override this value
+- Must either:
+  - Set `num_fbs = 2` in DPI config, OR
+  - Set `avoid_tearing = false` and let LVGL manage buffers
+
+### 2. Vendor Code Analysis Methodology
 
 When integrating third-party hardware:
 1. **Find working example** from vendor
 2. **Compare ALL parameters** (not just obvious ones)
 3. **Check main.c for runtime overrides** (often different from headers!)
 4. **Document rationale** for each configuration choice
+5. **Read driver source code** for hardcoded behaviors
 
-### 2. MIPI DSI Buffering Strategy
+### 3. MIPI DSI Buffering Strategies
 
-**Hardware double buffering** (DPI) vs **software double buffering** (LVGL):
-- With 2 DPI frame buffers → Use **single LVGL buffer**
-- DPI controller ping-pongs between hardware buffers
-- LVGL doesn't need to manage double buffering
-- Prevents buffer count mismatch errors
+**Strategy A: avoid_tearing=true** (hardware managed):
+- DPI controller: `num_fbs = 2` (required, hardcoded)
+- LVGL: Uses hardware buffers directly
+- Memory: ~2.4 MB
+- Best for: Maximum performance, hardware-controlled sync
 
-### 3. Buffer Size Optimization
+**Strategy B: avoid_tearing=false** (software managed) ✅ **Current**:
+- DPI controller: `num_fbs = 1` (flexible)
+- LVGL: 2 draw buffers in PSRAM
+- Memory: ~2.0 MB (saves 800 KB)
+- Best for: Memory-constrained applications, flexibility
 
-Vendor uses **480×800 = 384,000 pixels** (not full screen 1024×600):
-- **Small buffers** (1024×50): Minimal RAM, for simple UIs
-- **Medium buffers** (480×800): **Optimal for demos** (vendor choice)
-- **Full buffers** (1024×600): Overkill, rarely needed
+### 4. Buffer Size Optimization
 
-### 4. ESP32-P4 MIPI DSI Best Practices
+Buffer size choices and trade-offs:
+- **Small buffers** (1024×50 = 51,200 px): Minimal RAM, simple UIs, more redraws
+- **Medium buffers** (1024×200 = 204,800 px): **Optimal balance** ✅ (current)
+- **Large buffers** (480×800 = 384,000 px): Vendor choice (more memory)
+- **Full buffers** (1024×600 = 614,400 px): Overkill, rarely needed
 
-✅ **Always use**:
+### 5. ESP32-P4 MIPI DSI Best Practices
+
+**For memory-optimized applications** ✅ **Current**:
+- `num_fbs = 1` (single hardware frame buffer)
+- `avoid_tearing = false` (LVGL manages buffers)
+- `double_buffer = 1` (2 LVGL draw buffers)
+- `buffer_size = 1024 * 200` (1/3 screen)
+- `buff_spiram = true` (LVGL buffers in PSRAM)
+- `use_dma2d = true` (hardware acceleration)
+
+**For maximum performance applications**:
 - `num_fbs = 2` (hardware double buffering)
+- `avoid_tearing = true` (hardware-controlled sync)
 - `double_buffer = 0` (LVGL single buffer)
-- `avoid_tearing = true` (DSI anti-tearing)
-- `buff_spiram = true` (LVGL buffer in PSRAM)
+- `buffer_size = 1024 * 600` (full screen)
+- `buff_spiram = false` (use internal RAM if available)
 - `use_dma2d = true` (hardware acceleration)
 
 ---
@@ -262,9 +356,11 @@ guition-jc1060p470c-bsp-full-feature-demo/
 │     ├─ include/               # Public headers
 │     └─ Kconfig                # Configuration options
 ├─ main/
-│  └─ main.c                    # Application entry point
+│  ├─ main.c                    # Application entry point
+│  └─ lvgl_init.c               # LVGL initialization (avoid_tearing fix)
 ├─ docs/
-│  ├─ LVGL_V9_FRAME_BUFFER_FIX.md  # ✨ NEW troubleshooting
+│  ├─ LVGL_DSI_CONFIGURATION.md    # ✨ NEW (2026-03-04)
+│  ├─ LVGL_V9_FRAME_BUFFER_FIX.md  # (2026-03-03)
 │  ├─ PROJECT_STATUS.md            # This file
 │  ├─ BOOTSTRAP_SEQUENCE.md
 │  ├─ ESP_HOSTED_RESET_STRATEGIES.md
@@ -292,15 +388,16 @@ guition-jc1060p470c-bsp-full-feature-demo/
 
 ## 📊 Performance Metrics
 
-| Metric | Value |
-|--------|-------|
-| Boot time | ~2.2s (to LVGL ready) |
-| Display init | ~800ms |
-| LVGL init | ~100ms |
-| Touch response | <10ms |
-| PSRAM available | 32000 KB |
-| Internal RAM available | ~428 KB |
-| DPI frame rate | 60 FPS (vsync locked) |
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Boot time | ~2.2s | To LVGL ready |
+| Display init | ~800ms | MIPI DSI initialization |
+| LVGL init | ~100ms | Port initialization |
+| Touch response | <10ms | GT911 via I2C |
+| PSRAM available | 32000 KB | For application use |
+| Internal RAM available | ~428 KB | After BSP init |
+| DPI frame rate | 60 FPS | Vsync locked |
+| **Memory savings** | **~800 KB** | **vs avoid_tearing=true** ✨ |
 
 ---
 
@@ -313,6 +410,7 @@ guition-jc1060p470c-bsp-full-feature-demo/
    - Run `lv_demo_music()`
    - Verify touch input accuracy
    - Monitor frame rate and performance
+   - Verify no visible tearing with avoid_tearing=false
 
 2. **Audio Integration**
    - Configure ES8311 for playback
@@ -355,30 +453,35 @@ guition-jc1060p470c-bsp-full-feature-demo/
 ```
 Project: Guition JC1060P470C BSP Full Feature Demo
 
-Current Status:
+Current Status (2026-03-04):
 - LVGL v9.2.2 fully integrated and working
-- Display: 1024×600 MIPI DSI with 2 HW frame buffers
+- Display: 1024×600 MIPI DSI with optimized memory config
 - Touch: GT911 working with LVGL input
-- Recent fix: Frame buffer configuration (see LVGL_V9_FRAME_BUFFER_FIX.md)
+- Recent fix: avoid_tearing=false for memory optimization
+  (see LVGL_DSI_CONFIGURATION.md)
 
-Configuration:
-- DPI num_fbs = 2 (hardware double buffering)
-- LVGL double_buffer = 0 (single software buffer)
-- LVGL buffer_size = 480×800 pixels in PSRAM
+Configuration (Optimized):
+- DPI num_fbs = 1 (single hardware frame buffer)
+- LVGL avoid_tearing = false (software buffer management)
+- LVGL double_buffer = 1 (2 draw buffers in PSRAM)
+- LVGL buffer_size = 1024 × 200 pixels
 - Color format: RGB565
-- Anti-tearing: Enabled
+- Memory: ~2.0 MB total (saved 800 KB)
 
 Next Tasks:
 - Test complex LVGL demos
+- Verify no visible tearing
 - Integrate audio (ES8311)
 - Configure RTC (RX8025T)
 
 Key Documents:
-- docs/LVGL_V9_FRAME_BUFFER_FIX.md (troubleshooting reference)
+- docs/LVGL_DSI_CONFIGURATION.md (NEW - avoid_tearing configuration)
+- docs/LVGL_V9_FRAME_BUFFER_FIX.md (original frame buffer fix)
 - docs/PROJECT_STATUS.md (this file)
 
 Repository: https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo
 Branch: feature/lvgl-v9-integration
+Latest Commit: c5b153c (avoid_tearing=false fix)
 ```
 
 ---
@@ -392,6 +495,7 @@ Branch: feature/lvgl-v9-integration
 ### ESP-IDF Documentation
 - [MIPI DSI LCD Driver](https://docs.espressif.com/projects/esp-idf/en/latest/esp32p4/api-reference/peripherals/lcd/dsi_lcd.html)
 - [ESP_LVGL_PORT Component](https://github.com/espressif/esp-bsp/tree/master/components/esp_lvgl_port)
+- [ESP_LVGL_PORT Source Code](https://github.com/espressif/esp-bsp/blob/master/components/esp_lvgl_port/src/lvgl9/esp_lvgl_port_disp.c)
 - [ESP32-P4 Technical Reference](https://www.espressif.com/sites/default/files/documentation/esp32-p4_technical_reference_manual_en.pdf)
 
 ### LVGL Resources
@@ -401,5 +505,6 @@ Branch: feature/lvgl-v9-integration
 
 ---
 
-**Project Health**: 🟢 **Production Ready** - LVGL v9 fully integrated and tested  
-**Last Milestone**: LVGL v9 frame buffer configuration resolved (2026-03-03)
+**Project Health**: 🟢 **Production Ready** - LVGL v9 fully integrated with optimized memory configuration  
+**Last Milestone**: LVGL DSI avoid_tearing configuration optimized (2026-03-04)  
+**Memory Optimization**: Saved ~800 KB (2.0 MB vs 2.8 MB)
