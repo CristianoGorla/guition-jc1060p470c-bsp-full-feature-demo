@@ -33,6 +33,7 @@ static const char *TAG = "LVGL_INIT";
 static lv_indev_t *g_touch_indev = NULL;
 static uint32_t g_lvgl_read_count = 0;
 static uint32_t g_lvgl_touch_count = 0;
+static uint32_t g_flush_count = 0;
 
 /**
  * @brief DSI color transfer done callback
@@ -42,6 +43,14 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel,
                                  void *user_ctx)
 {
     lv_display_t *disp = (lv_display_t *)user_ctx;
+    
+    g_flush_count++;
+    
+    /* Log every 100 flushes to verify callback is working */
+    if (g_flush_count % 100 == 0) {
+        ESP_LOGI(TAG, "📺 DSI flush callback called (count: %lu)", g_flush_count);
+    }
+    
     lv_display_flush_ready(disp);
     return false;
 }
@@ -184,7 +193,7 @@ esp_err_t lvgl_port_init_custom(void)
         .on_color_trans_done = on_color_trans_done,
     };
     ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(display_handle, &cbs, disp));
-    ESP_LOGI(TAG, "DSI flush callback registered");
+    ESP_LOGI(TAG, "DSI flush callback registered (will log every 100 flushes)");
     
     /* Add touch with error checking */
     ESP_LOGI(TAG, "Adding touch...");
@@ -225,6 +234,7 @@ esp_err_t lvgl_port_init_custom(void)
              CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: type %d, event monitoring enabled", indev_type);
     ESP_LOGI(TAG, "  Rotation: swap_xy=false (TEST MODE)");
+    ESP_LOGI(TAG, "  Flush callback: ACTIVE (monitoring enabled)");
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
