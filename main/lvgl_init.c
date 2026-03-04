@@ -94,9 +94,13 @@ esp_err_t lvgl_port_init_custom(void)
     };
     
     /* DSI-specific configuration */
+    /* FIX: avoid_tearing=false allows single frame buffer (num_fbs=1)
+     * This saves ~800KB memory vs num_fbs=2 required by avoid_tearing=true.
+     * See docs/LVGL_DSI_CONFIGURATION.md for details.
+     */
     const lvgl_port_display_dsi_cfg_t dsi_cfg = {
         .flags = {
-            .avoid_tearing = true,
+            .avoid_tearing = false,  // Changed from true - allows num_fbs=1
         }
     };
     
