@@ -34,51 +34,7 @@
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "lvgl_init.h"
-
-static void lvgl_create_test_ui(void)
-{
-    ESP_LOGI("LVGL_UI", "Attempting to lock LVGL...");
-    
-    // Check heap before
-    size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    ESP_LOGI("LVGL_UI", "Free PSRAM: %zu KB", free_psram / 1024);
-    
-    if (!lvgl_port_lock(5000)) {
-        ESP_LOGE("LVGL_UI", "TIMEOUT: Failed to lock LVGL after 5s");
-        return;
-    }
-    
-    ESP_LOGI("LVGL_UI", "Lock acquired! Creating UI...");
-    
-    lv_obj_t *scr = lv_scr_act();
-    if (!scr) {
-        ESP_LOGE("LVGL_UI", "ERROR: lv_scr_act() returned NULL!");
-        lvgl_port_unlock();
-        return;
-    }
-    
-    lv_obj_set_style_bg_color(scr, lv_color_hex(0x003366), 0);
-    
-    lv_obj_t *label = lv_label_create(scr);
-    if (!label) {
-        ESP_LOGE("LVGL_UI", "ERROR: lv_label_create() returned NULL!");
-        lvgl_port_unlock();
-        return;
-    }
-    
-    lv_label_set_text(label, "LVGL v9 Test");
-    lv_obj_center(label);
-    
-    ESP_LOGI("LVGL_UI", "UI objects created, about to unlock...");
-    
-    lvgl_port_unlock();
-    
-    ESP_LOGI("LVGL_UI", "✓ Unlock complete!");
-    
-    // Give time for first refresh
-    vTaskDelay(pdMS_TO_TICKS(100));
-    ESP_LOGI("LVGL_UI", "✓ First refresh should be complete");
-}
+#include "lvgl_demo.h"
 #endif
 
 static const char *TAG = "GUITION_MAIN";
@@ -153,12 +109,9 @@ void app_main(void)
     
 #ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
     ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
-    extern void lvgl_demo_run_from_config(void);
     lvgl_demo_run_from_config();
 #else
-    ESP_LOGI(TAG, "Creating minimal test UI...");
-    lvgl_create_test_ui();
-    ESP_LOGI(TAG, "✓ lvgl_create_test_ui() returned");
+    ESP_LOGI(TAG, "No demo enabled in Kconfig");
 #endif
     ESP_LOGI(TAG, "✓ UI displayed\n");
 #endif
