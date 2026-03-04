@@ -25,6 +25,11 @@ if(CONFIG_BSP_ENABLE_RTC)
     list(APPEND COMPONENT_SRCS "utils/rtc_test.c")
 endif()
 
+# I2C test utilities (if any I2C debug feature enabled)
+if(CONFIG_DEBUG_I2C_GPIO_CHECK OR CONFIG_DEBUG_I2C_TEST_PERIPHERALS)
+    list(APPEND COMPONENT_SRCS "utils/i2c_test.c")
+endif()
+
 # Bootstrap manager (WiFi/SD)
 if(CONFIG_BSP_ENABLE_WIFI OR CONFIG_BSP_ENABLE_SDCARD)
     list(APPEND COMPONENT_SRCS "bootstrap/bootstrap_manager.c")
