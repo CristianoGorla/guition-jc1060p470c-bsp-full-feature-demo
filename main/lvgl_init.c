@@ -161,13 +161,7 @@ esp_err_t lvgl_port_init_custom(void)
     /* Verify touch device type */
     lv_indev_type_t indev_type = lv_indev_get_type(g_touch_indev);
     ESP_LOGI(TAG, "✅ Touch added successfully, type: %d (expected 1=POINTER)", indev_type);
-    
-    /* Test initial touch state */
-    lv_indev_data_t test_data;
-    lv_indev_read(g_touch_indev, &test_data);
-    ESP_LOGI(TAG, "Touch initial state: %s, pos (%d, %d)",
-             test_data.state == LV_INDEV_STATE_PRESSED ? "PRESSED" : "RELEASED",
-             test_data.point.x, test_data.point.y);
+    ESP_LOGI(TAG, "Touch will be monitored via event callbacks");
     
     /* Create an invisible object covering entire screen for touch event monitoring */
     lv_obj_t *touch_monitor = lv_obj_create(lv_screen_active());
@@ -180,7 +174,7 @@ esp_err_t lvgl_port_init_custom(void)
     lv_obj_add_event_cb(touch_monitor, touch_event_cb, LV_EVENT_RELEASED, NULL);
     lv_obj_move_background(touch_monitor);
     
-    ESP_LOGI(TAG, "Touch debug monitor created");
+    ESP_LOGI(TAG, "Touch debug monitor created (transparent background layer)");
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
@@ -188,7 +182,7 @@ esp_err_t lvgl_port_init_custom(void)
              CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
              (buffer_pixels * 2) / 1024.0f,
              CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
-    ESP_LOGI(TAG, "  Touch: type %d, monitoring enabled", indev_type);
+    ESP_LOGI(TAG, "  Touch: type %d, event monitoring enabled", indev_type);
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
