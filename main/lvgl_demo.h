@@ -26,6 +26,13 @@ typedef enum {
 } lvgl_demo_type_t;
 
 /**
+ * @brief Run custom interactive demo with crosshair
+ * Features: crosshair cursor, live coordinates, slider, button
+ * @return ESP_OK on success
+ */
+esp_err_t lvgl_demo_custom(void);
+
+/**
  * @brief Run a simple LVGL demo
  * @return ESP_OK on success
  */
