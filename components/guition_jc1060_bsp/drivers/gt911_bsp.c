@@ -19,8 +19,100 @@ static const char *TAG = "BSP_GT911";
 #define TOUCH_MAX_Y            600
 #define TOUCH_MAX_POINTS       5
 
+/* GT911 Registers for raw debugging */
+#define GT911_REG_STATUS       0x814E
+#define GT911_REG_POINT1       0x814F
+
 /* External I2C handle (initialized by bsp_i2c_init) */
 extern i2c_master_bus_handle_t g_i2c_bus_handle;
+
+/* Global touch handle for debug task */
+static esp_lcd_touch_handle_t g_touch_handle = NULL;
+static TaskHandle_t g_touch_debug_task = NULL;
+
+/**
+ * @brief Read GT911 raw register for debugging
+ */
+static esp_err_t gt911_read_register(uint16_t reg, uint8_t *data, size_t len)
+{
+    uint8_t reg_addr[2] = {(reg >> 8) & 0xFF, reg & 0xFF};
+    
+    i2c_master_dev_handle_t dev_handle;
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = TOUCH_I2C_ADDRESS,
+        .scl_speed_hz = 400000,
+    };
+    
+    if (i2c_master_bus_add_device(g_i2c_bus_handle, &dev_cfg, &dev_handle) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    
+    esp_err_t ret = i2c_master_transmit_receive(dev_handle, reg_addr, 2, data, len, 100);
+    i2c_master_bus_rm_device(dev_handle);
+    
+    return ret;
+}
+
+/**
+ * @brief Aggressive touch debug task - polls GT911 status register
+ */
+static void touch_debug_task(void *arg)
+{
+    uint8_t status = 0;
+    uint8_t point_data[8];
+    uint32_t touch_count = 0;
+    uint32_t last_status_log = 0;
+    
+    ESP_LOGI(TAG, "🔍 Touch debug task started - polling GT911 status register");
+    
+    while (1) {
+        /* Read status register */
+        if (gt911_read_register(GT911_REG_STATUS, &status, 1) == ESP_OK) {
+            uint8_t touch_points = status & 0x0F;
+            bool buffer_status = (status >> 7) & 0x01;
+            
+            if (touch_points > 0) {
+                /* Read first touch point coordinates */
+                if (gt911_read_register(GT911_REG_POINT1, point_data, 8) == ESP_OK) {
+                    uint16_t x = point_data[0] | (point_data[1] << 8);
+                    uint16_t y = point_data[2] | (point_data[3] << 8);
+                    uint16_t size = point_data[4] | (point_data[5] << 8);
+                    
+                    ESP_LOGI(TAG, "👆 RAW TOUCH #%u: points=%d, buf=%d, X=%d, Y=%d, size=%d",
+                             ++touch_count, touch_points, buffer_status, x, y, size);
+                }
+                
+                /* Clear status register */
+                uint8_t clear = 0;
+                uint8_t write_buf[3] = {(GT911_REG_STATUS >> 8) & 0xFF, GT911_REG_STATUS & 0xFF, clear};
+                i2c_master_dev_handle_t dev_handle;
+                i2c_device_config_t dev_cfg = {
+                    .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+                    .device_address = TOUCH_I2C_ADDRESS,
+                    .scl_speed_hz = 400000,
+                };
+                if (i2c_master_bus_add_device(g_i2c_bus_handle, &dev_cfg, &dev_handle) == ESP_OK) {
+                    i2c_master_transmit(dev_handle, write_buf, 3, 100);
+                    i2c_master_bus_rm_device(dev_handle);
+                }
+            } else {
+                /* Log "no touch" periodically */
+                uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                if (now - last_status_log > 5000) {
+                    ESP_LOGI(TAG, "ℹ️  GT911 status: 0x%02X (no touches)", status);
+                    last_status_log = now;
+                }
+            }
+        } else {
+            ESP_LOGE(TAG, "❌ Failed to read GT911 status register!");
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(50));  /* Poll every 50ms */
+    }
+}
 
 /**
  * @brief Perform GT911 reset sequence to force I2C address to 0x14
@@ -129,6 +221,13 @@ esp_lcd_touch_handle_t bsp_touch_init(void)
 
     ESP_LOGI(TAG, "GT911 initialized (address 0x%02X, %dx%d, %d points)",
              TOUCH_I2C_ADDRESS, TOUCH_MAX_X, TOUCH_MAX_Y, TOUCH_MAX_POINTS);
+
+    /* Store global handle for debug task */
+    g_touch_handle = touch_handle;
+
+    /* Start aggressive touch debug task */
+    ESP_LOGI(TAG, "Starting aggressive touch debug task...");
+    xTaskCreate(touch_debug_task, "touch_debug", 4096, NULL, 5, &g_touch_debug_task);
 
     return touch_handle;
 }
