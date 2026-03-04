@@ -107,12 +107,10 @@ void app_main(void)
 #ifdef CONFIG_BSP_ENABLE_LVGL
     ESP_LOGI(TAG, "=== LVGL UI ===");
     
-#ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
-    ESP_LOGI(TAG, "Starting LVGL demo (from Kconfig)...");
-    lvgl_demo_run_from_config();
-#else
-    ESP_LOGI(TAG, "No demo enabled in Kconfig");
-#endif
+    /* FIX: Use simple demo instead of widgets to test rendering with swap_xy=false */
+    ESP_LOGI(TAG, "Starting LVGL simple demo (testing display/touch)...");
+    lvgl_demo_simple();
+    
     ESP_LOGI(TAG, "✓ UI displayed\n");
 #endif
 
