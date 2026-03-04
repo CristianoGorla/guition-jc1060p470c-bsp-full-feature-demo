@@ -78,6 +78,12 @@ static esp_err_t touch_reset_sequence(void)
     return ESP_OK;
 }
 
+esp_err_t bsp_touch_reset(void)
+{
+    ESP_LOGI(TAG, "Re-executing GT911 reset sequence (post I2C recovery)");
+    return touch_reset_sequence();
+}
+
 esp_lcd_touch_handle_t bsp_touch_init(void)
 {
     ESP_LOGI(TAG, "Initializing GT911 touch controller");
