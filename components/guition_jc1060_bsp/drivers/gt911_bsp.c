@@ -20,8 +20,9 @@ static const char *TAG = "BSP_GT911";
 #define TOUCH_MAX_POINTS       5
 
 /* GT911 Registers for raw debugging */
-#define GT911_REG_STATUS       0x814E
-#define GT911_REG_POINT1       0x814F
+#define GT911_REG_STATUS       0x814E  /* Status register */
+#define GT911_REG_POINT1       0x814F  /* First touch point data */
+#define GT911_REG_CONFIG       0x8047  /* Config register start */
 
 /* External I2C handle (initialized by bsp_i2c_init) */
 extern i2c_master_bus_handle_t g_i2c_bus_handle;
@@ -55,16 +56,31 @@ static esp_err_t gt911_read_register(uint16_t reg, uint8_t *data, size_t len)
 }
 
 /**
+ * @brief Dump raw bytes for debugging
+ */
+static void dump_hex(const char *label, const uint8_t *data, size_t len)
+{
+    char hex_str[128];
+    char *p = hex_str;
+    for (size_t i = 0; i < len && i < 20; i++) {
+        p += sprintf(p, "%02X ", data[i]);
+    }
+    ESP_LOGI(TAG, "%s: %s", label, hex_str);
+}
+
+/**
  * @brief Aggressive touch debug task - polls GT911 status register
  */
 static void touch_debug_task(void *arg)
 {
     uint8_t status = 0;
-    uint8_t point_data[8];
+    uint8_t point_data[40];  /* Read more data for analysis */
     uint32_t touch_count = 0;
     uint32_t last_status_log = 0;
+    bool first_touch_logged = false;
     
     ESP_LOGI(TAG, "🔍 Touch debug task started - polling GT911 status register");
+    ESP_LOGI(TAG, "Display resolution: %dx%d", TOUCH_MAX_X, TOUCH_MAX_Y);
     
     while (1) {
         /* Read status register */
@@ -73,14 +89,50 @@ static void touch_debug_task(void *arg)
             bool buffer_status = (status >> 7) & 0x01;
             
             if (touch_points > 0) {
-                /* Read first touch point coordinates */
-                if (gt911_read_register(GT911_REG_POINT1, point_data, 8) == ESP_OK) {
-                    uint16_t x = point_data[0] | (point_data[1] << 8);
-                    uint16_t y = point_data[2] | (point_data[3] << 8);
-                    uint16_t size = point_data[4] | (point_data[5] << 8);
+                /* Read ALL touch point data (8 bytes per point) */
+                if (gt911_read_register(GT911_REG_POINT1, point_data, 40) == ESP_OK) {
                     
-                    ESP_LOGI(TAG, "👆 RAW TOUCH #%u: points=%d, buf=%d, X=%d, Y=%d, size=%d",
-                             ++touch_count, touch_points, buffer_status, x, y, size);
+                    /* First touch: dump RAW bytes for analysis */
+                    if (!first_touch_logged) {
+                        ESP_LOGI(TAG, "📊 === FIRST TOUCH RAW DATA DUMP ===");
+                        dump_hex("  Status reg (0x814E)", &status, 1);
+                        dump_hex("  Point data (0x814F+)", point_data, 40);
+                        first_touch_logged = true;
+                    }
+                    
+                    /* Parse first touch point */
+                    /* GT911 datasheet: each point is 8 bytes:
+                     * [0-1]: X coordinate (little-endian)
+                     * [2-3]: Y coordinate (little-endian)  
+                     * [4-5]: Size (little-endian)
+                     * [6]: Reserved
+                     * [7]: Track ID
+                     */
+                    
+                    /* Method 1: Little-endian (correct per datasheet) */
+                    uint16_t x_le = point_data[0] | (point_data[1] << 8);
+                    uint16_t y_le = point_data[2] | (point_data[3] << 8);
+                    uint16_t size_le = point_data[4] | (point_data[5] << 8);
+                    
+                    /* Method 2: Big-endian (in case driver is wrong) */
+                    uint16_t x_be = (point_data[0] << 8) | point_data[1];
+                    uint16_t y_be = (point_data[2] << 8) | point_data[3];
+                    uint16_t size_be = (point_data[4] << 8) | point_data[5];
+                    
+                    touch_count++;
+                    
+                    ESP_LOGI(TAG, "👆 TOUCH #%u: points=%d, buf=%d", touch_count, touch_points, buffer_status);
+                    ESP_LOGI(TAG, "   LE: X=%4d Y=%4d size=%4d %s", 
+                             x_le, y_le, size_le,
+                             (x_le <= TOUCH_MAX_X && y_le <= TOUCH_MAX_Y) ? "✅ IN RANGE" : "❌ OUT OF RANGE");
+                    ESP_LOGI(TAG, "   BE: X=%4d Y=%4d size=%4d %s", 
+                             x_be, y_be, size_be,
+                             (x_be <= TOUCH_MAX_X && y_be <= TOUCH_MAX_Y) ? "✅ IN RANGE" : "❌ OUT OF RANGE");
+                    
+                    /* Show raw bytes for first 8 bytes (one touch point) */
+                    ESP_LOGI(TAG, "   RAW: [%02X %02X] [%02X %02X] [%02X %02X] [%02X %02X]",
+                             point_data[0], point_data[1], point_data[2], point_data[3],
+                             point_data[4], point_data[5], point_data[6], point_data[7]);
                 }
                 
                 /* Clear status register */
@@ -100,7 +152,7 @@ static void touch_debug_task(void *arg)
                 /* Log "no touch" periodically */
                 uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
                 if (now - last_status_log > 5000) {
-                    ESP_LOGI(TAG, "ℹ️  GT911 status: 0x%02X (no touches)", status);
+                    ESP_LOGI(TAG, "ℹ️  GT911 status: 0x%02X (no touches, total: %u)", status, touch_count);
                     last_status_log = now;
                 }
             }
