@@ -29,10 +29,7 @@ static const char *TAG = "LVGL_INIT";
 #endif
 
 /**
- * @brief DSI color transfer done callback with immediate refresh
- * 
- * Forces immediate LVGL refresh after DMA transfer completes to prevent
- * frame accumulation and flickering.
+ * @brief DSI color transfer done callback
  */
 static bool on_color_trans_done(esp_lcd_panel_handle_t panel, 
                                  esp_lcd_dpi_panel_event_data_t *edata, 
@@ -40,10 +37,6 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel,
 {
     lv_display_t *disp = (lv_display_t *)user_ctx;
     lv_display_flush_ready(disp);
-    
-    // Force immediate redraw if dirty areas exist
-    lv_refr_now(disp);
-    
     return false;
 }
 
@@ -115,12 +108,12 @@ esp_err_t lvgl_port_init_custom(void)
         return ESP_FAIL;
     }
 
-    /* Register DSI flush callback with immediate refresh */
+    /* Register DSI flush callback */
     esp_lcd_dpi_panel_event_callbacks_t cbs = {
         .on_color_trans_done = on_color_trans_done,
     };
     ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(display_handle, &cbs, disp));
-    ESP_LOGI(TAG, "DSI callback with immediate refresh registered");
+    ESP_LOGI(TAG, "DSI flush callback registered");
     
     /* Add touch */
     ESP_LOGI(TAG, "Adding touch...");
