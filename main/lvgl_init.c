@@ -86,18 +86,16 @@ static void touch_event_cb(lv_event_t *e)
  * This is called by LVGL to read touch state. We poll GT911 directly here
  * instead of relying on esp_lvgl_port automatic polling which may be broken
  * with avoid_tearing=false.
+ * 
+ * CRITICAL: NO ESP_LOGI() CALLS ALLOWED HERE!
+ * This callback runs in LVGL task context which holds mutexes.
+ * Logging would cause deadlock in newlib printf().
  */
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     touch_ctx_t *ctx = &g_touch_ctx;
     
     ctx->poll_count++;
-    
-    /* Periodic heartbeat log */
-    if (ctx->poll_count % 500 == 0) {
-        ESP_LOGI(TAG, "⏱️  Touch read callback alive: %lu polls, %lu touches detected", 
-                 ctx->poll_count, ctx->touch_count);
-    }
     
     /* Trigger GT911 read - this updates internal state */
     esp_err_t ret = esp_lcd_touch_read_data(ctx->touch_handle);
@@ -117,7 +115,6 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
             /* Touch detected */
             if (!ctx->was_pressed) {
                 ctx->touch_count++;
-                ESP_LOGI(TAG, "🟢 Touch PRESSED at (%d, %d) [strength=%d]", x[0], y[0], strength[0]);
                 ctx->was_pressed = true;
             }
             
@@ -132,7 +129,6 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
         } else {
             /* No touch */
             if (ctx->was_pressed) {
-                ESP_LOGI(TAG, "🔴 Touch RELEASED at (%d, %d)", ctx->last_x, ctx->last_y);
                 ctx->was_pressed = false;
             }
             
@@ -147,6 +143,15 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
         data->point.x = ctx->last_x;
         data->point.y = ctx->last_y;
     }
+}
+
+/**
+ * @brief Get touch statistics (safe to call from main loop)
+ */
+void lvgl_get_touch_stats(uint32_t *poll_count, uint32_t *touch_count)
+{
+    if (poll_count) *poll_count = g_touch_ctx.poll_count;
+    if (touch_count) *touch_count = g_touch_ctx.touch_count;
 }
 
 esp_err_t lvgl_port_init_custom(void)
@@ -250,8 +255,8 @@ esp_err_t lvgl_port_init_custom(void)
     lv_indev_set_display(g_touch_indev, disp);
     
     ESP_LOGW(TAG, "⚠️  CUSTOM TOUCH INPUT DEVICE REGISTERED");
-    ESP_LOGI(TAG, "    Using direct GT911 polling in read_cb");
-    ESP_LOGI(TAG, "    Touch events will be logged with 🟢/🔴 markers");
+    ESP_LOGI(TAG, "    Using direct GT911 polling (NO logging in callback)");
+    ESP_LOGI(TAG, "    Visual feedback: FPS counter + GT911 periodic summary");
     
     /* Create an invisible object covering entire screen for touch event monitoring */
     lv_obj_t *touch_monitor = lv_obj_create(lv_screen_active());
@@ -272,7 +277,7 @@ esp_err_t lvgl_port_init_custom(void)
              CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
              (buffer_pixels * 2) / 1024.0f,
              CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
-    ESP_LOGI(TAG, "  Touch: Custom indev with direct GT911 polling");
+    ESP_LOGI(TAG, "  Touch: Custom indev (silent polling, visual feedback)");
     ESP_LOGI(TAG, "  Rotation: swap_xy=false (landscape mode)");
     ESP_LOGI(TAG, "  Flush callback: ACTIVE (monitoring enabled)");
     ESP_LOGI(TAG, "========================================");
