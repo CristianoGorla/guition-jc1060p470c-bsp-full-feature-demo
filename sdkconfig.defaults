@@ -34,8 +34,10 @@ CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
 
 # === Chip Revision ===
 # Target ESP32-P4 v1.3 (revisions < 3.0)
+# Format: REV_MIN_FULL = major*100 + minor (e.g., 103 = v1.03)
 CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
 CONFIG_ESP32P4_REV_MIN_0=y
+CONFIG_ESP32P4_REV_MIN_FULL=103
 CONFIG_ESP_REV_MIN_FULL=103
 
 # === Partition Table ===
