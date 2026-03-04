@@ -458,6 +458,81 @@ menu "Guition JC1060P470C Board Configuration"
                 
                 Disable for production builds.
 
+        menu "I2C Debug & Testing"
+            visible if BSP_ENABLE_I2C
+
+            config DEBUG_I2C_GPIO_CHECK
+                bool "Enable I2C GPIO state check (detects MIPI-DSI conflict)"
+                default n
+                help
+                    Check GPIO SDA/SCL levels after display initialization.
+                    Detects if MIPI-DSI has disrupted I2C bus (GPIO stuck LOW).
+                    
+                    Documented in: docs/I2C_MIPI_DSI_CONFLICT.md
+                    
+                    LOGS:
+                      • GPIO levels (SDA, SCL)
+                      • Fault detection (stuck LOW warning)
+                    
+                    Overhead: Minimal (one-time check)
+                    Safe for production use.
+
+            config DEBUG_I2C_AUTO_RECOVERY
+                bool "Enable automatic I2C bus recovery"
+                default n
+                depends on DEBUG_I2C_GPIO_CHECK
+                help
+                    Automatically reinitialize I2C bus if GPIO fault detected.
+                    
+                    RECOVERY SEQUENCE:
+                      1. Delete existing I2C bus
+                      2. Reset GPIO pins (SDA, SCL)
+                      3. Re-create I2C bus with Kconfig settings
+                      4. Verify GPIO state after recovery
+                    
+                    Documented in: docs/I2C_MIPI_DSI_CONFLICT.md
+                    
+                    Requires DEBUG_I2C_GPIO_CHECK=y.
+                    Safe for production use.
+
+            config DEBUG_I2C_TEST_PERIPHERALS
+                bool "Test I2C peripherals on boot"
+                default n
+                help
+                    Test configured I2C peripherals during boot:
+                      • GT911 Touch (0x14) - if BSP_ENABLE_TOUCH
+                      • ES8311 Audio (0x18) - if BSP_ENABLE_AUDIO
+                      • RX8025T RTC (0x32) - if BSP_ENABLE_RTC
+                    
+                    Uses targeted probing, NOT generic scan.
+                    
+                    LOGS:
+                      • [0xADDR] ✓ Device Name (if responding)
+                      • [0xADDR] ✗ Device NOT responding (if failed)
+                      • Total devices found
+                    
+                    Safe for production use.
+
+            config DEBUG_I2C_VERBOSE
+                bool "⚠️  Verbose I2C transaction logging"
+                default n
+                help
+                    Enable verbose logging in ESP-IDF I2C driver.
+                    
+                    LOGS INCLUDE:
+                      • Every I2C read/write transaction
+                      • Transaction timing and delays
+                      • Detailed error information
+                    
+                    ⚠️ WARNING:
+                      - VERY HIGH OVERHEAD
+                      - Floods serial output (100+ Hz with touch polling)
+                      - May hide useful logs in flood
+                    
+                    Disable for production builds.
+
+        endmenu # I2C Debug & Testing
+
         config DEBUG_LOG_LEVEL_VERBOSE
             bool "Set global log level to VERBOSE (ESP_LOG_VERBOSE)"
             default n
