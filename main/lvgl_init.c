@@ -31,9 +31,9 @@ static const char *TAG = "LVGL_INIT";
 
 /* Global touch indev for debugging */
 static lv_indev_t *g_touch_indev = NULL;
-static uint32_t g_lvgl_read_count = 0;
-static uint32_t g_lvgl_touch_count = 0;
 static uint32_t g_flush_count = 0;
+static uint32_t g_manual_poll_count = 0;
+static uint32_t g_touch_press_count = 0;
 
 /**
  * @brief DSI color transfer done callback
@@ -60,59 +60,87 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel,
  */
 static void touch_event_cb(lv_event_t *e)
 {
-    static uint32_t last_log_time = 0;
-    uint32_t now = esp_log_timestamp();
-    
     lv_event_code_t code = lv_event_get_code(e);
     
     if (code == LV_EVENT_PRESSED) {
         lv_point_t point;
         lv_indev_get_point(g_touch_indev, &point);
-        ESP_LOGI(TAG, "🟢 Touch PRESSED at (%d, %d)", point.x, point.y);
+        ESP_LOGI(TAG, "🎯 Widget received PRESSED event at (%d, %d)", point.x, point.y);
     } else if (code == LV_EVENT_RELEASED) {
-        if (now - last_log_time > 500) {
-            ESP_LOGI(TAG, "🔴 Touch RELEASED");
-            last_log_time = now;
-        }
+        ESP_LOGI(TAG, "🎯 Widget received RELEASED event");
     }
 }
 
 /**
- * @brief Monitor LVGL indev read callback
- * This wraps the actual touch driver to see if LVGL is calling it
+ * @brief Manual touch polling timer callback
+ * 
+ * Bypasses lvgl_port automatic polling which may be disabled with avoid_tearing=false.
+ * Directly reads GT911 via esp_lcd_touch and injects events into LVGL indev.
  */
-static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+static void manual_touch_poll_cb(lv_timer_t *timer)
 {
-    static uint32_t last_log_ms = 0;
-    uint32_t now_ms = esp_log_timestamp();
+    typedef struct {
+        esp_lcd_touch_handle_t touch_handle;
+        lv_indev_t *indev;
+    } poll_ctx_t;
     
-    g_lvgl_read_count++;
+    poll_ctx_t *ctx = (poll_ctx_t *)timer->user_data;
+    static bool was_pressed = false;
+    static uint16_t last_x = 0, last_y = 0;
     
-    /* Log read frequency every 2 seconds */
-    if (now_ms - last_log_ms > 2000) {
-        ESP_LOGI(TAG, "🔎 LVGL touch reads: %u total, %u with touch", 
-                 g_lvgl_read_count, g_lvgl_touch_count);
-        last_log_ms = now_ms;
+    g_manual_poll_count++;
+    
+    /* Periodic heartbeat log */
+    if (g_manual_poll_count % 500 == 0) {
+        ESP_LOGI(TAG, "⏱️  Manual touch poll alive: %lu polls, %lu touches detected", 
+                 g_manual_poll_count, g_touch_press_count);
     }
     
-    /* Call the actual driver through lvgl_port */
-    /* Note: lvgl_port_add_touch already set up the read callback,
-     * so we can't easily wrap it. Instead, we'll check state changes. */
+    uint16_t x[1], y[1], strength[1];
+    uint8_t touch_cnt = 0;
     
-    /* Check if touch state changed to pressed */
-    if (data->state == LV_INDEV_STATE_PRESSED) {
-        static bool was_pressed = false;
+    /* Direct read from GT911 driver */
+    esp_err_t ret = esp_lcd_touch_read_data(ctx->touch_handle, x, y, strength, &touch_cnt, 1);
+    
+    if (ret == ESP_OK && touch_cnt > 0) {
+        /* Touch detected */
         if (!was_pressed) {
-            g_lvgl_touch_count++;
-            ESP_LOGI(TAG, "👉 LVGL indev read: PRESSED at (%d, %d)", data->point.x, data->point.y);
+            g_touch_press_count++;
+            ESP_LOGI(TAG, "🟢 Touch PRESSED at (%d, %d) [strength=%d]", x[0], y[0], strength[0]);
             was_pressed = true;
         }
+        
+        /* Update LVGL indev state */
+        lv_indev_data_t data = {
+            .state = LV_INDEV_STATE_PRESSED,
+            .point = {.x = x[0], .y = y[0]}
+        };
+        
+        /* CRITICAL: Must lock LVGL before modifying indev state */
+        lvgl_port_lock(0);
+        lv_indev_set_data(ctx->indev, &data);
+        lvgl_port_unlock();
+        
+        last_x = x[0];
+        last_y = y[0];
+        
     } else {
-        static bool was_pressed = false;
+        /* No touch or read error */
         if (was_pressed) {
-            ESP_LOGI(TAG, "👉 LVGL indev read: RELEASED");
+            ESP_LOGI(TAG, "🔴 Touch RELEASED at (%d, %d)", last_x, last_y);
+            was_pressed = false;
         }
-        was_pressed = false;
+        
+        /* Update LVGL indev state */
+        lv_indev_data_t data = {
+            .state = LV_INDEV_STATE_RELEASED,
+            .point = {.x = last_x, .y = last_y}
+        };
+        
+        /* CRITICAL: Must lock LVGL before modifying indev state */
+        lvgl_port_lock(0);
+        lv_indev_set_data(ctx->indev, &data);
+        lvgl_port_unlock();
     }
 }
 
@@ -157,7 +185,7 @@ esp_err_t lvgl_port_init_custom(void)
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
         .rotation = { 
-            .swap_xy = false,  // TEST: Disable to check if touch works without coordinate swap
+            .swap_xy = false,  // Landscape mode (no coordinate swap)
             .mirror_x = false, 
             .mirror_y = false 
         },
@@ -195,8 +223,8 @@ esp_err_t lvgl_port_init_custom(void)
     ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(display_handle, &cbs, disp));
     ESP_LOGI(TAG, "DSI flush callback registered (will log every 100 flushes)");
     
-    /* Add touch with error checking */
-    ESP_LOGI(TAG, "Adding touch...");
+    /* Add touch device to LVGL (may not enable automatic polling with avoid_tearing=false) */
+    ESP_LOGI(TAG, "Adding touch device...");
     const lvgl_port_touch_cfg_t touch_cfg = { 
         .disp = disp, 
         .handle = touch_handle 
@@ -210,8 +238,35 @@ esp_err_t lvgl_port_init_custom(void)
     
     /* Verify touch device type */
     lv_indev_type_t indev_type = lv_indev_get_type(g_touch_indev);
-    ESP_LOGI(TAG, "✅ Touch added successfully, type: %d (expected 1=POINTER)", indev_type);
-    ESP_LOGI(TAG, "Touch will be monitored via event callbacks");
+    ESP_LOGI(TAG, "✅ Touch device added, type: %d (expected 1=POINTER)", indev_type);
+    
+    /* FIX: Implement manual touch polling to bypass lvgl_port automatic polling bug */
+    /* Allocate context on heap (timer outlives this function) */
+    typedef struct {
+        esp_lcd_touch_handle_t touch_handle;
+        lv_indev_t *indev;
+    } poll_ctx_t;
+    
+    poll_ctx_t *poll_ctx = heap_caps_malloc(sizeof(poll_ctx_t), MALLOC_CAP_DEFAULT);
+    if (!poll_ctx) {
+        ESP_LOGE(TAG, "Failed to allocate poll context!");
+        return ESP_FAIL;
+    }
+    
+    poll_ctx->touch_handle = touch_handle;
+    poll_ctx->indev = g_touch_indev;
+    
+    /* Create manual polling timer - 50Hz (20ms) to match GT911 sample rate */
+    lv_timer_t *poll_timer = lv_timer_create(manual_touch_poll_cb, 20, poll_ctx);
+    if (!poll_timer) {
+        ESP_LOGE(TAG, "Failed to create touch poll timer!");
+        free(poll_ctx);
+        return ESP_FAIL;
+    }
+    
+    ESP_LOGW(TAG, "⚠️  MANUAL TOUCH POLLING ENABLED (50Hz)");
+    ESP_LOGI(TAG, "    This bypasses lvgl_port automatic polling");
+    ESP_LOGI(TAG, "    Touch events will be logged with 🟢/🔴 markers");
     
     /* Create an invisible object covering entire screen for touch event monitoring */
     lv_obj_t *touch_monitor = lv_obj_create(lv_screen_active());
@@ -232,8 +287,8 @@ esp_err_t lvgl_port_init_custom(void)
              CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
              (buffer_pixels * 2) / 1024.0f,
              CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
-    ESP_LOGI(TAG, "  Touch: type %d, event monitoring enabled", indev_type);
-    ESP_LOGI(TAG, "  Rotation: swap_xy=false (TEST MODE)");
+    ESP_LOGI(TAG, "  Touch: Manual polling at 50Hz (20ms period)");
+    ESP_LOGI(TAG, "  Rotation: swap_xy=false (landscape mode)");
     ESP_LOGI(TAG, "  Flush callback: ACTIVE (monitoring enabled)");
     ESP_LOGI(TAG, "========================================");
     
