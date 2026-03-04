@@ -194,6 +194,8 @@ esp_err_t lvgl_demo_widgets(void)
 #endif
 }
 
+/* Benchmark demo - Disabled via Kconfig */
+#if 0  // CONFIG_BSP_LVGL_DEMO_BENCHMARK is not set
 esp_err_t lvgl_demo_benchmark(void)
 {
 #if LVGL_DEMOS_AVAILABLE && defined(LV_USE_DEMO_BENCHMARK)
@@ -216,7 +218,10 @@ esp_err_t lvgl_demo_benchmark(void)
     return lvgl_demo_simple();
 #endif
 }
+#endif  // CONFIG_BSP_LVGL_DEMO_BENCHMARK
 
+/* Stress test demo - Disabled via Kconfig */
+#if 0  // CONFIG_BSP_LVGL_DEMO_STRESS is not set
 esp_err_t lvgl_demo_stress(void)
 {
 #if LVGL_DEMOS_AVAILABLE && defined(LV_USE_DEMO_STRESS)
@@ -239,6 +244,7 @@ esp_err_t lvgl_demo_stress(void)
     return lvgl_demo_simple();
 #endif
 }
+#endif  // CONFIG_BSP_LVGL_DEMO_STRESS
 
 esp_err_t lvgl_demo_stop(void)
 {
@@ -272,11 +278,15 @@ esp_err_t lvgl_demo_run(lvgl_demo_type_t demo)
         case LVGL_DEMO_WIDGETS:
             return lvgl_demo_widgets();
             
+#if 0  // CONFIG_BSP_LVGL_DEMO_BENCHMARK is not set
         case LVGL_DEMO_BENCHMARK:
             return lvgl_demo_benchmark();
+#endif
             
+#if 0  // CONFIG_BSP_LVGL_DEMO_STRESS is not set
         case LVGL_DEMO_STRESS:
             return lvgl_demo_stress();
+#endif
             
         case LVGL_DEMO_NONE:
             ESP_LOGI(TAG, "No demo selected");
@@ -293,16 +303,16 @@ esp_err_t lvgl_demo_run_from_config(void)
 #ifdef CONFIG_BSP_LVGL_ENABLE_DEMO
     lvgl_demo_type_t demo = LVGL_DEMO_NONE;
     
-#ifdef CONFIG_BSP_LVGL_DEMO_SIMPLE
+#if 0  // CONFIG_BSP_LVGL_DEMO_SIMPLE is not set
     demo = LVGL_DEMO_SIMPLE;
     ESP_LOGI(TAG, "Auto-running: Simple demo (from Kconfig)");
-#elif defined(CONFIG_BSP_LVGL_DEMO_WIDGETS)
+#elif defined(CONFIG_BSP_LVGL_DEMO_WIDGETS)  // ← ACTIVE: Widgets demo enabled
     demo = LVGL_DEMO_WIDGETS;
     ESP_LOGI(TAG, "Auto-running: Widgets demo (from Kconfig)");
-#elif defined(CONFIG_BSP_LVGL_DEMO_BENCHMARK)
+#elif 0  // CONFIG_BSP_LVGL_DEMO_BENCHMARK is not set
     demo = LVGL_DEMO_BENCHMARK;
     ESP_LOGI(TAG, "Auto-running: Benchmark demo (from Kconfig)");
-#elif defined(CONFIG_BSP_LVGL_DEMO_STRESS)
+#elif 0  // CONFIG_BSP_LVGL_DEMO_STRESS is not set
     demo = LVGL_DEMO_STRESS;
     ESP_LOGI(TAG, "Auto-running: Stress test demo (from Kconfig)");
 #endif
@@ -311,7 +321,9 @@ esp_err_t lvgl_demo_run_from_config(void)
         return lvgl_demo_run(demo);
     } else {
         ESP_LOGW(TAG, "Demo enabled but no demo type selected in Kconfig");
-        return ESP_FAIL;
+        ESP_LOGI(TAG, "Showing example UI screen instead");
+        // Fallback to simple demo as example UI
+        return lvgl_demo_simple();
     }
 #else
     ESP_LOGI(TAG, "Demos disabled (CONFIG_BSP_LVGL_ENABLE_DEMO not set)");
