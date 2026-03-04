@@ -127,6 +127,12 @@ static esp_err_t bsp_phase_a_power_manager(void)
 static esp_err_t bsp_i2c_bus_init(void)
 {
 #if defined(CONFIG_BSP_ENABLE_TOUCH) || defined(CONFIG_BSP_ENABLE_AUDIO) || defined(CONFIG_BSP_ENABLE_RTC)
+    /* Skip if already initialized */
+    if (g_i2c_bus_handle != NULL) {
+        ESP_LOGI(TAG, "[I2C] Already initialized");
+        return ESP_OK;
+    }
+    
     i2c_master_bus_config_t bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
@@ -146,7 +152,7 @@ static esp_err_t bsp_i2c_bus_init(void)
     
     ESP_LOGI(TAG, "[I2C] ✓ Ready");
     
-    /* Test peripherals on boot (if enabled) */
+    /* Test peripherals after I2C init (if enabled) */
 #ifdef CONFIG_DEBUG_I2C_TEST_PERIPHERALS
     i2c_test_peripherals(g_i2c_bus_handle);
 #endif
@@ -158,66 +164,28 @@ static esp_err_t bsp_i2c_bus_init(void)
 static esp_err_t bsp_phase_d_peripheral_drivers(void)
 {
     ESP_LOGI(TAG, "[PHASE D] Peripheral Drivers...");
-    ESP_ERROR_CHECK(bsp_i2c_bus_init());
 
+    /* 
+     * CRITICAL: Initialize display FIRST, then I2C
+     * 
+     * The JD9165 MIPI-DSI display controller corrupts the I2C peripheral 
+     * hardware during initialization. The solution is to initialize I2C 
+     * AFTER the display, not before.
+     * 
+     * This approach matches the Espressif vendor BSP:
+     * - bsp_display_new() - no I2C
+     * - bsp_touch_new() - calls bsp_i2c_init()
+     * 
+     * See: docs/I2C_MIPI_DSI_CONFLICT.md
+     */
 #ifdef CONFIG_BSP_ENABLE_DISPLAY
     g_display_handle = bsp_display_init();
     if (!g_display_handle) return ESP_FAIL;
     ESP_LOGI(TAG, "[PHASE D] ✓ Display HW");
-    
-    /* 
-     * CRITICAL FIX: Display ALWAYS corrupts I2C hardware internally
-     * GPIO check shows pins OK, but I2C peripheral is broken
-     * MUST reinitialize I2C bus after display init
-     * 
-     * See: docs/I2C_MIPI_DSI_CONFLICT.md
-     */
-#ifdef CONFIG_DEBUG_I2C_AUTO_RECOVERY
-    ESP_LOGW(TAG, "⚠ Display initialized - I2C recovery required");
-    
-    /* Optional: Check GPIO state for diagnostic purposes */
-#ifdef CONFIG_DEBUG_I2C_GPIO_CHECK
-    i2c_check_gpio_state("after display init");
 #endif
-    
-    /* ALWAYS recover I2C after display */
-    ESP_LOGW(TAG, "Performing I2C bus recovery...");
-    
-    if (i2c_reinit_bus(&g_i2c_bus_handle) == ESP_OK) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-        
-#ifdef CONFIG_DEBUG_I2C_GPIO_CHECK
-        bool recovered = i2c_check_gpio_state("after I2C recovery");
-        if (recovered) {
-            ESP_LOGI(TAG, "✓ I2C bus hardware recovered successfully");
-        } else {
-            ESP_LOGW(TAG, "⚠ GPIO still shows issues after recovery");
-        }
-#else
-        ESP_LOGI(TAG, "✓ I2C bus hardware recovered successfully");
-#endif
-        
-        /* CRITICAL: Reset GT911 to restore I2C address (0x14) */
-#ifdef CONFIG_BSP_ENABLE_TOUCH
-        ESP_LOGI(TAG, "Resetting GT911 to restore I2C address...");
-        if (bsp_touch_reset() == ESP_OK) {
-            ESP_LOGI(TAG, "✓ GT911 reset complete (address 0x14)");
-        } else {
-            ESP_LOGE(TAG, "✗ GT911 reset FAILED!");
-            return ESP_FAIL;
-        }
-#endif
-        
-        /* Re-test peripherals after recovery */
-#ifdef CONFIG_DEBUG_I2C_TEST_PERIPHERALS
-        i2c_test_peripherals(g_i2c_bus_handle);
-#endif
-    } else {
-        ESP_LOGE(TAG, "✗ I2C bus recovery FAILED!");
-        return ESP_FAIL;
-    }
-#endif /* CONFIG_DEBUG_I2C_AUTO_RECOVERY */
-#endif /* CONFIG_BSP_ENABLE_DISPLAY */
+
+    /* NOW initialize I2C after display is stable */
+    ESP_ERROR_CHECK(bsp_i2c_bus_init());
 
 #ifdef CONFIG_BSP_ENABLE_TOUCH
     g_touch_handle = bsp_touch_init();
