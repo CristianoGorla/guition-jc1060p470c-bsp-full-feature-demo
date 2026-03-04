@@ -29,7 +29,6 @@ static const char *TAG = "LVGL_INIT";
 #define CONFIG_BSP_LVGL_DOUBLE_BUFFER 0
 #endif
 
-static lv_indev_t *g_touch_indev = NULL;
 static uint32_t g_flush_count = 0;
 
 /**
@@ -50,22 +49,6 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel,
     
     lv_display_flush_ready(disp);
     return false;
-}
-
-/**
- * @brief Touch event debug callback (LVGL v9)
- */
-static void touch_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    
-    if (code == LV_EVENT_PRESSED) {
-        lv_point_t point;
-        lv_indev_get_point(g_touch_indev, &point);
-        ESP_LOGI(TAG, "🎯 Widget received PRESSED event at (%d, %d)", point.x, point.y);
-    } else if (code == LV_EVENT_RELEASED) {
-        ESP_LOGI(TAG, "🎯 Widget received RELEASED event");
-    }
 }
 
 esp_err_t lvgl_port_init_custom(void)
@@ -159,26 +142,13 @@ esp_err_t lvgl_port_init_custom(void)
         .handle = touch_handle,
     };
     
-    g_touch_indev = lvgl_port_add_touch(&touch_cfg);
-    if (!g_touch_indev) {
+    lv_indev_t *touch_indev = lvgl_port_add_touch(&touch_cfg);
+    if (!touch_indev) {
         ESP_LOGE(TAG, "❌ Failed to add touch input device!");
         return ESP_FAIL;
     }
     
     ESP_LOGI(TAG, "✅ Touch registered via lvgl_port_add_touch (automatic polling)");
-    
-    /* Create an invisible object covering entire screen for touch event monitoring */
-    lv_obj_t *touch_monitor = lv_obj_create(lv_screen_active());
-    lv_obj_set_size(touch_monitor, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_opa(touch_monitor, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(touch_monitor, 0, 0);
-    lv_obj_add_flag(touch_monitor, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(touch_monitor, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(touch_monitor, touch_event_cb, LV_EVENT_PRESSED, NULL);
-    lv_obj_add_event_cb(touch_monitor, touch_event_cb, LV_EVENT_RELEASED, NULL);
-    lv_obj_move_background(touch_monitor);
-    
-    ESP_LOGI(TAG, "Touch debug monitor created (transparent background layer)");
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
