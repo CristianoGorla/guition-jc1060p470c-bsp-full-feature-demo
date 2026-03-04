@@ -86,9 +86,9 @@ esp_err_t lvgl_port_init_custom(void)
             .mirror_y = false 
         },
         .flags = {
-            .buff_dma = true,
-            .buff_spiram = true,
-            .sw_rotate = true,
+            .buff_dma = false,      // FIX: Changed from true - MIPI-DSI doesn't work with DMA buffers
+            .buff_spiram = true,    // Keep PSRAM allocation
+            .sw_rotate = true,      // Keep software rotation support
         }
     };
     
