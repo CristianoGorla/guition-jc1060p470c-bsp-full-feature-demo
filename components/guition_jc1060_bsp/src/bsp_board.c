@@ -29,6 +29,11 @@
 #include "../drivers/rx8025t_bsp.h"
 #endif
 
+/* Include I2C test utilities */
+#if defined(CONFIG_DEBUG_I2C_GPIO_CHECK) || defined(CONFIG_DEBUG_I2C_TEST_PERIPHERALS)
+#include "../utils/i2c_test.h"
+#endif
+
 static const char *TAG = "BSP";
 
 #ifndef CONFIG_BSP_PIN_SD_POWER_EN
@@ -131,7 +136,21 @@ static esp_err_t bsp_i2c_bus_init(void)
         .flags.enable_internal_pullup = true,
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &g_i2c_bus_handle));
+    
+    /* Enable verbose I2C logging if requested */
+#ifdef CONFIG_DEBUG_I2C_VERBOSE
+    esp_log_level_set("i2c", ESP_LOG_VERBOSE);
+    esp_log_level_set("i2c.master", ESP_LOG_VERBOSE);
+    ESP_LOGI(TAG, "[I2C] Verbose logging enabled");
+#endif
+    
     ESP_LOGI(TAG, "[I2C] ✓ Ready");
+    
+    /* Test peripherals on boot (if enabled) */
+#ifdef CONFIG_DEBUG_I2C_TEST_PERIPHERALS
+    i2c_test_peripherals(g_i2c_bus_handle);
+#endif
+
 #endif
     return ESP_OK;
 }
@@ -145,7 +164,39 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     g_display_handle = bsp_display_init();
     if (!g_display_handle) return ESP_FAIL;
     ESP_LOGI(TAG, "[PHASE D] ✓ Display HW");
+    
+    /* Check if display broke I2C - documented in I2C_MIPI_DSI_CONFLICT.md */
+#ifdef CONFIG_DEBUG_I2C_GPIO_CHECK
+    bool gpio_healthy = i2c_check_gpio_state("after display init");
+    
+    if (!gpio_healthy) {
+        ESP_LOGW(TAG, "⚠ MIPI DSI display has disrupted I2C GPIO!");
+        
+#ifdef CONFIG_DEBUG_I2C_AUTO_RECOVERY
+        ESP_LOGW(TAG, "Attempting I2C bus recovery...");
+        
+        if (i2c_reinit_bus(&g_i2c_bus_handle) == ESP_OK) {
+            /* Verify recovery */
+            vTaskDelay(pdMS_TO_TICKS(100));
+            bool recovered = i2c_check_gpio_state("after I2C recovery");
+            
+            if (recovered) {
+                ESP_LOGI(TAG, "✓ I2C GPIO confirmed healthy after recovery");
+                
+                /* Re-test peripherals after recovery */
+#ifdef CONFIG_DEBUG_I2C_TEST_PERIPHERALS
+                i2c_test_peripherals(g_i2c_bus_handle);
 #endif
+            } else {
+                ESP_LOGW(TAG, "⚠ GPIO still unhealthy after recovery - peripheral init may fail");
+            }
+        } else {
+            ESP_LOGE(TAG, "✗ I2C bus recovery failed!");
+        }
+#endif /* CONFIG_DEBUG_I2C_AUTO_RECOVERY */
+    }
+#endif /* CONFIG_DEBUG_I2C_GPIO_CHECK */
+#endif /* CONFIG_BSP_ENABLE_DISPLAY */
 
 #ifdef CONFIG_BSP_ENABLE_TOUCH
     g_touch_handle = bsp_touch_init();
