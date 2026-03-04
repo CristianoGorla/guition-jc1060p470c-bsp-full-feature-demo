@@ -118,67 +118,46 @@ static void read_gt911_config(void)
 }
 
 /**
- * @brief Aggressive touch debug task - polls GT911 status register
+ * @brief Minimal touch debug task - only periodic summary
  */
 static void touch_debug_task(void *arg)
 {
     uint8_t status = 0;
-    uint8_t point_data[40];  /* Read more data for analysis */
+    uint8_t point_data[40];
     uint32_t touch_count = 0;
-    uint32_t last_status_log = 0;
+    uint32_t last_summary = 0;
     bool first_touch_logged = false;
     bool config_read = false;
     
-    ESP_LOGI(TAG, "🔍 Touch debug task started - polling GT911 status register");
-    ESP_LOGI(TAG, "Display resolution: %dx%d", TOUCH_MAX_X, TOUCH_MAX_Y);
+    ESP_LOGI(TAG, "✅ Touch monitor started (periodic summary every 5s)");
     
     while (1) {
-        /* Read configuration on first touch */
-        if (!config_read && touch_count > 0) {
-            read_gt911_config();
-            config_read = true;
-        }
-        
         /* Read status register */
         if (gt911_read_register(GT911_REG_STATUS, &status, 1) == ESP_OK) {
             uint8_t touch_points = status & 0x0F;
             bool buffer_status = (status >> 7) & 0x01;
             
             if (touch_points > 0) {
-                /* Read ALL touch point data (8 bytes per point) */
+                /* Read touch point data */
                 if (gt911_read_register(GT911_REG_POINT1, point_data, 40) == ESP_OK) {
                     
                     /* First touch: dump RAW bytes for analysis */
                     if (!first_touch_logged) {
-                        ESP_LOGI(TAG, "📊 === FIRST TOUCH RAW DATA DUMP ===");
-                        dump_hex("  Status reg (0x814E)", &status, 1);
-                        dump_hex("  Point data (0x814F+)", point_data, 40);
+                        ESP_LOGI(TAG, "📊 === FIRST TOUCH RAW DATA ===");
+                        dump_hex("  Status", &status, 1);
+                        dump_hex("  Point data", point_data, 20);
+                        
+                        uint16_t x = point_data[1] | (point_data[2] << 8);
+                        uint16_t y = point_data[3] | (point_data[4] << 8);
+                        ESP_LOGI(TAG, "  First touch: X=%d Y=%d", x, y);
                         first_touch_logged = true;
+                        
+                        /* Read config on first touch */
+                        read_gt911_config();
+                        config_read = true;
                     }
                     
-                    /* Parse first touch point - LITTLE ENDIAN per GT911 datasheet
-                     * Register layout (per ESP-IDF driver implementation):
-                     * 0x814F: point_data[0] = Track ID (reserved, skip)
-                     * 0x8150: point_data[1] = X_LOW
-                     * 0x8151: point_data[2] = X_HIGH
-                     * 0x8152: point_data[3] = Y_LOW
-                     * 0x8153: point_data[4] = Y_HIGH
-                     * 0x8154: point_data[5] = SIZE_LOW
-                     * 0x8155: point_data[6] = SIZE_HIGH
-                     */
-                    uint16_t x_le = point_data[1] | (point_data[2] << 8);  // FIX: Skip Track ID at [0]
-                    uint16_t y_le = point_data[3] | (point_data[4] << 8);  // FIX: Correct offset
-                    uint16_t size_le = point_data[5] | (point_data[6] << 8);  // FIX: Correct offset
-                    
                     touch_count++;
-                    
-                    ESP_LOGI(TAG, "👆 TOUCH #%u: points=%d, buf=%d", touch_count, touch_points, buffer_status);
-                    ESP_LOGI(TAG, "   X=%4d Y=%4d size=%4d %s", 
-                             x_le, y_le, size_le,
-                             (x_le <= TOUCH_MAX_X && y_le <= TOUCH_MAX_Y) ? "✅ IN RANGE" : "❌ OUT OF RANGE");
-                    ESP_LOGI(TAG, "   RAW: [%02X %02X %02X] [%02X %02X] [%02X %02X] [%02X %02X]",
-                             point_data[0], point_data[1], point_data[2], point_data[3], point_data[4],
-                             point_data[5], point_data[6], point_data[7], point_data[8]);
                 }
                 
                 /* Clear status register */
@@ -194,18 +173,14 @@ static void touch_debug_task(void *arg)
                     i2c_master_transmit(dev_handle, write_buf, 3, 100);
                     i2c_master_bus_rm_device(dev_handle);
                 }
-            } else {
-                /* Log "no touch" periodically */
-                uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-                if (now - last_status_log > 5000) {
-                    ESP_LOGI(TAG, "ℹ️  GT911 status: 0x%02X (no touches, total: %u)", status, touch_count);
-                    last_status_log = now;
-                }
             }
-        } else {
-            ESP_LOGE(TAG, "❌ Failed to read GT911 status register!");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
+            
+            /* Periodic summary (every 5 seconds) */
+            uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+            if (now - last_summary > 5000) {
+                ESP_LOGI(TAG, "📊 Touch summary: %u touches detected", touch_count);
+                last_summary = now;
+            }
         }
         
         vTaskDelay(pdMS_TO_TICKS(50));  /* Poll every 50ms */
@@ -326,9 +301,9 @@ esp_lcd_touch_handle_t bsp_touch_init(void)
     /* Store global handle for debug task */
     g_touch_handle = touch_handle;
 
-    /* Start aggressive touch debug task */
-    ESP_LOGI(TAG, "Starting aggressive touch debug task...");
-    xTaskCreate(touch_debug_task, "touch_debug", 4096, NULL, 5, &g_touch_debug_task);
+    /* Start minimal touch monitor task */
+    ESP_LOGI(TAG, "Starting touch monitor task...");
+    xTaskCreate(touch_debug_task, "touch_monitor", 4096, NULL, 5, &g_touch_debug_task);
 
     return touch_handle;
 }
