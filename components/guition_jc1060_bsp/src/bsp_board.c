@@ -30,7 +30,7 @@
 #endif
 
 /* Include I2C test utilities */
-#if defined(CONFIG_DEBUG_I2C_GPIO_CHECK) || defined(CONFIG_DEBUG_I2C_TEST_PERIPHERALS)
+#if defined(CONFIG_DEBUG_I2C_GPIO_CHECK) || defined(CONFIG_DEBUG_I2C_TEST_PERIPHERALS) || defined(CONFIG_DEBUG_I2C_AUTO_RECOVERY)
 #include "../utils/i2c_test.h"
 #endif
 
@@ -165,37 +165,47 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     if (!g_display_handle) return ESP_FAIL;
     ESP_LOGI(TAG, "[PHASE D] ✓ Display HW");
     
-    /* Check if display broke I2C - documented in I2C_MIPI_DSI_CONFLICT.md */
-#ifdef CONFIG_DEBUG_I2C_GPIO_CHECK
-    bool gpio_healthy = i2c_check_gpio_state("after display init");
-    
-    if (!gpio_healthy) {
-        ESP_LOGW(TAG, "⚠ MIPI DSI display has disrupted I2C GPIO!");
-        
+    /* 
+     * CRITICAL FIX: Display ALWAYS corrupts I2C hardware internally
+     * GPIO check shows pins OK, but I2C peripheral is broken
+     * MUST reinitialize I2C bus after display init
+     * 
+     * See: docs/I2C_MIPI_DSI_CONFLICT.md
+     */
 #ifdef CONFIG_DEBUG_I2C_AUTO_RECOVERY
-        ESP_LOGW(TAG, "Attempting I2C bus recovery...");
-        
-        if (i2c_reinit_bus(&g_i2c_bus_handle) == ESP_OK) {
-            /* Verify recovery */
-            vTaskDelay(pdMS_TO_TICKS(100));
-            bool recovered = i2c_check_gpio_state("after I2C recovery");
-            
-            if (recovered) {
-                ESP_LOGI(TAG, "✓ I2C GPIO confirmed healthy after recovery");
-                
-                /* Re-test peripherals after recovery */
-#ifdef CONFIG_DEBUG_I2C_TEST_PERIPHERALS
-                i2c_test_peripherals(g_i2c_bus_handle);
+    ESP_LOGW(TAG, "⚠ Display initialized - I2C recovery required");
+    
+    /* Optional: Check GPIO state for diagnostic purposes */
+#ifdef CONFIG_DEBUG_I2C_GPIO_CHECK
+    i2c_check_gpio_state("after display init");
 #endif
-            } else {
-                ESP_LOGW(TAG, "⚠ GPIO still unhealthy after recovery - peripheral init may fail");
-            }
+    
+    /* ALWAYS recover I2C after display */
+    ESP_LOGW(TAG, "Performing I2C bus recovery...");
+    
+    if (i2c_reinit_bus(&g_i2c_bus_handle) == ESP_OK) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        
+#ifdef CONFIG_DEBUG_I2C_GPIO_CHECK
+        bool recovered = i2c_check_gpio_state("after I2C recovery");
+        if (recovered) {
+            ESP_LOGI(TAG, "✓ I2C bus recovered successfully");
         } else {
-            ESP_LOGE(TAG, "✗ I2C bus recovery failed!");
+            ESP_LOGW(TAG, "⚠ GPIO still shows issues after recovery");
         }
-#endif /* CONFIG_DEBUG_I2C_AUTO_RECOVERY */
+#else
+        ESP_LOGI(TAG, "✓ I2C bus recovered successfully");
+#endif
+        
+        /* Re-test peripherals after recovery */
+#ifdef CONFIG_DEBUG_I2C_TEST_PERIPHERALS
+        i2c_test_peripherals(g_i2c_bus_handle);
+#endif
+    } else {
+        ESP_LOGE(TAG, "✗ I2C bus recovery FAILED!");
+        return ESP_FAIL;
     }
-#endif /* CONFIG_DEBUG_I2C_GPIO_CHECK */
+#endif /* CONFIG_DEBUG_I2C_AUTO_RECOVERY */
 #endif /* CONFIG_BSP_ENABLE_DISPLAY */
 
 #ifdef CONFIG_BSP_ENABLE_TOUCH
