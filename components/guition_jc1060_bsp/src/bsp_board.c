@@ -189,12 +189,23 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
 #ifdef CONFIG_DEBUG_I2C_GPIO_CHECK
         bool recovered = i2c_check_gpio_state("after I2C recovery");
         if (recovered) {
-            ESP_LOGI(TAG, "✓ I2C bus recovered successfully");
+            ESP_LOGI(TAG, "✓ I2C bus hardware recovered successfully");
         } else {
             ESP_LOGW(TAG, "⚠ GPIO still shows issues after recovery");
         }
 #else
-        ESP_LOGI(TAG, "✓ I2C bus recovered successfully");
+        ESP_LOGI(TAG, "✓ I2C bus hardware recovered successfully");
+#endif
+        
+        /* CRITICAL: Reset GT911 to restore I2C address (0x14) */
+#ifdef CONFIG_BSP_ENABLE_TOUCH
+        ESP_LOGI(TAG, "Resetting GT911 to restore I2C address...");
+        if (bsp_touch_reset() == ESP_OK) {
+            ESP_LOGI(TAG, "✓ GT911 reset complete (address 0x14)");
+        } else {
+            ESP_LOGE(TAG, "✗ GT911 reset FAILED!");
+            return ESP_FAIL;
+        }
 #endif
         
         /* Re-test peripherals after recovery */
