@@ -148,7 +148,7 @@ esp_err_t lvgl_port_init_custom(void)
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
         .rotation = { 
-            .swap_xy = true,   // FIX: Enable to match vendor demo coordinate system
+            .swap_xy = false,  // TEST: Disable to check if touch works without coordinate swap
             .mirror_x = false, 
             .mirror_y = false 
         },
@@ -224,7 +224,7 @@ esp_err_t lvgl_port_init_custom(void)
              (buffer_pixels * 2) / 1024.0f,
              CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: type %d, event monitoring enabled", indev_type);
-    ESP_LOGI(TAG, "  Rotation: swap_xy=true (matching vendor demo)");
+    ESP_LOGI(TAG, "  Rotation: swap_xy=false (TEST MODE)");
     ESP_LOGI(TAG, "========================================");
     
     return ESP_OK;
