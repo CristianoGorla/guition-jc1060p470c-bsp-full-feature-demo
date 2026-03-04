@@ -31,6 +31,8 @@ static const char *TAG = "LVGL_INIT";
 
 /* Global touch indev for debugging */
 static lv_indev_t *g_touch_indev = NULL;
+static uint32_t g_lvgl_read_count = 0;
+static uint32_t g_lvgl_touch_count = 0;
 
 /**
  * @brief DSI color transfer done callback
@@ -63,6 +65,45 @@ static void touch_event_cb(lv_event_t *e)
             ESP_LOGI(TAG, "🔴 Touch RELEASED");
             last_log_time = now;
         }
+    }
+}
+
+/**
+ * @brief Monitor LVGL indev read callback
+ * This wraps the actual touch driver to see if LVGL is calling it
+ */
+static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    static uint32_t last_log_ms = 0;
+    uint32_t now_ms = esp_log_timestamp();
+    
+    g_lvgl_read_count++;
+    
+    /* Log read frequency every 2 seconds */
+    if (now_ms - last_log_ms > 2000) {
+        ESP_LOGI(TAG, "🔎 LVGL touch reads: %u total, %u with touch", 
+                 g_lvgl_read_count, g_lvgl_touch_count);
+        last_log_ms = now_ms;
+    }
+    
+    /* Call the actual driver through lvgl_port */
+    /* Note: lvgl_port_add_touch already set up the read callback,
+     * so we can't easily wrap it. Instead, we'll check state changes. */
+    
+    /* Check if touch state changed to pressed */
+    if (data->state == LV_INDEV_STATE_PRESSED) {
+        static bool was_pressed = false;
+        if (!was_pressed) {
+            g_lvgl_touch_count++;
+            ESP_LOGI(TAG, "👉 LVGL indev read: PRESSED at (%d, %d)", data->point.x, data->point.y);
+            was_pressed = true;
+        }
+    } else {
+        static bool was_pressed = false;
+        if (was_pressed) {
+            ESP_LOGI(TAG, "👉 LVGL indev read: RELEASED");
+        }
+        was_pressed = false;
     }
 }
 
