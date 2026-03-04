@@ -17,17 +17,11 @@
 
 static const char *TAG = "LVGL_INIT";
 
-#ifndef CONFIG_BSP_LVGL_BUFFER_LINES
-#define CONFIG_BSP_LVGL_BUFFER_LINES 100
-#endif
-
-#ifndef CONFIG_BSP_DISPLAY_WIDTH
-#define CONFIG_BSP_DISPLAY_WIDTH 1024
-#endif
-
-#ifndef CONFIG_BSP_LVGL_DOUBLE_BUFFER
-#define CONFIG_BSP_LVGL_DOUBLE_BUFFER 0
-#endif
+/* VENDOR CONFIGURATION - Proven working values from vendor demo */
+#define BSP_LCD_H_RES 1024
+#define BSP_LCD_V_RES 600
+#define BSP_LCD_DRAW_BUFF_SIZE     (BSP_LCD_H_RES * 50)  // 51200 pixels = 100KB
+#define BSP_LCD_DRAW_BUFF_DOUBLE   (0)                   // Single buffer only
 
 static uint32_t g_flush_count = 0;
 
@@ -78,44 +72,37 @@ esp_err_t lvgl_port_init_custom(void)
     };
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
     
-    /* Calculate buffer size */
-    const uint32_t buffer_pixels = CONFIG_BSP_DISPLAY_WIDTH * CONFIG_BSP_LVGL_BUFFER_LINES;
-    
-    /* Display configuration */
+    /* Display configuration - MATCH VENDOR EXACTLY */
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = NULL,
         .panel_handle = display_handle,
-        .buffer_size = buffer_pixels,
-        .double_buffer = CONFIG_BSP_LVGL_DOUBLE_BUFFER,
-        .hres = 1024,
-        .vres = 600,
+        .buffer_size = BSP_LCD_DRAW_BUFF_SIZE,        // 51200 pixels (vendor value)
+        .double_buffer = BSP_LCD_DRAW_BUFF_DOUBLE,    // false (vendor value)
+        .hres = BSP_LCD_H_RES,
+        .vres = BSP_LCD_V_RES,
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
         .rotation = { 
-            .swap_xy = false,  // Landscape mode (no coordinate swap)
+            .swap_xy = true,   // VENDOR: true for landscape mode
             .mirror_x = false, 
             .mirror_y = false 
         },
         .flags = {
-            .buff_dma = true,       // For DSI, always uses frame buffer from driver
-            .buff_spiram = true,
+            .buff_dma = true,
+            .buff_spiram = false,   // VENDOR: uses internal RAM for small buffer
             .sw_rotate = true,
         }
     };
     
-    /* DSI-specific configuration */
-    /* FIX (Opzione 2): avoid_tearing=true ensures LVGL task refreshes regularly.
-     * Requires num_fbs=2 in jd9165_bsp.c (changed from 1 to 2).
-     * Prevents screen tearing and ensures consistent frame timing.
-     */
+    /* DSI-specific configuration - MATCH VENDOR */
     const lvgl_port_display_dsi_cfg_t dsi_cfg = {
         .flags = {
-            .avoid_tearing = true,  // FIX: Changed from false to enable vsync coordination
+            .avoid_tearing = false,  // VENDOR: disabled (simpler, no overhead)
         }
     };
     
-    ESP_LOGI(TAG, "Adding display (1024x600, %dx%d buffer = %u pixels)",
-             CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES, buffer_pixels);
+    ESP_LOGI(TAG, "Adding display (%dx%d, %dx50 buffer = %u pixels)", 
+             BSP_LCD_H_RES, BSP_LCD_V_RES, BSP_LCD_H_RES, BSP_LCD_DRAW_BUFF_SIZE);
     
     lv_display_t *disp = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
     if (!disp) {
@@ -130,11 +117,7 @@ esp_err_t lvgl_port_init_custom(void)
     ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(display_handle, &cbs, disp));
     ESP_LOGI(TAG, "DSI flush callback registered (will log every 100 flushes)");
     
-    /* FIX (Opzione 1): Use lvgl_port_add_touch() instead of custom lv_indev.
-     * This creates an independent FreeRTOS timer for GT911 polling,
-     * ensuring touch is read every 5ms regardless of LVGL task state.
-     * Aligns with vendor demo architecture.
-     */
+    /* Register touch input */
     ESP_LOGI(TAG, "Registering touch input via esp_lvgl_port helper...");
     
     const lvgl_port_touch_cfg_t touch_cfg = {
@@ -152,13 +135,12 @@ esp_err_t lvgl_port_init_custom(void)
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
-    ESP_LOGI(TAG, "  Buffer: %dx%d (%.1f KB, %s, HW FB)",
-             CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
-             (buffer_pixels * 2) / 1024.0f,
-             CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
+    ESP_LOGI(TAG, "  Buffer: 1024x50 (%.1f KB, %s, internal RAM)",
+             (BSP_LCD_DRAW_BUFF_SIZE * 2) / 1024.0f,
+             BSP_LCD_DRAW_BUFF_DOUBLE ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: esp_lvgl_port helper (timer-based polling)");
-    ESP_LOGI(TAG, "  DSI: avoid_tearing=true, num_fbs=2 (dual framebuffer)");
-    ESP_LOGI(TAG, "  Rotation: swap_xy=false (landscape mode)");
+    ESP_LOGI(TAG, "  DSI: avoid_tearing=false (vendor config)");
+    ESP_LOGI(TAG, "  Rotation: swap_xy=true (landscape mode)");
     ESP_LOGI(TAG, "  Flush callback: ACTIVE (monitoring enabled)");
     ESP_LOGI(TAG, "========================================");
     
