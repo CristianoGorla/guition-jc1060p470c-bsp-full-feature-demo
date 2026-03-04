@@ -24,8 +24,9 @@ static const char *TAG = "LVGL_INIT";
 #define CONFIG_BSP_DISPLAY_WIDTH 1024
 #endif
 
+// FIX: Single buffer to match num_fbs=1
 #ifndef CONFIG_BSP_LVGL_DOUBLE_BUFFER
-#define CONFIG_BSP_LVGL_DOUBLE_BUFFER 1
+#define CONFIG_BSP_LVGL_DOUBLE_BUFFER 0
 #endif
 
 /**
@@ -86,7 +87,7 @@ esp_err_t lvgl_port_init_custom(void)
             .mirror_y = false 
         },
         .flags = {
-            .buff_dma = false,      // FIX: LVGL buffers in PSRAM, not hardware FB (vendor config)
+            .buff_dma = true,       // For DSI, always uses frame buffer from driver
             .buff_spiram = true,
             .sw_rotate = true,
         }
@@ -125,7 +126,7 @@ esp_err_t lvgl_port_init_custom(void)
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
-    ESP_LOGI(TAG, "  Buffer: %dx%d (%.1f KB, %s, PSRAM)",
+    ESP_LOGI(TAG, "  Buffer: %dx%d (%.1f KB, %s, HW FB)",
              CONFIG_BSP_DISPLAY_WIDTH, CONFIG_BSP_LVGL_BUFFER_LINES,
              (buffer_pixels * 2) / 1024.0f,
              CONFIG_BSP_LVGL_DOUBLE_BUFFER ? "double" : "single");
