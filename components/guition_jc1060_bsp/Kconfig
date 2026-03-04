@@ -82,15 +82,4 @@ menu "Graphics Configuration"
         default 180 if LVGL_DISP_ROTATION_180
         default 270 if LVGL_DISP_ROTATION_270
 
-    # Font configuration matching vendor demo
-    config LV_FONT_MONTSERRAT_28
-        bool
-        default y
-        depends on BSP_ENABLE_LVGL
-
-    config LV_FONT_MONTSERRAT_32
-        bool
-        default y
-        depends on BSP_ENABLE_LVGL
-
 endmenu
