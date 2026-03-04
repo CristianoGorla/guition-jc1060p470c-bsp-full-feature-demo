@@ -1,15 +1,15 @@
 dependencies:
-  # Hardware drivers (from BSP)
-  esp_lcd_ek79007: 1.*
-  esp_lcd_ili9881c: 1.*
-  esp_lcd_touch_gt911: ^1
-  esp_lcd_jd9165: '*'
+  # Hardware drivers (from BSP) - locked to vendor versions
+  esp_lcd_ek79007: "==1.0.2"
+  esp_lcd_ili9881c: "==1.0.1"
+  esp_lcd_touch_gt911: "==1.1.3"
+  esp_lcd_jd9165: "==1.0.2"
   
-  # LVGL stack (application layer)
-  lvgl/lvgl: ~9.2.2  # Lock to 9.2.x series
-  espressif/esp_lvgl_port: ^2.0.0
+  # LVGL stack (application layer) - locked to vendor versions
+  lvgl/lvgl: "==9.2.2"
+  espressif/esp_lvgl_port: "==2.6.0"
   
-  # Networking
+  # Networking (keep current versions)
   espressif/esp_hosted: ^2.12.0
   espressif/esp_wifi_remote: ^1.4.0
   
