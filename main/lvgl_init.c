@@ -126,6 +126,10 @@ esp_err_t lvgl_port_init_custom(void)
         return ESP_FAIL;
     }
     
+    /* Apply 90° rotation to touch coordinates to match display rotation */
+    lv_indev_set_display_rotation(touch_indev, LV_DISPLAY_ROTATION_90);
+    ESP_LOGI(TAG, "✅ Touch rotation applied: 90° (matching display landscape)");
+    
     ESP_LOGI(TAG, "✅ Touch registered via lvgl_port_add_touch (automatic polling)");
     
     ESP_LOGI(TAG, "========================================");
@@ -134,6 +138,7 @@ esp_err_t lvgl_port_init_custom(void)
              (BSP_LCD_DRAW_BUFF_SIZE * 2) / 1024.0f,
              BSP_LCD_DRAW_BUFF_DOUBLE ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: esp_lvgl_port (auto-rotation via sw_rotate)");
+    ESP_LOGI(TAG, "  Touch rotation: 90° applied to input device");
     ESP_LOGI(TAG, "  Config: buff_dma=false, buff_spiram=true");
     ESP_LOGI(TAG, "  DSI: avoid_tearing=false (vendor config)");
     ESP_LOGI(TAG, "  Rotation: swap_xy=true (landscape mode)");
