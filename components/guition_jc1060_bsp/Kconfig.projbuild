@@ -93,8 +93,35 @@ menu "Guition JC1060P470C Board Configuration"
                         I2C address: 0x14 or 0x5D (set by reset sequence)
 
                 config BSP_PIN_TOUCH_RST
-                    int "Touch Reset GPIO"
+                    int "Touch Reset GPIO (USED ONLY at initialization)"
                     default 21
+                    help
+                        Hardware RESET pin connected to GPIO 21.
+                        
+                        ⚠️ NOTE: Used ONLY during GT911 initialization.
+                        
+                        CURRENT BEHAVIOR:
+                          • RST sequence executed once at boot
+                          • Forces GT911 I2C address to 0x14 (vs 0x5D)
+                          • After init, pin is released and unused
+                        
+                        RESET SEQUENCE (datasheet):
+                          1. INT=LOW, RST=LOW (10ms)
+                          2. RST=HIGH (5ms)
+                          3. INT returns to input mode
+                          4. GT911 initializes (50ms)
+                        
+                        WHY RESET IS NEEDED:
+                          • GT911 I2C address is set by INT state during reset
+                          • Without reset, address may be wrong (0x5D vs 0x14)
+                          • Ensures predictable I2C communication
+                        
+                        AFTER INITIALIZATION:
+                          • Pin is released (no longer driven)
+                          • GT911 runs autonomously
+                          • No further reset needed during normal operation
+                        
+                        MAPPING PRESERVED: Keep default 21.
 
                 config BSP_PIN_TOUCH_INT
                     int "Touch Interrupt GPIO (NOT USED - reserved for future)"
