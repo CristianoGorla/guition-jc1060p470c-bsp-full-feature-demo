@@ -447,7 +447,7 @@ menu "Guition JC1060P470C Board Configuration"
                 default 60
             config APP_NTP_DEBUG_ENABLE
                 bool "Debug logging"
-                default y
+                default n
         endmenu
         config APP_ENABLE_RTC_TEST
             bool "RTC test on boot"
