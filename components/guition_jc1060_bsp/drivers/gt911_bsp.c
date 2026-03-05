@@ -12,16 +12,6 @@ static const char *TAG = "BSP_GT911";
 /* Hardware Pin Configuration */
 #define TOUCH_I2C_ADDRESS      0x14  /* Forced via reset sequence */
 
-/* 
- * HARDWARE TEST MODE: RST and INT pins disabled
- * Original mapping: RST=GPIO_NUM_21, INT=GPIO_NUM_22
- * Disabled to test if pin conflicts affect LVGL touch response
- */
-// #define TOUCH_RESET_GPIO       GPIO_NUM_21  /* Original: GPIO 21 */
-// #define TOUCH_INT_GPIO         GPIO_NUM_22  /* Original: GPIO 22 */
-#define TOUCH_RESET_GPIO       GPIO_NUM_NC  /* TEST: Disabled for HW isolation */
-#define TOUCH_INT_GPIO         GPIO_NUM_NC  /* TEST: Disabled for HW isolation */
-
 /* Touch Panel Resolution (matches display) */
 #define TOUCH_MAX_X            1024
 #define TOUCH_MAX_Y            600
@@ -219,47 +209,51 @@ static void touch_debug_task(void *arg)
  * 6. Release INT (return to interrupt mode)
  * 7. Wait 50ms for touch controller initialization
  * 
- * NOTE: In HW test mode (GPIO_NUM_NC), this function does nothing.
+ * NOTE: Interrupt GPIO is intentionally disabled at runtime (polling mode).
+ *       The reset sequence still uses the dedicated reset pin.
  */
 static esp_err_t touch_reset_sequence(void)
 {
-    /* Skip reset if pins are disabled (GPIO_NUM_NC) */
-    if (TOUCH_RESET_GPIO == GPIO_NUM_NC || TOUCH_INT_GPIO == GPIO_NUM_NC) {
-        ESP_LOGW(TAG, "[WARNING]  Reset sequence SKIPPED (RST/INT pins disabled for HW test)");
-        ESP_LOGW(TAG, "[WARNING]  GT911 will use default I2C address (may be 0x14 or 0x5D)");
+    if (BSP_GT911_RST_GPIO == GPIO_NUM_NC) {
+        ESP_LOGD(TAG, "Reset skipped - using power-on defaults");
         return ESP_OK;
     }
-    
-    ESP_LOGI(TAG, "Starting GT911 reset sequence (forcing address 0x%02X)", TOUCH_I2C_ADDRESS);
 
-    /* Configure INT pin as output (temporarily) */
+    ESP_LOGI(TAG, "Hardware reset enabled (GPIO %d)", BSP_GT911_RST_GPIO);
+
+    bool can_control_int_during_reset = (BSP_GT911_RESET_INT_GPIO != GPIO_NUM_NC);
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << TOUCH_INT_GPIO),
+        .pin_bit_mask = (1ULL << BSP_GT911_RST_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
-    ESP_RETURN_ON_ERROR(gpio_config(&io_conf), TAG, "Failed to configure INT GPIO");
-
-    /* Configure RESET pin as output */
-    io_conf.pin_bit_mask = (1ULL << TOUCH_RESET_GPIO);
     ESP_RETURN_ON_ERROR(gpio_config(&io_conf), TAG, "Failed to configure RESET GPIO");
 
-    /* Step 1-2: INT=LOW, RST=LOW */
-    gpio_set_level(TOUCH_INT_GPIO, 0);
-    gpio_set_level(TOUCH_RESET_GPIO, 0);
+    if (can_control_int_during_reset) {
+        io_conf.pin_bit_mask = (1ULL << BSP_GT911_RESET_INT_GPIO);
+        ESP_RETURN_ON_ERROR(gpio_config(&io_conf), TAG, "Failed to configure INT GPIO");
+        gpio_set_level(BSP_GT911_RESET_INT_GPIO, 0);
+    } else {
+        ESP_LOGD(TAG, "INT control unavailable during reset; relying on board default level");
+    }
+
+    /* Step 1-2: INT=LOW (if available), RST=LOW */
+    gpio_set_level(BSP_GT911_RST_GPIO, 0);
     vTaskDelay(pdMS_TO_TICKS(10));
 
     /* Step 4: RST=HIGH (release reset) */
-    gpio_set_level(TOUCH_RESET_GPIO, 1);
+    gpio_set_level(BSP_GT911_RST_GPIO, 1);
     vTaskDelay(pdMS_TO_TICKS(5));
 
-    /* Step 6: Return INT to input mode (interrupt function) */
-    io_conf.pin_bit_mask = (1ULL << TOUCH_INT_GPIO);
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;  /* INT has internal pull-up */
-    ESP_RETURN_ON_ERROR(gpio_config(&io_conf), TAG, "Failed to reconfigure INT GPIO");
+    if (can_control_int_during_reset) {
+        /* Step 6: Return INT to input mode after address latch */
+        io_conf.pin_bit_mask = (1ULL << BSP_GT911_RESET_INT_GPIO);
+        io_conf.mode = GPIO_MODE_INPUT;
+        io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+        ESP_RETURN_ON_ERROR(gpio_config(&io_conf), TAG, "Failed to reconfigure INT GPIO");
+    }
 
     /* Step 7: Wait for touch controller initialization */
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -277,8 +271,12 @@ esp_err_t bsp_touch_reset(void)
 esp_lcd_touch_handle_t bsp_touch_init(void)
 {
     ESP_LOGI(TAG, "Initializing GT911 touch controller");
-    ESP_LOGI(TAG, "[WARNING]  HARDWARE TEST MODE: RST=GPIO_NUM_NC, INT=GPIO_NUM_NC");
-    ESP_LOGI(TAG, "[WARNING]  Pin manipulation disabled for isolation testing");
+
+    if (BSP_GT911_INT_GPIO == GPIO_NUM_NC) {
+        ESP_LOGD(TAG, "Polling mode active (LVGL compatibility)");
+    } else {
+        ESP_LOGI(TAG, "Interrupt mode enabled (GPIO %d)", BSP_GT911_INT_GPIO);
+    }
 
     if (g_i2c_bus_handle == NULL) {
         ESP_LOGE(TAG, "I2C bus not initialized! Call bsp_i2c_init() first");
@@ -286,7 +284,6 @@ esp_lcd_touch_handle_t bsp_touch_init(void)
     }
 
     /* CRITICAL: Perform reset sequence BEFORE any I2C communication */
-    /* In HW test mode, this will skip pin manipulation */
     if (touch_reset_sequence() != ESP_OK) {
         ESP_LOGE(TAG, "Failed to execute reset sequence");
         return NULL;
@@ -305,8 +302,8 @@ esp_lcd_touch_handle_t bsp_touch_init(void)
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = TOUCH_MAX_X,
         .y_max = TOUCH_MAX_Y,
-        .rst_gpio_num = TOUCH_RESET_GPIO,  /* GPIO_NUM_NC in test mode */
-        .int_gpio_num = TOUCH_INT_GPIO,    /* GPIO_NUM_NC in test mode */
+        .rst_gpio_num = BSP_GT911_RST_GPIO,
+        .int_gpio_num = BSP_GT911_INT_GPIO,
         .levels = {
             .reset = 0,      /* Active low reset */
             .interrupt = 0,  /* Active low interrupt */
@@ -320,8 +317,9 @@ esp_lcd_touch_handle_t bsp_touch_init(void)
 
     ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &touch_handle));
 
-    ESP_LOGI(TAG, "GT911 initialized (address 0x%02X, %dx%d, %d points)",
-             TOUCH_I2C_ADDRESS, TOUCH_MAX_X, TOUCH_MAX_Y, TOUCH_MAX_POINTS);
+    ESP_LOGI(TAG, "GT911 initialized (addr 0x%02X, %dx%d, %d points, %s mode)",
+             TOUCH_I2C_ADDRESS, TOUCH_MAX_X, TOUCH_MAX_Y, TOUCH_MAX_POINTS,
+             (tp_cfg.int_gpio_num == GPIO_NUM_NC) ? "polling" : "interrupt");
 
     /* Read GT911 configuration to verify settings */
     read_gt911_config();

@@ -5,7 +5,7 @@
  * Hardware Configuration:
  * - I2C Address: 0x14 (forced via reset sequence)
  * - Reset GPIO: 21
- * - Interrupt GPIO: 22
+ * - Interrupt GPIO: disabled at runtime (polling mode)
  * - Touch Points: Up to 5 simultaneous touches
  * - Resolution: 1024x600 (matches display)
  */
@@ -18,6 +18,17 @@ extern "C" {
 
 #include "esp_lcd_touch.h"
 #include "esp_err.h"
+#include "driver/gpio.h"
+#include "sdkconfig.h"
+
+/*
+ * GT911 GPIO mapping
+ * - Reset pin is actively used during initialization
+ * - Interrupt line is disabled for runtime polling compatibility with LVGL
+ */
+#define BSP_GT911_RST_GPIO       ((gpio_num_t)CONFIG_BSP_PIN_TOUCH_RST)
+#define BSP_GT911_INT_GPIO       GPIO_NUM_NC
+#define BSP_GT911_RESET_INT_GPIO ((gpio_num_t)CONFIG_BSP_PIN_TOUCH_INT)
 
 /**
  * @brief Initialize GT911 touch controller
@@ -25,7 +36,7 @@ extern "C" {
  * This function performs:
  * - Proper reset sequence to force I2C address to 0x14
  * - Touch controller initialization
- * - Interrupt configuration
+ * - Polling-mode touch configuration (LVGL compatible)
  * 
  * @note Requires I2C bus to be initialized first (bsp_i2c_init)
  * @note CRITICAL: No I2C bus scan must occur before this function,
