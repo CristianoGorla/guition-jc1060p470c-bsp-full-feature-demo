@@ -449,23 +449,70 @@ menu "Guition JC1060P470C Board Configuration"
                 bool "Debug logging"
                 default n
         endmenu
-        config APP_ENABLE_RTC_TEST
-            bool "RTC test on boot"
-            default n
-            depends on BSP_ENABLE_I2C && BSP_ENABLE_RTC
-        config APP_ENABLE_SD_TEST
-            bool "SD test on boot"
-            default n
-            depends on BSP_ENABLE_SDCARD
+
+        menu "Log Output Filtering"
+
+            config APP_REDUCE_EXTERNAL_LOG_NOISE
+                bool "Reduce external library log noise"
+                default n
+                help
+                    When enabled, the app lowers log level for selected external
+                    tags (for example jd9165, GT911, LVGL*) so BSP panel logs stay
+                    as the primary runtime output.
+
+            choice APP_EXTERNAL_LOG_FILTER_LEVEL
+                prompt "Filtered external log level"
+                depends on APP_REDUCE_EXTERNAL_LOG_NOISE
+                default APP_EXTERNAL_LOG_FILTER_WARN
+
+                config APP_EXTERNAL_LOG_FILTER_WARN
+                    bool "Warnings and errors"
+
+                config APP_EXTERNAL_LOG_FILTER_ERROR
+                    bool "Errors only"
+
+                config APP_EXTERNAL_LOG_FILTER_NONE
+                    bool "Silent (no logs)"
+            endchoice
+
+        endmenu
     endmenu
 
     comment "════════════════════════════════════════════════════════════════════"
 
     menu "Debug Logging (Development)"
 
+        config BSP_ENABLE_DEBUG_MODE
+            bool "Enable BSP debug mode"
+            default n
+            help
+                Master switch for BSP debug features and optional boot-time
+                hardware validation tests. Keep disabled for production builds.
+
+        menu "Hardware Tests"
+            visible if BSP_ENABLE_DEBUG_MODE
+
+            config APP_ENABLE_RTC_TEST
+                bool "RTC test on boot"
+                default n
+                depends on BSP_ENABLE_DEBUG_MODE && BSP_ENABLE_I2C && BSP_ENABLE_RTC
+
+            config APP_ENABLE_SD_TEST
+                bool "SD card test on boot"
+                default n
+                depends on BSP_ENABLE_DEBUG_MODE && BSP_ENABLE_SDCARD
+
+            config APP_ENABLE_WIFI_SCAN_TEST
+                bool "WiFi scan test on boot"
+                default n
+                depends on BSP_ENABLE_DEBUG_MODE && BSP_ENABLE_WIFI
+
+        endmenu
+
         config BSP_ENABLE_HEARTBEAT
             bool "Enable system heartbeat monitoring"
             default n
+            depends on BSP_ENABLE_DEBUG_MODE
             help
                 Enable background task that logs system uptime and memory stats.
                 Useful for debugging to verify ESP32-P4 is responsive and detect memory leaks.
@@ -475,7 +522,7 @@ menu "Guition JC1060P470C Board Configuration"
 
         config BSP_HEARTBEAT_INTERVAL_MS
             int "Heartbeat log interval (milliseconds)"
-            depends on BSP_ENABLE_HEARTBEAT
+            depends on BSP_ENABLE_DEBUG_MODE && BSP_ENABLE_HEARTBEAT
             default 5000
             range 1000 60000
             help
@@ -485,7 +532,7 @@ menu "Guition JC1060P470C Board Configuration"
 
         config BSP_HEARTBEAT_TASK_PRIORITY
             int "Heartbeat task priority"
-            depends on BSP_ENABLE_HEARTBEAT
+            depends on BSP_ENABLE_DEBUG_MODE && BSP_ENABLE_HEARTBEAT
             default 1
             range 0 10
             help
@@ -495,7 +542,7 @@ menu "Guition JC1060P470C Board Configuration"
 
         config BSP_HEARTBEAT_TASK_STACK_SIZE
             int "Heartbeat task stack size (bytes)"
-            depends on BSP_ENABLE_HEARTBEAT
+            depends on BSP_ENABLE_DEBUG_MODE && BSP_ENABLE_HEARTBEAT
             default 2048
             range 1024 4096
             help
@@ -509,7 +556,7 @@ menu "Guition JC1060P470C Board Configuration"
         config DEBUG_DISPLAY_AGGRESSIVE
             bool "⚠️  Enable aggressive display driver logging"
             default n
-            depends on BSP_ENABLE_DISPLAY
+            depends on BSP_ENABLE_DEBUG_MODE && BSP_ENABLE_DISPLAY
             help
                 Enable deep debugging for JD9165 display driver:
                 
@@ -530,7 +577,7 @@ menu "Guition JC1060P470C Board Configuration"
         config DEBUG_LVGL_AGGRESSIVE
             bool "⚠️  Enable aggressive LVGL rendering logging"
             default n
-            depends on BSP_ENABLE_LVGL
+            depends on BSP_ENABLE_DEBUG_MODE && BSP_ENABLE_LVGL
             help
                 Enable deep debugging for LVGL v9 rendering:
                 
@@ -550,11 +597,12 @@ menu "Guition JC1060P470C Board Configuration"
                 Disable for production builds.
 
         menu "I2C Debug & Testing"
-            visible if BSP_ENABLE_I2C
+            visible if BSP_ENABLE_DEBUG_MODE && BSP_ENABLE_I2C
 
             config DEBUG_I2C_GPIO_CHECK
                 bool "Enable I2C GPIO state check (detects MIPI-DSI conflict)"
                 default n
+                depends on BSP_ENABLE_DEBUG_MODE
                 help
                     Check GPIO SDA/SCL levels after display initialization.
                     Detects if MIPI-DSI has disrupted I2C bus (GPIO stuck LOW).
@@ -571,7 +619,7 @@ menu "Guition JC1060P470C Board Configuration"
             config DEBUG_I2C_AUTO_RECOVERY
                 bool "Enable automatic I2C bus recovery"
                 default n
-                depends on DEBUG_I2C_GPIO_CHECK
+                depends on BSP_ENABLE_DEBUG_MODE && DEBUG_I2C_GPIO_CHECK
                 help
                     Automatically reinitialize I2C bus if GPIO fault detected.
                     
@@ -589,6 +637,7 @@ menu "Guition JC1060P470C Board Configuration"
             config DEBUG_I2C_TEST_PERIPHERALS
                 bool "Test I2C peripherals on boot"
                 default n
+                depends on BSP_ENABLE_DEBUG_MODE
                 help
                     Test configured I2C peripherals during boot:
                       • GT911 Touch (0x14) - if BSP_ENABLE_TOUCH
@@ -607,6 +656,7 @@ menu "Guition JC1060P470C Board Configuration"
             config DEBUG_I2C_VERBOSE
                 bool "⚠️  Verbose I2C transaction logging"
                 default n
+                depends on BSP_ENABLE_DEBUG_MODE
                 help
                     Enable verbose logging in ESP-IDF I2C driver.
                     
@@ -627,6 +677,7 @@ menu "Guition JC1060P470C Board Configuration"
         config DEBUG_LOG_LEVEL_VERBOSE
             bool "Set global log level to VERBOSE (ESP_LOG_VERBOSE)"
             default n
+            depends on BSP_ENABLE_DEBUG_MODE
             help
                 Override ESP-IDF log level to VERBOSE to see TRACE macros.
                 Required if you want to see DISP_TRACE() and LVGL_TRACE().

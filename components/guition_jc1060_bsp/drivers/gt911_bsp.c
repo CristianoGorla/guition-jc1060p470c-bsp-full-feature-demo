@@ -1,13 +1,20 @@
 #include "gt911_bsp.h"
 #include "esp_log.h"
 #include "esp_check.h"
+#include "bsp_log_panel.h"
 #include "esp_lcd_touch_gt911.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "BSP_GT911";
+static const char *TAG = BSP_LOG_TAG;
+
+#define LOG_UNIT "GT911"
+#define LOGI(fmt, ...) BSP_LOGI_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGW(fmt, ...) BSP_LOGW_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGE(fmt, ...) BSP_LOGE_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGD(fmt, ...) BSP_LOGD_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
 
 /* Hardware Pin Configuration */
 #define TOUCH_I2C_ADDRESS      0x14  /* Forced via reset sequence */
@@ -70,7 +77,7 @@ static void dump_hex(const char *label, const uint8_t *data, size_t len)
     for (size_t i = 0; i < len && i < 20; i++) {
         p += sprintf(p, "%02X ", data[i]);
     }
-    ESP_LOGI(TAG, "%s: %s", label, hex_str);
+    LOGI( "%s: %s", label, hex_str);
 }
 
 /**
@@ -80,8 +87,8 @@ static void read_gt911_config(void)
 {
     uint8_t config_data[16];
     
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "========== GT911 CONFIGURATION ==========");
+    LOGI( "");
+    LOGI( "========== GT911 CONFIGURATION ==========");
     
     /* Read configuration block (0x8047-0x804C) */
     if (gt911_read_register(GT911_REG_CONFIG, config_data, 6) == ESP_OK) {
@@ -89,32 +96,32 @@ static void read_gt911_config(void)
         uint16_t y_max = config_data[3] | (config_data[4] << 8);
         uint8_t touch_num = config_data[5];
         
-        ESP_LOGI(TAG, "Config Version: 0x%02X", config_data[0]);
-        ESP_LOGI(TAG, "X Resolution: %d (expected %d) %s", x_max, TOUCH_MAX_X, 
+        LOGI( "Config Version: 0x%02X", config_data[0]);
+        LOGI( "X Resolution: %d (expected %d) %s", x_max, TOUCH_MAX_X, 
                  (x_max == TOUCH_MAX_X) ? "[PASS]" : "[FAIL] MISMATCH!");
-        ESP_LOGI(TAG, "Y Resolution: %d (expected %d) %s", y_max, TOUCH_MAX_Y,
+        LOGI( "Y Resolution: %d (expected %d) %s", y_max, TOUCH_MAX_Y,
                  (y_max == TOUCH_MAX_Y) ? "[PASS]" : "[FAIL] MISMATCH!");
-        ESP_LOGI(TAG, "Max Touch Points: %d (expected %d) %s", touch_num, TOUCH_MAX_POINTS,
+        LOGI( "Max Touch Points: %d (expected %d) %s", touch_num, TOUCH_MAX_POINTS,
                  (touch_num == TOUCH_MAX_POINTS) ? "[PASS]" : "[FAIL] MISMATCH!");
         
         /* Display raw config bytes */
         dump_hex("  Config bytes (0x8047-0x804C)", config_data, 6);
         
         if (x_max != TOUCH_MAX_X || y_max != TOUCH_MAX_Y) {
-            ESP_LOGE(TAG, "");
-            ESP_LOGE(TAG, "[WARNING]  RESOLUTION MISMATCH DETECTED!");
-            ESP_LOGE(TAG, "[WARNING]  GT911 is configured for %dx%d but display is %dx%d", 
+            LOGE( "");
+            LOGE( "[WARNING]  RESOLUTION MISMATCH DETECTED!");
+            LOGE( "[WARNING]  GT911 is configured for %dx%d but display is %dx%d", 
                      x_max, y_max, TOUCH_MAX_X, TOUCH_MAX_Y);
-            ESP_LOGE(TAG, "[WARNING]  Touch coordinates will be WRONG!");
-            ESP_LOGE(TAG, "[WARNING]  Solution: Write correct resolution to GT911 config");
-            ESP_LOGE(TAG, "");
+            LOGE( "[WARNING]  Touch coordinates will be WRONG!");
+            LOGE( "[WARNING]  Solution: Write correct resolution to GT911 config");
+            LOGE( "");
         }
     } else {
-        ESP_LOGE(TAG, "[FAIL] Failed to read GT911 configuration!");
+        LOGE( "[FAIL] Failed to read GT911 configuration!");
     }
     
-    ESP_LOGI(TAG, "=========================================");
-    ESP_LOGI(TAG, "");
+    LOGI( "=========================================");
+    LOGI( "");
 }
 
 /*
@@ -136,7 +143,7 @@ static void touch_debug_task(void *arg)
     uint32_t last_summary = 0;
     bool first_touch_logged = false;
     
-    ESP_LOGI(TAG, "[PASS] Touch monitor started (periodic summary every 5s)");
+    LOGI( "[PASS] Touch monitor started (periodic summary every 5s)");
     
     while (1) {
         /* Read status register */
@@ -149,13 +156,13 @@ static void touch_debug_task(void *arg)
                     
                     /* First touch: dump RAW bytes for analysis */
                     if (!first_touch_logged) {
-                        ESP_LOGI(TAG, "[STATS] === FIRST TOUCH RAW DATA ===");
+                        LOGI( "[STATS] === FIRST TOUCH RAW DATA ===");
                         dump_hex("  Status", &status, 1);
                         dump_hex("  Point data", point_data, 20);
                         
                         uint16_t x = point_data[1] | (point_data[2] << 8);
                         uint16_t y = point_data[3] | (point_data[4] << 8);
-                        ESP_LOGI(TAG, "  First touch: X=%d Y=%d", x, y);
+                        LOGI( "  First touch: X=%d Y=%d", x, y);
                         first_touch_logged = true;
                         
                         /* Read config on first touch */
@@ -183,7 +190,7 @@ static void touch_debug_task(void *arg)
             /* Periodic summary (every 5 seconds) */
             uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
             if (now - last_summary > 5000) {
-                ESP_LOGI(TAG, "[STATS] Touch summary: %u touches detected", touch_count);
+                LOGI( "[STATS] Touch summary: %u touches detected", touch_count);
                 last_summary = now;
             }
         }
@@ -215,11 +222,11 @@ static void touch_debug_task(void *arg)
 static esp_err_t touch_reset_sequence(void)
 {
     if (BSP_GT911_RST_GPIO == GPIO_NUM_NC) {
-        ESP_LOGD(TAG, "Reset skipped - using power-on defaults");
+        LOGD( "Reset skipped - using power-on defaults");
         return ESP_OK;
     }
 
-    ESP_LOGI(TAG, "Hardware reset enabled (GPIO %d)", BSP_GT911_RST_GPIO);
+    LOGI( "Hardware reset enabled (GPIO %d)", BSP_GT911_RST_GPIO);
 
     bool can_control_int_during_reset = (BSP_GT911_RESET_INT_GPIO != GPIO_NUM_NC);
     gpio_config_t io_conf = {
@@ -236,7 +243,7 @@ static esp_err_t touch_reset_sequence(void)
         ESP_RETURN_ON_ERROR(gpio_config(&io_conf), TAG, "Failed to configure INT GPIO");
         gpio_set_level(BSP_GT911_RESET_INT_GPIO, 0);
     } else {
-        ESP_LOGD(TAG, "INT control unavailable during reset; relying on board default level");
+        LOGD( "INT control unavailable during reset; relying on board default level");
     }
 
     /* Step 1-2: INT=LOW (if available), RST=LOW */
@@ -258,34 +265,34 @@ static esp_err_t touch_reset_sequence(void)
     /* Step 7: Wait for touch controller initialization */
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    ESP_LOGI(TAG, "Reset sequence complete, GT911 address set to 0x%02X", TOUCH_I2C_ADDRESS);
+    LOGI( "Reset sequence complete, GT911 address set to 0x%02X", TOUCH_I2C_ADDRESS);
     return ESP_OK;
 }
 
 esp_err_t bsp_touch_reset(void)
 {
-    ESP_LOGI(TAG, "Re-executing GT911 reset sequence (post I2C recovery)");
+    LOGI( "Re-executing GT911 reset sequence (post I2C recovery)");
     return touch_reset_sequence();
 }
 
 esp_lcd_touch_handle_t bsp_touch_init(void)
 {
-    ESP_LOGI(TAG, "Initializing GT911 touch controller");
+    LOGI( "Initializing GT911 touch controller");
 
     if (BSP_GT911_INT_GPIO == GPIO_NUM_NC) {
-        ESP_LOGD(TAG, "Polling mode active (LVGL compatibility)");
+        LOGD( "Polling mode active (LVGL compatibility)");
     } else {
-        ESP_LOGI(TAG, "Interrupt mode enabled (GPIO %d)", BSP_GT911_INT_GPIO);
+        LOGI( "Interrupt mode enabled (GPIO %d)", BSP_GT911_INT_GPIO);
     }
 
     if (g_i2c_bus_handle == NULL) {
-        ESP_LOGE(TAG, "I2C bus not initialized! Call bsp_i2c_init() first");
+        LOGE( "I2C bus not initialized! Call bsp_i2c_init() first");
         return NULL;
     }
 
     /* CRITICAL: Perform reset sequence BEFORE any I2C communication */
     if (touch_reset_sequence() != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to execute reset sequence");
+        LOGE( "Failed to execute reset sequence");
         return NULL;
     }
 
@@ -317,7 +324,7 @@ esp_lcd_touch_handle_t bsp_touch_init(void)
 
     ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(tp_io_handle, &tp_cfg, &touch_handle));
 
-    ESP_LOGI(TAG, "GT911 initialized (addr 0x%02X, %dx%d, %d points, %s mode)",
+    LOGI( "GT911 initialized (addr 0x%02X, %dx%d, %d points, %s mode)",
              TOUCH_I2C_ADDRESS, TOUCH_MAX_X, TOUCH_MAX_Y, TOUCH_MAX_POINTS,
              (tp_cfg.int_gpio_num == GPIO_NUM_NC) ? "polling" : "interrupt");
 
@@ -329,9 +336,9 @@ esp_lcd_touch_handle_t bsp_touch_init(void)
 
     /* DISABLED: Touch monitor task causes console spam */
     /* LVGL already polls touch via esp_lcd_touch driver */
-    // ESP_LOGI(TAG, "Starting touch monitor task...");
+    // LOGI( "Starting touch monitor task...");
     // xTaskCreate(touch_debug_task, "touch_monitor", 4096, NULL, 5, &g_touch_debug_task);
-    ESP_LOGI(TAG, "Touch monitor task disabled (LVGL handles polling)");
+    LOGI( "Touch monitor task disabled (LVGL handles polling)");
 
     return touch_handle;
 }

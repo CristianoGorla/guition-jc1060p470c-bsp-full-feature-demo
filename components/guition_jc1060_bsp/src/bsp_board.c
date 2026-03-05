@@ -8,6 +8,7 @@
 
 #include "bsp_board.h"
 #include "esp_log.h"
+#include "bsp_log_panel.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "freertos/FreeRTOS.h"
@@ -34,7 +35,11 @@
 #include "../utils/i2c_test.h"
 #endif
 
-static const char *TAG = "BSP";
+#define LOG_UNIT "CORE"
+#define LOGI(fmt, ...) BSP_LOGI_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGW(fmt, ...) BSP_LOGW_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+
+static const char *BSP_BANNER_LINE = "==============================================================";
 
 #ifndef CONFIG_BSP_PIN_SD_POWER_EN
 #define CONFIG_BSP_PIN_SD_POWER_EN 36
@@ -68,6 +73,36 @@ i2c_master_bus_handle_t g_i2c_bus_handle = NULL;
 static esp_lcd_panel_handle_t g_display_handle = NULL;
 static esp_lcd_touch_handle_t g_touch_handle = NULL;
 
+static void bsp_apply_external_log_filter(void)
+{
+#ifdef CONFIG_APP_REDUCE_EXTERNAL_LOG_NOISE
+    esp_log_level_t level = ESP_LOG_WARN;
+    const char *level_name = "WARN";
+
+#if defined(CONFIG_APP_EXTERNAL_LOG_FILTER_ERROR)
+    level = ESP_LOG_ERROR;
+    level_name = "ERROR";
+#elif defined(CONFIG_APP_EXTERNAL_LOG_FILTER_NONE)
+    level = ESP_LOG_NONE;
+    level_name = "NONE";
+#endif
+
+    const char *noisy_tags[] = {
+        "jd9165",
+        "GT911",
+        "LVGL",
+        "LVGL_INIT",
+        "lvgl_demo",
+    };
+
+    for (size_t i = 0; i < sizeof(noisy_tags) / sizeof(noisy_tags[0]); i++) {
+        esp_log_level_set(noisy_tags[i], level);
+    }
+
+    LOGI("[LOG] External log noise filter enabled (level=%s)", level_name);
+#endif
+}
+
 static bool bsp_needs_hard_reset(void)
 {
 #ifndef CONFIG_BSP_ENABLE_HARD_RESET
@@ -81,10 +116,10 @@ static bool bsp_needs_hard_reset(void)
         case ESP_RST_SW:
         case 11:
         case ESP_RST_DEEPSLEEP:
-            ESP_LOGI(TAG, "[RESET] Clean boot - no hard reset");
+            LOGI( "[RESET] Clean boot - no hard reset");
             return false;
         default:
-            ESP_LOGW(TAG, "[RESET] Unsafe reset - hard reset required");
+            LOGW( "[RESET] Unsafe reset - hard reset required");
             return true;
     }
 }
@@ -93,7 +128,7 @@ static void bsp_hard_reset(void)
 {
     if (!bsp_needs_hard_reset()) return;
     
-    ESP_LOGW(TAG, "[RESET] === HARD RESET ===");
+    LOGW( "[RESET] === HARD RESET ===");
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << CONFIG_BSP_PIN_SD_POWER_EN),
         .mode = GPIO_MODE_OUTPUT,
@@ -107,7 +142,7 @@ static void bsp_hard_reset(void)
 
 static esp_err_t bsp_phase_a_power_manager(void)
 {
-    ESP_LOGI(TAG, "[PHASE A] Power Manager...");
+    LOGI( "[PHASE A] Power Manager...");
     bsp_hard_reset();
     
     gpio_config_t io_conf = {
@@ -120,7 +155,7 @@ static esp_err_t bsp_phase_a_power_manager(void)
     gpio_set_level(CONFIG_BSP_PIN_SD_POWER_EN, 1);
     vTaskDelay(pdMS_TO_TICKS(SD_POWER_DELAY_MS));
     
-    ESP_LOGI(TAG, "[PHASE A] [OK] POWER_READY");
+    LOGI( "[PHASE A] [OK] POWER_READY");
     return ESP_OK;
 }
 
@@ -129,7 +164,7 @@ static esp_err_t bsp_i2c_bus_init(void)
 #if defined(CONFIG_BSP_ENABLE_TOUCH) || defined(CONFIG_BSP_ENABLE_AUDIO) || defined(CONFIG_BSP_ENABLE_RTC)
     /* Skip if already initialized */
     if (g_i2c_bus_handle != NULL) {
-        ESP_LOGI(TAG, "[I2C] Already initialized");
+        LOGI( "[I2C] Already initialized");
         return ESP_OK;
     }
     
@@ -147,10 +182,10 @@ static esp_err_t bsp_i2c_bus_init(void)
 #ifdef CONFIG_DEBUG_I2C_VERBOSE
     esp_log_level_set("i2c", ESP_LOG_VERBOSE);
     esp_log_level_set("i2c.master", ESP_LOG_VERBOSE);
-    ESP_LOGI(TAG, "[I2C] Verbose logging enabled");
+    LOGI( "[I2C] Verbose logging enabled");
 #endif
     
-    ESP_LOGI(TAG, "[I2C] [OK] Ready");
+    LOGI( "[I2C] [OK] Ready");
     
     /* Test peripherals after I2C init (if enabled) */
 #ifdef CONFIG_DEBUG_I2C_TEST_PERIPHERALS
@@ -163,7 +198,7 @@ static esp_err_t bsp_i2c_bus_init(void)
 
 static esp_err_t bsp_phase_d_peripheral_drivers(void)
 {
-    ESP_LOGI(TAG, "[PHASE D] Peripheral Drivers...");
+    LOGI( "[PHASE D] Peripheral Drivers...");
 
     /* 
      * CRITICAL: Initialize display FIRST, then I2C
@@ -181,7 +216,7 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
 #ifdef CONFIG_BSP_ENABLE_DISPLAY
     g_display_handle = bsp_display_init();
     if (!g_display_handle) return ESP_FAIL;
-    ESP_LOGI(TAG, "[PHASE D] [OK] Display HW");
+    LOGI( "[PHASE D] [OK] Display HW");
 #endif
 
     /* NOW initialize I2C after display is stable */
@@ -190,38 +225,40 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
 #ifdef CONFIG_BSP_ENABLE_TOUCH
     g_touch_handle = bsp_touch_init();
     if (!g_touch_handle) return ESP_FAIL;
-    ESP_LOGI(TAG, "[PHASE D] [OK] Touch HW");
+    LOGI( "[PHASE D] [OK] Touch HW");
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_AUDIO
     bsp_audio_config_t audio_cfg = BSP_AUDIO_DEFAULT_CONFIG();
     ESP_ERROR_CHECK(bsp_audio_init(&audio_cfg));
-    ESP_LOGI(TAG, "[PHASE D] [OK] Audio");
+    LOGI( "[PHASE D] [OK] Audio");
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_RTC
     ESP_ERROR_CHECK(bsp_rtc_init());
-    ESP_LOGI(TAG, "[PHASE D] [OK] RTC");
+    LOGI( "[PHASE D] [OK] RTC");
 #endif
 
-    ESP_LOGI(TAG, "[PHASE D] [OK] Complete");
+    LOGI( "[PHASE D] [OK] Complete");
     return ESP_OK;
 }
 
 esp_err_t bsp_board_init(void)
 {
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Guition BSP v1.3.0");
-    ESP_LOGI(TAG, "  Hardware Layer Only");
-    ESP_LOGI(TAG, "========================================");
+    bsp_apply_external_log_filter();
+
+    LOGI("%s", BSP_BANNER_LINE);
+    LOGI( "  Guition BSP v1.3.0");
+    LOGI( "  Hardware Layer Only");
+    LOGI("%s", BSP_BANNER_LINE);
     
     ESP_ERROR_CHECK(bsp_phase_a_power_manager());
     ESP_ERROR_CHECK(bsp_phase_d_peripheral_drivers());
     
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  [OK] BSP Ready (Hardware only)");
-    ESP_LOGI(TAG, "  App must init LVGL separately");
-    ESP_LOGI(TAG, "========================================");
+    LOGI("%s", BSP_BANNER_LINE);
+    LOGI( "  [OK] BSP Ready (Hardware only)");
+    LOGI( "  App must init LVGL separately");
+    LOGI("%s", BSP_BANNER_LINE);
     
     return ESP_OK;
 }

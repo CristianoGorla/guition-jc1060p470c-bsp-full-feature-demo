@@ -2,6 +2,7 @@
 set(COMPONENT_SRCS
     "src/bsp_board.c"
     "src/bsp_heartbeat.c"
+    "src/bsp_tests.c"
 )
 
 # Display driver (always needed if BSP enabled)

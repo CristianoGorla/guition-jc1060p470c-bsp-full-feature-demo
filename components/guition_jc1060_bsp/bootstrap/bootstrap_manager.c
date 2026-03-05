@@ -13,6 +13,7 @@
 #include "bootstrap_manager.h"
 #include "sdmmc_arbiter.h"
 #include "esp_log.h"
+#include "bsp_log_panel.h"
 #include "esp_timer.h"
 #include "sdmmc_cmd.h"
 #include "esp_vfs_fat.h"
@@ -27,7 +28,12 @@ extern esp_err_t sd_card_mount_safe(sdmmc_card_t **card);
 extern void init_wifi(void);  // From esp_hosted_wifi.c
 #endif
 
-static const char *TAG = "BOOTSTRAP";
+static const char *TAG = BSP_LOG_TAG;
+
+#define LOG_UNIT "BOOT"
+#define LOGI(fmt, ...) BSP_LOGI_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGW(fmt, ...) BSP_LOGW_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGE(fmt, ...) BSP_LOGE_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
 
 #ifdef CONFIG_BSP_ENABLE_WIFI
 /**
@@ -38,16 +44,16 @@ static const char *TAG = "BOOTSTRAP";
  */
 static esp_err_t bootstrap_wifi_sequence(void)
 {
-    ESP_LOGI(TAG, "[Phase C] Starting WiFi transport...");
-    ESP_LOGI(TAG, "[Phase C] init_wifi() will initialize SDMMC controller");
+    LOGI( "[Phase C] Starting WiFi transport...");
+    LOGI( "[Phase C] init_wifi() will initialize SDMMC controller");
     
     init_wifi();  // This initializes SDMMC controller for ESP-Hosted!
     
     // Wait for C6 firmware boot and SDMMC initialization
-    ESP_LOGI(TAG, "[Phase C] Waiting 2s for C6 firmware + SDMMC init...");
+    LOGI( "[Phase C] Waiting 2s for C6 firmware + SDMMC init...");
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    ESP_LOGI(TAG, "[Phase C] [OK] WIFI_READY (SDMMC controller initialized)");
+    LOGI( "[Phase C] [OK] WIFI_READY (SDMMC controller initialized)");
     return ESP_OK;
 }
 #endif // CONFIG_BSP_ENABLE_WIFI
@@ -61,17 +67,17 @@ static esp_err_t bootstrap_wifi_sequence(void)
  */
 static esp_err_t bootstrap_sd_sequence(sdmmc_card_t **sd_card)
 {
-    ESP_LOGI(TAG, "[Phase B] Starting SD card mount...");
-    ESP_LOGI(TAG, "[Phase B] Using dummy init (controller active from WiFi)");
+    LOGI( "[Phase B] Starting SD card mount...");
+    LOGI( "[Phase B] Using dummy init (controller active from WiFi)");
     
     // Mount SD card (controller already initialized by init_wifi)
     esp_err_t ret = sd_card_mount_safe(sd_card);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "[Phase B] SD mount failed: %s", esp_err_to_name(ret));
+        LOGE( "[Phase B] SD mount failed: %s", esp_err_to_name(ret));
         return ret;
     }
     
-    ESP_LOGI(TAG, "[Phase B] [OK] SD_READY");
+    LOGI( "[Phase B] [OK] SD_READY");
     return ESP_OK;
 }
 #endif // CONFIG_BSP_ENABLE_SDCARD
@@ -92,29 +98,29 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
         return ESP_ERR_INVALID_ARG;
     }
     
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Bootstrap Manager v1.2.0");
+    LOGI( "========================================");
+    LOGI( "  Bootstrap Manager v1.2.0");
     
 #if defined(CONFIG_BSP_ENABLE_WIFI) && defined(CONFIG_BSP_ENABLE_SDCARD)
-    ESP_LOGI(TAG, "  Sequence: WiFi -> SD");
+    LOGI( "  Sequence: WiFi -> SD");
 #elif defined(CONFIG_BSP_ENABLE_WIFI)
-    ESP_LOGI(TAG, "  Sequence: WiFi Only (SD disabled)");
+    LOGI( "  Sequence: WiFi Only (SD disabled)");
 #elif defined(CONFIG_BSP_ENABLE_SDCARD)
-    ESP_LOGI(TAG, "  Sequence: SD Only (WiFi disabled)");
+    LOGI( "  Sequence: SD Only (WiFi disabled)");
 #else
-    ESP_LOGW(TAG, "  No peripherals enabled!");
+    LOGW( "  No peripherals enabled!");
 #endif
     
-    ESP_LOGI(TAG, "  (Phase A handled by BSP)");
-    ESP_LOGI(TAG, "========================================");
+    LOGI( "  (Phase A handled by BSP)");
+    LOGI( "========================================");
     
     manager->boot_timestamp_ms = esp_timer_get_time() / 1000;
     
     // Initialize arbiter (for runtime switching API)
-    ESP_LOGI(TAG, "Initializing SDMMC arbiter...");
+    LOGI( "Initializing SDMMC arbiter...");
     esp_err_t ret = sdmmc_arbiter_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Arbiter init failed: %s", esp_err_to_name(ret));
+        LOGE( "Arbiter init failed: %s", esp_err_to_name(ret));
         return ret;
     }
     
@@ -122,47 +128,47 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
     // Phase C: WiFi init (initializes SDMMC controller)
     ret = bootstrap_wifi_sequence();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Phase C failed: %s", esp_err_to_name(ret));
+        LOGE( "Phase C failed: %s", esp_err_to_name(ret));
         return ret;
     }
 #else
-    ESP_LOGI(TAG, "[Phase C] WiFi disabled via Kconfig");
+    LOGI( "[Phase C] WiFi disabled via Kconfig");
 #endif
     
 #ifdef CONFIG_BSP_ENABLE_SDCARD
     // Phase B: SD mount (uses dummy init)
     ret = bootstrap_sd_sequence(&manager->sd_card);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Phase B failed: %s", esp_err_to_name(ret));
+        LOGE( "Phase B failed: %s", esp_err_to_name(ret));
         return ret;
     }
 #else
-    ESP_LOGI(TAG, "[Phase B] SD Card disabled via Kconfig");
-    ESP_LOGI(TAG, "[Phase B] [OK] Skipped (SD Card disabled)");
+    LOGI( "[Phase B] SD Card disabled via Kconfig");
+    LOGI( "[Phase B] [OK] Skipped (SD Card disabled)");
     manager->sd_card = NULL;
 #endif
     
     uint32_t elapsed_ms = (esp_timer_get_time() / 1000) - manager->boot_timestamp_ms;
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  Bootstrap COMPLETE (%u ms)", elapsed_ms);
+    LOGI( "========================================");
+    LOGI( "  Bootstrap COMPLETE (%u ms)", elapsed_ms);
     
 #ifdef CONFIG_BSP_ENABLE_WIFI
-    ESP_LOGI(TAG, "  Phase C: WiFi [OK] (SDMMC initialized)");
+    LOGI( "  Phase C: WiFi [OK] (SDMMC initialized)");
 #else
-    ESP_LOGI(TAG, "  Phase C: WiFi [FAIL] (disabled)");
+    LOGI( "  Phase C: WiFi [FAIL] (disabled)");
 #endif
     
 #ifdef CONFIG_BSP_ENABLE_SDCARD
-    ESP_LOGI(TAG, "  Phase B: SD card [OK] (dummy init)");
+    LOGI( "  Phase B: SD card [OK] (dummy init)");
 #else
-    ESP_LOGI(TAG, "  Phase B: SD card [FAIL] (disabled)");
+    LOGI( "  Phase B: SD card [FAIL] (disabled)");
 #endif
     
 #if defined(CONFIG_BSP_ENABLE_WIFI) && !defined(CONFIG_BSP_ENABLE_SDCARD)
-    ESP_LOGI(TAG, "  Mode: WiFi-Only (Recommended)");
+    LOGI( "  Mode: WiFi-Only (Recommended)");
 #endif
     
-    ESP_LOGI(TAG, "========================================");
+    LOGI( "========================================");
     
     return ESP_OK;
 }
@@ -188,7 +194,7 @@ sdmmc_card_t* bootstrap_manager_get_sd_card(bootstrap_manager_t *manager)
 #ifdef CONFIG_BSP_ENABLE_SDCARD
     return manager->sd_card;
 #else
-    ESP_LOGW(TAG, "SD Card disabled in Kconfig");
+    LOGW( "SD Card disabled in Kconfig");
     return NULL;
 #endif
 }
@@ -204,5 +210,5 @@ void bootstrap_manager_deinit(bootstrap_manager_t *manager)
     
     sdmmc_arbiter_deinit();
     
-    ESP_LOGI(TAG, "Bootstrap manager deinitialized");
+    LOGI( "Bootstrap manager deinitialized");
 }

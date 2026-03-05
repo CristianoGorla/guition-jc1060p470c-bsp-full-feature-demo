@@ -14,6 +14,7 @@
 
 #include <string.h>
 #include "esp_log.h"
+#include "bsp_log_panel.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
@@ -24,7 +25,14 @@
 #include "esp_hosted_wifi.h"
 #include "sdkconfig.h"
 
-static const char *TAG = "wifi_hosted";
+static const char *TAG = BSP_LOG_TAG;
+
+#define LOG_UNIT "WIFI"
+#define LOGI(fmt, ...) BSP_LOGI_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGW(fmt, ...) BSP_LOGW_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGE(fmt, ...) BSP_LOGE_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGD(fmt, ...) BSP_LOGD_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+
 static EventGroupHandle_t wifi_event_group = NULL;
 const int IP_GOT_BIT = BIT0;
 
@@ -69,7 +77,7 @@ static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *da
  */
 static bool verify_bus_idle(void)
 {
-    ESP_LOGI(TAG, "[CCCR] Verifying bus idle (polling DAT0/GPIO%d)...", CONFIG_BSP_SDIO_SLOT1_D0);
+    LOGI( "[CCCR] Verifying bus idle (polling DAT0/GPIO%d)...", CONFIG_BSP_SDIO_SLOT1_D0);
     
     // Configure DAT0 as input to read bus state
     gpio_set_direction(CONFIG_BSP_SDIO_SLOT1_D0, GPIO_MODE_INPUT);
@@ -80,13 +88,13 @@ static bool verify_bus_idle(void)
     while ((xTaskGetTickCount() - start) < timeout_ticks) {
         int level = gpio_get_level(CONFIG_BSP_SDIO_SLOT1_D0);
         if (level == 1) {
-            ESP_LOGI(TAG, "[CCCR] Bus IDLE verified (DAT0=HIGH)");
+            LOGI( "[CCCR] Bus IDLE verified (DAT0=HIGH)");
             return true;
         }
         vTaskDelay(pdMS_TO_TICKS(5));  // Poll every 5ms
     }
     
-    ESP_LOGW(TAG, "[CCCR] Bus idle timeout (DAT0 still LOW after %dms)", BUS_IDLE_TIMEOUT_MS);
+    LOGW( "[CCCR] Bus idle timeout (DAT0 still LOW after %dms)", BUS_IDLE_TIMEOUT_MS);
     return false;  // Continue anyway, but warn
 }
 
@@ -102,7 +110,7 @@ static bool verify_bus_idle(void)
  */
 static esp_err_t silence_slave_interrupts(void)
 {
-    ESP_LOGI(TAG, "[CCCR] Silencing slave interrupts via CMD52...");
+    LOGI( "[CCCR] Silencing slave interrupts via CMD52...");
     
     // Get current SDMMC host card handle
     // NOTE: ESP-Hosted should have initialized SDMMC for Slot 1
@@ -135,8 +143,8 @@ static esp_err_t silence_slave_interrupts(void)
     // This is tricky because we don't have direct card handle from ESP-Hosted
     // Workaround: Use low-level SDMMC driver if available, otherwise skip
     
-    ESP_LOGW(TAG, "[CCCR] CMD52 handshake skipped (no direct card handle access)");
-    ESP_LOGI(TAG, "[CCCR] Relying on WiFi deinit to stop slave activity");
+    LOGW( "[CCCR] CMD52 handshake skipped (no direct card handle access)");
+    LOGI( "[CCCR] Relying on WiFi deinit to stop slave activity");
     
     // Alternative approach: The esp_wifi_deinit() will trigger ESP-Hosted cleanup
     // which should properly shutdown the SDIO slave
@@ -161,53 +169,53 @@ static esp_err_t silence_slave_interrupts(void)
 void esp_hosted_pause_transport(void)
 {
     if (transport_paused) {
-        ESP_LOGW(TAG, "Transport already paused");
+        LOGW( "Transport already paused");
         return;
     }
     
     if (!wifi_started) {
-        ESP_LOGW(TAG, "WiFi not started, transport pause not needed");
+        LOGW( "WiFi not started, transport pause not needed");
         return;
     }
     
-    ESP_LOGI(TAG, "[TRANSPORT] === Clean Switch Protocol: Slot 1->0 ===");
+    LOGI( "[TRANSPORT] === Clean Switch Protocol: Slot 1->0 ===");
     
     // Save WiFi state
     wifi_was_started_before_pause = wifi_started;
     
     // Step 1: Stop WiFi stack (logical layer)
-    ESP_LOGI(TAG, "[TRANSPORT] Step 1: Stopping WiFi stack...");
+    LOGI( "[TRANSPORT] Step 1: Stopping WiFi stack...");
     esp_err_t ret = esp_wifi_stop();
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "WiFi stop failed: %s (continuing)", esp_err_to_name(ret));
+        LOGW( "WiFi stop failed: %s (continuing)", esp_err_to_name(ret));
     }
     vTaskDelay(pdMS_TO_TICKS(50));  // Allow stop event to propagate
     
     // Step 2: Silence slave interrupts via CCCR handshake
-    ESP_LOGI(TAG, "[TRANSPORT] Step 2: CCCR handshake (silence C6 interrupts)...");
+    LOGI( "[TRANSPORT] Step 2: CCCR handshake (silence C6 interrupts)...");
     silence_slave_interrupts();
     
     // Step 3: Deinitialize WiFi driver (kills ESP-Hosted tasks)
-    ESP_LOGI(TAG, "[TRANSPORT] Step 3: Deinitializing WiFi driver...");
+    LOGI( "[TRANSPORT] Step 3: Deinitializing WiFi driver...");
     ret = esp_wifi_deinit();
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "WiFi deinit failed: %s (continuing)", esp_err_to_name(ret));
+        LOGW( "WiFi deinit failed: %s (continuing)", esp_err_to_name(ret));
     }
     wifi_started = false;
     
     // Step 4: Wait for ESP-Hosted task termination
-    ESP_LOGI(TAG, "[TRANSPORT] Step 4: Waiting for task cleanup (200ms)...");
+    LOGI( "[TRANSPORT] Step 4: Waiting for task cleanup (200ms)...");
     vTaskDelay(pdMS_TO_TICKS(200));
     
     // Step 5: Verify bus idle
-    ESP_LOGI(TAG, "[TRANSPORT] Step 5: Verifying bus idle...");
+    LOGI( "[TRANSPORT] Step 5: Verifying bus idle...");
     verify_bus_idle();
     
     // Step 6: Disable SDIO host interrupts (optional, done by sdmmc_host_deinit)
-    ESP_LOGI(TAG, "[TRANSPORT] Step 6: Host interrupts will be disabled by sdmmc_host_deinit()");
+    LOGI( "[TRANSPORT] Step 6: Host interrupts will be disabled by sdmmc_host_deinit()");
     
     transport_paused = true;
-    ESP_LOGI(TAG, "[TRANSPORT] [OK] Clean handshake complete, bus IDLE\n");
+    LOGI( "[TRANSPORT] [OK] Clean handshake complete, bus IDLE\n");
 }
 
 /**
@@ -224,48 +232,48 @@ void esp_hosted_pause_transport(void)
 void esp_hosted_resume_transport(void)
 {
     if (!transport_paused) {
-        ESP_LOGD(TAG, "Transport not paused, resume not needed");
+        LOGD( "Transport not paused, resume not needed");
         return;
     }
     
-    ESP_LOGI(TAG, "[TRANSPORT] === Clean Switch Protocol: Slot 0->1 ===");
+    LOGI( "[TRANSPORT] === Clean Switch Protocol: Slot 0->1 ===");
     
     // Step 1: Reinitialize WiFi (ESP-Hosted will reinit Slot 1)
-    ESP_LOGI(TAG, "[TRANSPORT] Step 1: Reinitializing WiFi driver...");
+    LOGI( "[TRANSPORT] Step 1: Reinitializing WiFi driver...");
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t ret = esp_wifi_init(&cfg);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi reinit failed: %s", esp_err_to_name(ret));
+        LOGE( "WiFi reinit failed: %s", esp_err_to_name(ret));
         transport_paused = false;
         return;
     }
     
     // Step 2: Set WiFi mode
-    ESP_LOGI(TAG, "[TRANSPORT] Step 2: Setting WiFi mode to STA...");
+    LOGI( "[TRANSPORT] Step 2: Setting WiFi mode to STA...");
     ret = esp_wifi_set_mode(WIFI_MODE_STA);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Set mode failed: %s", esp_err_to_name(ret));
+        LOGE( "Set mode failed: %s", esp_err_to_name(ret));
         transport_paused = false;
         return;
     }
     
     // Step 3: Restart WiFi if it was running before pause
     if (wifi_was_started_before_pause) {
-        ESP_LOGI(TAG, "[TRANSPORT] Step 3: Starting WiFi...");
+        LOGI( "[TRANSPORT] Step 3: Starting WiFi...");
         ret = esp_wifi_start();
         if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "WiFi restart failed: %s", esp_err_to_name(ret));
+            LOGE( "WiFi restart failed: %s", esp_err_to_name(ret));
         } else {
             wifi_started = true;
         }
     }
     
     // Step 4: Slave interrupts re-enabled automatically by ESP-Hosted
-    ESP_LOGI(TAG, "[TRANSPORT] Step 4: Slave interrupts re-enabled by ESP-Hosted init");
+    LOGI( "[TRANSPORT] Step 4: Slave interrupts re-enabled by ESP-Hosted init");
     
     transport_paused = false;
     wifi_was_started_before_pause = false;
-    ESP_LOGI(TAG, "[TRANSPORT] [OK] WiFi transport resumed on Slot 1\n");
+    LOGI( "[TRANSPORT] [OK] WiFi transport resumed on Slot 1\n");
 }
 
 /**
@@ -280,42 +288,42 @@ esp_err_t wifi_hosted_init_transport(void)
 {
     if (transport_initialized)
     {
-        ESP_LOGI(TAG, "WiFi Hosted transport already initialized");
+        LOGI( "WiFi Hosted transport already initialized");
         return ESP_OK;
     }
 
-    ESP_LOGI(TAG, "=== WiFi Hosted Transport Init (Phase B) ===");
+    LOGI( "=== WiFi Hosted Transport Init (Phase B) ===");
 
     // Step 1: Initialize TCP/IP stack
-    ESP_LOGI(TAG, "Initializing netif...");
+    LOGI( "Initializing netif...");
     esp_err_t ret = esp_netif_init();
     if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "netif init failed: %s", esp_err_to_name(ret));
+        LOGE( "netif init failed: %s", esp_err_to_name(ret));
         return ret;
     }
 
     // Step 2: Create event loop
-    ESP_LOGI(TAG, "Creating event loop...");
+    LOGI( "Creating event loop...");
     ret = esp_event_loop_create_default();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE)
     {
         // ESP_ERR_INVALID_STATE means loop already exists (OK)
-        ESP_LOGE(TAG, "event loop creation failed: %s", esp_err_to_name(ret));
+        LOGE( "event loop creation failed: %s", esp_err_to_name(ret));
         return ret;
     }
 
     // Step 3: Create default WiFi station netif
-    ESP_LOGI(TAG, "Creating default WiFi STA netif...");
+    LOGI( "Creating default WiFi STA netif...");
     esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
     if (!sta_netif)
     {
-        ESP_LOGE(TAG, "Failed to create WiFi STA netif");
+        LOGE( "Failed to create WiFi STA netif");
         return ESP_FAIL;
     }
 
     // Step 4: Register IP event handler
-    ESP_LOGI(TAG, "Registering IP event handler...");
+    LOGI( "Registering IP event handler...");
     if (!wifi_event_group)
     {
         wifi_event_group = xEventGroupCreate();
@@ -324,23 +332,23 @@ esp_err_t wifi_hosted_init_transport(void)
                                               &event_handler, NULL, &ip_event_handler);
     if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "Event handler registration failed: %s", esp_err_to_name(ret));
+        LOGE( "Event handler registration failed: %s", esp_err_to_name(ret));
         return ret;
     }
 
     transport_initialized = true;
-    ESP_LOGI(TAG, "[OK] WiFi Hosted transport initialized\n");
+    LOGI( "[OK] WiFi Hosted transport initialized\n");
 
     return ESP_OK;
 }
 
 esp_err_t wifi_hosted_deinit_transport(void)
 {
-    ESP_LOGI(TAG, "=== WiFi Hosted Transport Deinit ===");
+    LOGI( "=== WiFi Hosted Transport Deinit ===");
 
     if (!transport_initialized)
     {
-        ESP_LOGI(TAG, "Transport not initialized, nothing to deinit");
+        LOGI( "Transport not initialized, nothing to deinit");
         return ESP_OK;
     }
 
@@ -349,18 +357,18 @@ esp_err_t wifi_hosted_deinit_transport(void)
     // Stop WiFi if started
     if (wifi_started)
     {
-        ESP_LOGI(TAG, "Stopping WiFi...");
+        LOGI( "Stopping WiFi...");
         ret = esp_wifi_stop();
         if (ret != ESP_OK)
         {
-            ESP_LOGW(TAG, "WiFi stop failed: %s", esp_err_to_name(ret));
+            LOGW( "WiFi stop failed: %s", esp_err_to_name(ret));
         }
 
-        ESP_LOGI(TAG, "Deinitializing WiFi driver...");
+        LOGI( "Deinitializing WiFi driver...");
         ret = esp_wifi_deinit();
         if (ret != ESP_OK)
         {
-            ESP_LOGW(TAG, "WiFi deinit failed: %s", esp_err_to_name(ret));
+            LOGW( "WiFi deinit failed: %s", esp_err_to_name(ret));
         }
         wifi_started = false;
     }
@@ -368,11 +376,11 @@ esp_err_t wifi_hosted_deinit_transport(void)
     // Unregister event handler
     if (ip_event_handler)
     {
-        ESP_LOGI(TAG, "Unregistering event handler...");
+        LOGI( "Unregistering event handler...");
         ret = esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ip_event_handler);
         if (ret != ESP_OK)
         {
-            ESP_LOGW(TAG, "Event handler unregister failed: %s", esp_err_to_name(ret));
+            LOGW( "Event handler unregister failed: %s", esp_err_to_name(ret));
         }
         ip_event_handler = NULL;
     }
@@ -385,14 +393,14 @@ esp_err_t wifi_hosted_deinit_transport(void)
     }
 
     transport_initialized = false;
-    ESP_LOGI(TAG, "[OK] WiFi Hosted transport deinitialized\n");
+    LOGI( "[OK] WiFi Hosted transport deinitialized\n");
 
     return ESP_OK;
 }
 
 void init_wifi(void)
 {
-    ESP_LOGI(TAG, "=== WiFi Stack Initialization ===");
+    LOGI( "=== WiFi Stack Initialization ===");
 
     // If transport not initialized yet, do it now
     if (!transport_initialized)
@@ -400,44 +408,44 @@ void init_wifi(void)
         esp_err_t ret = wifi_hosted_init_transport();
         if (ret != ESP_OK)
         {
-            ESP_LOGE(TAG, "Transport init failed, cannot proceed");
+            LOGE( "Transport init failed, cannot proceed");
             return;
         }
     }
 
     // CRITICAL: Wait for C6 firmware boot
-    ESP_LOGI(TAG, "Waiting %dms for C6 firmware boot...", C6_FIRMWARE_BOOT_DELAY_MS);
+    LOGI( "Waiting %dms for C6 firmware boot...", C6_FIRMWARE_BOOT_DELAY_MS);
     vTaskDelay(pdMS_TO_TICKS(C6_FIRMWARE_BOOT_DELAY_MS));
-    ESP_LOGI(TAG, "C6 firmware ready, proceeding with WiFi init");
+    LOGI( "C6 firmware ready, proceeding with WiFi init");
 
     // Initialize WiFi stack (triggers ESP-Hosted SDIO init)
-    ESP_LOGI(TAG, "Initializing WiFi driver...");
+    LOGI( "Initializing WiFi driver...");
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t ret = esp_wifi_init(&cfg);
     if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
+        LOGE( "WiFi init failed: %s", esp_err_to_name(ret));
         return;
     }
 
-    ESP_LOGI(TAG, "Setting WiFi mode to STA...");
+    LOGI( "Setting WiFi mode to STA...");
     ret = esp_wifi_set_mode(WIFI_MODE_STA);
     if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "Set mode failed: %s", esp_err_to_name(ret));
+        LOGE( "Set mode failed: %s", esp_err_to_name(ret));
         return;
     }
 
-    ESP_LOGI(TAG, "Starting WiFi...");
+    LOGI( "Starting WiFi...");
     ret = esp_wifi_start();
     if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "WiFi start failed: %s", esp_err_to_name(ret));
+        LOGE( "WiFi start failed: %s", esp_err_to_name(ret));
         return;
     }
 
     wifi_started = true;
-    ESP_LOGI(TAG, "[OK] WiFi stack initialized\n");
+    LOGI( "[OK] WiFi stack initialized\n");
 }
 
 bool check_if_already_has_ip(void)
