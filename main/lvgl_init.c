@@ -20,8 +20,8 @@ static const char *TAG = "LVGL_INIT";
 /* VENDOR CONFIGURATION - Exact match with GUITION-LVGL-V9-DEMO-ESP32P4 */
 #define BSP_LCD_H_RES 1024
 #define BSP_LCD_V_RES 600
-#define BSP_LCD_DRAW_BUFF_SIZE     (BSP_LCD_H_RES * 200)  // 204800 pixels = 400KB (vendor uses 384KB)
-#define BSP_LCD_DRAW_BUFF_DOUBLE   (0)                    // Single buffer only
+#define BSP_LCD_DRAW_BUFF_SIZE     (480 * 800)  // 384000 pixels = 750KB (EXACT VENDOR VALUE)
+#define BSP_LCD_DRAW_BUFF_DOUBLE   (0)          // Single buffer only
 
 static uint32_t g_flush_count = 0;
 
@@ -130,8 +130,7 @@ esp_err_t lvgl_port_init_custom(void)
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
-    ESP_LOGI(TAG, "  Buffer: %ux%u (%.1f KB, %s, PSRAM)",
-             BSP_LCD_H_RES, BSP_LCD_DRAW_BUFF_SIZE / BSP_LCD_H_RES,
+    ESP_LOGI(TAG, "  Buffer: 480x800 (%.1f KB, %s, PSRAM)",
              (BSP_LCD_DRAW_BUFF_SIZE * 2) / 1024.0f,
              BSP_LCD_DRAW_BUFF_DOUBLE ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: esp_lvgl_port (auto-rotation via sw_rotate)");
