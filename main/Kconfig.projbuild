@@ -1,0 +1,42 @@
+menu "Guition Demo Configuration"
+
+    choice LVGL_DEMO
+        prompt "Select LVGL Demo"
+        default LVGL_DEMO_SIMPLE_UI
+        help
+            Select which LVGL demo to run at startup.
+            Only one demo can be active at a time.
+
+        config LVGL_DEMO_SIMPLE_UI
+            bool "Simple UI (Default)"
+            help
+                Basic LVGL demo with minimal UI elements.
+                Good for verifying display and touch functionality.
+
+        config LVGL_DEMO_HW_TEST
+            bool "Hardware Test UI"
+            help
+                Interactive hardware test demo:
+                - Center button (200x200) at exact center (512, 300)
+                - Crosshair for touch visualization
+                - Slider for value adjustment
+                - Click counter button
+                Useful for precise touch calibration and testing.
+
+        config LVGL_DEMO_MUSIC
+            bool "Music Demo (LVGL Official)"
+            depends on LV_USE_DEMO_MUSIC
+            help
+                Official LVGL music player demo.
+                Requires LV_USE_DEMO_MUSIC=y in LVGL configuration.
+
+        config LVGL_DEMO_WIDGETS
+            bool "Widgets Demo (LVGL Official)"
+            depends on LV_USE_DEMO_WIDGETS
+            help
+                Official LVGL widgets showcase demo.
+                Requires LV_USE_DEMO_WIDGETS=y in LVGL configuration.
+
+    endchoice
+
+endmenu
