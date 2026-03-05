@@ -25,7 +25,7 @@ static const char *TOUCH_TAG = "TOUCH_DEBUG";
 #define BSP_LCD_DRAW_BUFF_DOUBLE   (0)          // Single buffer only
 
 static uint32_t g_flush_count = 0;
-static esp_lcd_touch_handle_t g_touch_handle = NULL;  // Store for debug callback
+static lv_indev_read_cb_t original_touch_read_cb = NULL;  // Original callback from esp_lvgl_port
 
 /**
  * @brief DSI color transfer done callback
@@ -42,33 +42,30 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel,
 }
 
 /**
- * @brief Debug touch read callback - logs coordinates for diagnostics
+ * @brief Debug touch wrapper callback - calls original callback then logs
  */
-static void debug_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+static void debug_touch_wrapper_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
-    uint16_t x[1], y[1];
-    uint16_t strength[1];
-    uint8_t touch_cnt = 0;
+    // 1. Call the original esp_lvgl_port callback (does the real work: reads touch HW)
+    if (original_touch_read_cb) {
+        original_touch_read_cb(indev, data);
+    }
     
-    // Read raw coordinates from touch hardware
-    esp_err_t ret = esp_lcd_touch_get_coordinates(g_touch_handle, x, y, strength, &touch_cnt, 1);
+    // 2. Log what LVGL received after esp_lvgl_port processing
+    static lv_indev_state_t last_state = LV_INDEV_STATE_RELEASED;
     
-    if (ret == ESP_OK) {
-        if (touch_cnt > 0) {
-            data->point.x = x[0];
-            data->point.y = y[0];
-            data->state = LV_INDEV_STATE_PRESSED;
-            
-            // Log every touch event with RAW hardware coords and what LVGL receives
-            ESP_LOGI(TOUCH_TAG, "[PRESSED] RAW HW: X=%d Y=%d -> LVGL receives: X=%d Y=%d (screen=%dx%d)",
-                     x[0], y[0], data->point.x, data->point.y, BSP_LCD_H_RES, BSP_LCD_V_RES);
-        } else {
-            data->state = LV_INDEV_STATE_RELEASED;
+    if (data->state == LV_INDEV_STATE_PRESSED) {
+        // Only log on first press or coordinate changes
+        if (last_state == LV_INDEV_STATE_RELEASED) {
+            ESP_LOGI(TOUCH_TAG, "[PRESSED] LVGL received: X=%d Y=%d (screen=%dx%d)",
+                     data->point.x, data->point.y, BSP_LCD_H_RES, BSP_LCD_V_RES);
+        }
+        last_state = LV_INDEV_STATE_PRESSED;
+    } else if (data->state == LV_INDEV_STATE_RELEASED) {
+        if (last_state == LV_INDEV_STATE_PRESSED) {
             ESP_LOGI(TOUCH_TAG, "[RELEASED]");
         }
-    } else {
-        data->state = LV_INDEV_STATE_RELEASED;
-        ESP_LOGW(TOUCH_TAG, "[ERROR] esp_lcd_touch_get_coordinates failed: %d", ret);
+        last_state = LV_INDEV_STATE_RELEASED;
     }
 }
 
@@ -86,9 +83,6 @@ esp_err_t lvgl_port_init_custom(void)
         ESP_LOGE(TAG, "Touch not initialized! Call bsp_board_init() first.");
         return ESP_FAIL;
     }
-    
-    // Store touch handle for debug callback
-    g_touch_handle = touch_handle;
     
     ESP_LOGI(TAG, "Initializing LVGL port (VENDOR CONFIG)...");
     
@@ -162,9 +156,17 @@ esp_err_t lvgl_port_init_custom(void)
         return ESP_FAIL;
     }
     
-    /* Override with debug callback to log all touch events */
-    lv_indev_set_read_cb(touch_indev, debug_touch_read_cb);
-    ESP_LOGI(TAG, "[OK] Debug touch callback installed - will log every touch event");
+    /* Save original callback from esp_lvgl_port */
+    original_touch_read_cb = lv_indev_get_read_cb(touch_indev);
+    if (!original_touch_read_cb) {
+        ESP_LOGW(TAG, "[WARN] Could not get original touch callback");
+    } else {
+        ESP_LOGI(TAG, "[OK] Original touch callback saved: %p", original_touch_read_cb);
+    }
+    
+    /* Install wrapper callback that calls original + logs */
+    lv_indev_set_read_cb(touch_indev, debug_touch_wrapper_cb);
+    ESP_LOGI(TAG, "[OK] Debug wrapper callback installed (preserves polling)");
     ESP_LOGI(TAG, "[OK] Touch registered via lvgl_port_add_touch (automatic polling)");
     
     ESP_LOGI(TAG, "========================================");
@@ -173,7 +175,7 @@ esp_err_t lvgl_port_init_custom(void)
              (BSP_LCD_DRAW_BUFF_SIZE * 2) / 1024.0f,
              BSP_LCD_DRAW_BUFF_DOUBLE ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: esp_lvgl_port (auto-rotation via sw_rotate)");
-    ESP_LOGI(TAG, "  Touch debug: ENABLED (logs PRESSED/RELEASED with coords)");
+    ESP_LOGI(TAG, "  Touch debug: WRAPPER mode (logs LVGL input)");
     ESP_LOGI(TAG, "  Config: buff_dma=false, buff_spiram=true");
     ESP_LOGI(TAG, "  DSI: avoid_tearing=false (vendor config)");
     ESP_LOGI(TAG, "  Rotation: swap_xy=true (landscape mode)");
