@@ -47,7 +47,7 @@ static esp_err_t bootstrap_wifi_sequence(void)
     ESP_LOGI(TAG, "[Phase C] Waiting 2s for C6 firmware + SDMMC init...");
     vTaskDelay(pdMS_TO_TICKS(2000));
     
-    ESP_LOGI(TAG, "[Phase C] ✓ WIFI_READY (SDMMC controller initialized)");
+    ESP_LOGI(TAG, "[Phase C] [OK] WIFI_READY (SDMMC controller initialized)");
     return ESP_OK;
 }
 #endif // CONFIG_BSP_ENABLE_WIFI
@@ -71,7 +71,7 @@ static esp_err_t bootstrap_sd_sequence(sdmmc_card_t **sd_card)
         return ret;
     }
     
-    ESP_LOGI(TAG, "[Phase B] ✓ SD_READY");
+    ESP_LOGI(TAG, "[Phase B] [OK] SD_READY");
     return ESP_OK;
 }
 #endif // CONFIG_BSP_ENABLE_SDCARD
@@ -96,7 +96,7 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
     ESP_LOGI(TAG, "  Bootstrap Manager v1.2.0");
     
 #if defined(CONFIG_BSP_ENABLE_WIFI) && defined(CONFIG_BSP_ENABLE_SDCARD)
-    ESP_LOGI(TAG, "  Sequence: WiFi → SD");
+    ESP_LOGI(TAG, "  Sequence: WiFi -> SD");
 #elif defined(CONFIG_BSP_ENABLE_WIFI)
     ESP_LOGI(TAG, "  Sequence: WiFi Only (SD disabled)");
 #elif defined(CONFIG_BSP_ENABLE_SDCARD)
@@ -138,7 +138,7 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
     }
 #else
     ESP_LOGI(TAG, "[Phase B] SD Card disabled via Kconfig");
-    ESP_LOGI(TAG, "[Phase B] ✓ Skipped (SD Card disabled)");
+    ESP_LOGI(TAG, "[Phase B] [OK] Skipped (SD Card disabled)");
     manager->sd_card = NULL;
 #endif
     
@@ -147,15 +147,15 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
     ESP_LOGI(TAG, "  Bootstrap COMPLETE (%u ms)", elapsed_ms);
     
 #ifdef CONFIG_BSP_ENABLE_WIFI
-    ESP_LOGI(TAG, "  Phase C: WiFi ✓ (SDMMC initialized)");
+    ESP_LOGI(TAG, "  Phase C: WiFi [OK] (SDMMC initialized)");
 #else
-    ESP_LOGI(TAG, "  Phase C: WiFi ✗ (disabled)");
+    ESP_LOGI(TAG, "  Phase C: WiFi [FAIL] (disabled)");
 #endif
     
 #ifdef CONFIG_BSP_ENABLE_SDCARD
-    ESP_LOGI(TAG, "  Phase B: SD card ✓ (dummy init)");
+    ESP_LOGI(TAG, "  Phase B: SD card [OK] (dummy init)");
 #else
-    ESP_LOGI(TAG, "  Phase B: SD card ✗ (disabled)");
+    ESP_LOGI(TAG, "  Phase B: SD card [FAIL] (disabled)");
 #endif
     
 #if defined(CONFIG_BSP_ENABLE_WIFI) && !defined(CONFIG_BSP_ENABLE_SDCARD)

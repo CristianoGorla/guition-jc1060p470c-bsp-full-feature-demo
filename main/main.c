@@ -54,7 +54,7 @@ void app_main(void)
         ESP_LOGE(TAG, "BSP init failed: %s", esp_err_to_name(ret));
         return;
     }
-    ESP_LOGI(TAG, "✓ Hardware ready\n");
+    ESP_LOGI(TAG, "[OK] Hardware ready\n");
 
     /* Step 2: NVS Init */
 #ifdef CONFIG_APP_ENABLE_NVS
@@ -65,7 +65,7 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "✓ NVS ready\n");
+    ESP_LOGI(TAG, "[OK] NVS ready\n");
 #endif
 
     /* Step 3: Bootstrap - WiFi + SD (PSRAM allocations happen here) */    
@@ -95,7 +95,7 @@ void app_main(void)
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "LVGL init failed: %s", esp_err_to_name(ret));
     } else {
-        ESP_LOGI(TAG, "✓ LVGL initialized\n");
+        ESP_LOGI(TAG, "[OK] LVGL initialized\n");
     }
     
     ESP_LOGI(TAG, "Waiting 2s for LVGL task to stabilize...");
@@ -111,7 +111,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Starting LVGL simple demo (testing display/touch)...");
     lvgl_demo_simple();
     
-    ESP_LOGI(TAG, "✓ UI displayed\n");
+    ESP_LOGI(TAG, "[OK] UI displayed\n");
 #endif
 
     /* ========== HARDWARE TESTS (ALL ENABLED) ========== */
@@ -125,7 +125,7 @@ void app_main(void)
     } else {
         ESP_LOGW(TAG, "I2C bus not available");
     }
-    ESP_LOGI(TAG, "✓ RTC test complete\n");
+    ESP_LOGI(TAG, "[OK] RTC test complete\n");
 #endif
 
     /* Test 2: SD Card Info */
@@ -143,14 +143,14 @@ void app_main(void)
     } else {
         ESP_LOGW(TAG, "SD card not available");
     }
-    ESP_LOGI(TAG, "✓ SD card test complete\n");
+    ESP_LOGI(TAG, "[OK] SD card test complete\n");
 #endif
 
     /* Test 3: WiFi Scan */
 #ifdef CONFIG_BSP_ENABLE_WIFI
     ESP_LOGI(TAG, "\n=== WiFi Scan Test ===");
     do_wifi_scan_and_check(NULL);
-    ESP_LOGI(TAG, "✓ WiFi scan complete\n");
+    ESP_LOGI(TAG, "[OK] WiFi scan complete\n");
 #endif
 
     /* Test 4: WiFi Connect */
@@ -167,7 +167,7 @@ void app_main(void)
     esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
         if (ip_info.ip.addr != 0) {
-            ESP_LOGI(TAG, "✓ WiFi connected!");
+            ESP_LOGI(TAG, "[OK] WiFi connected!");
             ESP_LOGI(TAG, "   IP: " IPSTR, IP2STR(&ip_info.ip));
             ESP_LOGI(TAG, "   GW: " IPSTR, IP2STR(&ip_info.gw));
             ESP_LOGI(TAG, "   Netmask: " IPSTR "\n", IP2STR(&ip_info.netmask));
@@ -183,7 +183,7 @@ void app_main(void)
 #if 0 && defined(CONFIG_BSP_ENABLE_AUDIO)
     ESP_LOGI(TAG, "\n=== Audio Test ===");
     // TODO: Add audio playback test
-    ESP_LOGI(TAG, "✓ Audio test complete\n");
+    ESP_LOGI(TAG, "[OK] Audio test complete\n");
 #endif
 
     /* ========== END TESTS ========== */

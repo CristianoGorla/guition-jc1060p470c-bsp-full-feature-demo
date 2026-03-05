@@ -58,7 +58,7 @@ esp_err_t sdmmc_arbiter_init(void)
     g_arbiter.current_mode = SDMMC_MODE_NONE;  // Start idle
     g_arbiter.mode_switch_count = 0;
     
-    ESP_LOGI(TAG, "✓ SDMMC arbiter initialized");
+    ESP_LOGI(TAG, "[OK] SDMMC arbiter initialized");
     return ESP_OK;
 }
 
@@ -116,7 +116,7 @@ esp_err_t sdmmc_arbiter_request_wifi(uint32_t timeout_ms)
     g_arbiter.wifi_transport_active = true;
     g_arbiter.mode_switch_count++;
     
-    ESP_LOGI(TAG, "✓ WiFi mode active (switch #%u)", g_arbiter.mode_switch_count);
+    ESP_LOGI(TAG, "[OK] WiFi mode active (switch #%u)", g_arbiter.mode_switch_count);
     
     xSemaphoreGive(g_arbiter.mutex);
     return ESP_OK;
@@ -184,7 +184,7 @@ esp_err_t sdmmc_arbiter_request_sd_card(uint32_t timeout_ms, sdmmc_card_t **card
     
     if (card) *card = g_arbiter.sd_card;
     
-    ESP_LOGI(TAG, "✓ SD card mode active (switch #%u)", g_arbiter.mode_switch_count);
+    ESP_LOGI(TAG, "[OK] SD card mode active (switch #%u)", g_arbiter.mode_switch_count);
     
     xSemaphoreGive(g_arbiter.mutex);
     return ESP_OK;
@@ -220,7 +220,7 @@ esp_err_t sdmmc_arbiter_release_wifi(void)
     g_arbiter.current_mode = SDMMC_MODE_NONE;
     g_arbiter.wifi_transport_active = false;
     
-    ESP_LOGI(TAG, "✓ WiFi mode released");
+    ESP_LOGI(TAG, "[OK] WiFi mode released");
     
     xSemaphoreGive(g_arbiter.mutex);
     return ESP_OK;
@@ -256,7 +256,7 @@ esp_err_t sdmmc_arbiter_release_sd_card(void)
     g_arbiter.current_mode = SDMMC_MODE_NONE;
     g_arbiter.sd_card = NULL;
     
-    ESP_LOGI(TAG, "✓ SD card mode released");
+    ESP_LOGI(TAG, "[OK] SD card mode released");
     
     xSemaphoreGive(g_arbiter.mutex);
     return ESP_OK;

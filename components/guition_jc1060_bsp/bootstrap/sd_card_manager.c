@@ -175,7 +175,7 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         if (out_card) {
             *out_card = g_sd_card;
         }
-        ESP_LOGI(TAG, "✓ SD card mounted successfully");
+        ESP_LOGI(TAG, "[OK] SD card mounted successfully");
         ESP_LOGI(TAG, "   Card: %s", g_sd_card->cid.name);
         ESP_LOGI(TAG, "   Capacity: %llu MB",
                 ((uint64_t)g_sd_card->csd.capacity) * g_sd_card->csd.sector_size / (1024 * 1024));
@@ -211,7 +211,7 @@ esp_err_t sd_card_unmount(void)
     if (ret == ESP_OK) {
         g_is_mounted = false;
         g_sd_card = NULL;
-        ESP_LOGI(TAG, "✓ SD card unmounted");
+        ESP_LOGI(TAG, "[OK] SD card unmounted");
     } else {
         ESP_LOGE(TAG, "Unmount failed: %s (0x%x)", esp_err_to_name(ret), ret);
     }

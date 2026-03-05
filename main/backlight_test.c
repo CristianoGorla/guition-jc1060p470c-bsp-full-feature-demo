@@ -56,7 +56,7 @@ void backlight_test_run(void)
     vTaskDelay(pdMS_TO_TICKS(500));
     
     // SWEEP 1: 100% → 0% (fade out)
-    ESP_LOGI(TAG, "[1/4] Sweep: 100%% → 0%% (fade out)");
+    ESP_LOGI(TAG, "[1/4] Sweep: 100%% -> 0%% (fade out)");
     for (int duty = 100; duty >= 0; duty -= 2) {
         bsp_display_set_brightness(duty);
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -66,7 +66,7 @@ void backlight_test_run(void)
     vTaskDelay(pdMS_TO_TICKS(1000));
     
     // SWEEP 2: 0% → 100% (fade in)
-    ESP_LOGI(TAG, "[3/4] Sweep: 0%% → 100%% (fade in)");
+    ESP_LOGI(TAG, "[3/4] Sweep: 0%% -> 100%% (fade in)");
     for (int duty = 0; duty <= 100; duty += 2) {
         bsp_display_set_brightness(duty);
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -76,7 +76,7 @@ void backlight_test_run(void)
     vTaskDelay(pdMS_TO_TICKS(1000));
     
     // SWEEP 3: 100% → 0% (final fade out)
-    ESP_LOGI(TAG, "[5/4] Sweep: 100%% → 0%% (final)");
+    ESP_LOGI(TAG, "[5/4] Sweep: 100%% -> 0%% (final)");
     for (int duty = 100; duty >= 0; duty -= 2) {
         bsp_display_set_brightness(duty);
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -87,10 +87,10 @@ void backlight_test_run(void)
     bsp_display_set_brightness(100);
     
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ✓ Backlight test complete");
+    ESP_LOGI(TAG, "  [OK] Backlight test complete");
     ESP_LOGI(TAG, "  If you SAW brightness changes:");
-    ESP_LOGI(TAG, "    → Display HW works! Problem is LVGL");
+    ESP_LOGI(TAG, "    -> Display HW works! Problem is LVGL");
     ESP_LOGI(TAG, "  If screen stayed WHITE/BLACK:");
-    ESP_LOGI(TAG, "    → Check MIPI-DSI init or panel power");
+    ESP_LOGI(TAG, "    -> Check MIPI-DSI init or panel power");
     ESP_LOGI(TAG, "========================================");
 }

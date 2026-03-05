@@ -170,7 +170,7 @@ void esp_hosted_pause_transport(void)
         return;
     }
     
-    ESP_LOGI(TAG, "[TRANSPORT] === Clean Switch Protocol: Slot 1→0 ===");
+    ESP_LOGI(TAG, "[TRANSPORT] === Clean Switch Protocol: Slot 1->0 ===");
     
     // Save WiFi state
     wifi_was_started_before_pause = wifi_started;
@@ -207,7 +207,7 @@ void esp_hosted_pause_transport(void)
     ESP_LOGI(TAG, "[TRANSPORT] Step 6: Host interrupts will be disabled by sdmmc_host_deinit()");
     
     transport_paused = true;
-    ESP_LOGI(TAG, "[TRANSPORT] ✓ Clean handshake complete, bus IDLE\n");
+    ESP_LOGI(TAG, "[TRANSPORT] [OK] Clean handshake complete, bus IDLE\n");
 }
 
 /**
@@ -228,7 +228,7 @@ void esp_hosted_resume_transport(void)
         return;
     }
     
-    ESP_LOGI(TAG, "[TRANSPORT] === Clean Switch Protocol: Slot 0→1 ===");
+    ESP_LOGI(TAG, "[TRANSPORT] === Clean Switch Protocol: Slot 0->1 ===");
     
     // Step 1: Reinitialize WiFi (ESP-Hosted will reinit Slot 1)
     ESP_LOGI(TAG, "[TRANSPORT] Step 1: Reinitializing WiFi driver...");
@@ -265,7 +265,7 @@ void esp_hosted_resume_transport(void)
     
     transport_paused = false;
     wifi_was_started_before_pause = false;
-    ESP_LOGI(TAG, "[TRANSPORT] ✓ WiFi transport resumed on Slot 1\n");
+    ESP_LOGI(TAG, "[TRANSPORT] [OK] WiFi transport resumed on Slot 1\n");
 }
 
 /**
@@ -329,7 +329,7 @@ esp_err_t wifi_hosted_init_transport(void)
     }
 
     transport_initialized = true;
-    ESP_LOGI(TAG, "✓ WiFi Hosted transport initialized\n");
+    ESP_LOGI(TAG, "[OK] WiFi Hosted transport initialized\n");
 
     return ESP_OK;
 }
@@ -385,7 +385,7 @@ esp_err_t wifi_hosted_deinit_transport(void)
     }
 
     transport_initialized = false;
-    ESP_LOGI(TAG, "✓ WiFi Hosted transport deinitialized\n");
+    ESP_LOGI(TAG, "[OK] WiFi Hosted transport deinitialized\n");
 
     return ESP_OK;
 }
@@ -437,7 +437,7 @@ void init_wifi(void)
     }
 
     wifi_started = true;
-    ESP_LOGI(TAG, "✓ WiFi stack initialized\n");
+    ESP_LOGI(TAG, "[OK] WiFi stack initialized\n");
 }
 
 bool check_if_already_has_ip(void)

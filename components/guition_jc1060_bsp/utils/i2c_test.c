@@ -41,14 +41,14 @@ bool i2c_check_gpio_state(const char *context)
     bool healthy = (sda_level == 1 && scl_level == 1);
     
     if (healthy) {
-        ESP_LOGI(TAG, "✓ GPIO levels OK (both HIGH with pullups)");
+        ESP_LOGI(TAG, "[OK] GPIO levels OK (both HIGH with pullups)");
     } else {
-        ESP_LOGE(TAG, "✗ GPIO FAULT DETECTED!");
+        ESP_LOGE(TAG, "[FAIL] GPIO FAULT DETECTED!");
         if (sda_level == 0) {
-            ESP_LOGE(TAG, "  → SDA (GPIO%d) stuck LOW", CONFIG_BSP_I2C_SDA_GPIO);
+            ESP_LOGE(TAG, "  -> SDA (GPIO%d) stuck LOW", CONFIG_BSP_I2C_SDA_GPIO);
         }
         if (scl_level == 0) {
-            ESP_LOGE(TAG, "  → SCL (GPIO%d) stuck LOW", CONFIG_BSP_I2C_SCL_GPIO);
+            ESP_LOGE(TAG, "  -> SCL (GPIO%d) stuck LOW", CONFIG_BSP_I2C_SCL_GPIO);
         }
     }
     
@@ -93,9 +93,9 @@ esp_err_t i2c_reinit_bus(i2c_master_bus_handle_t *bus_handle)
     esp_err_t ret = i2c_new_master_bus(&i2c_bus_config, bus_handle);
     
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "✓ I2C bus re-initialized successfully");
+        ESP_LOGI(TAG, "[OK] I2C bus re-initialized successfully");
     } else {
-        ESP_LOGE(TAG, "✗ Failed to re-initialize I2C bus: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "[FAIL] Failed to re-initialize I2C bus: %s", esp_err_to_name(ret));
     }
     
     return ret;
@@ -121,30 +121,30 @@ void i2c_test_peripherals(i2c_master_bus_handle_t bus_handle)
 #ifdef CONFIG_BSP_ENABLE_TOUCH
     ret = i2c_master_probe(bus_handle, 0x14, 100);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "[0x14] ✓ GT911 Touch");
+        ESP_LOGI(TAG, "[0x14] [OK] GT911 Touch");
         devices_found++;
     } else {
-        ESP_LOGE(TAG, "[0x14] ✗ GT911 Touch NOT responding");
+        ESP_LOGE(TAG, "[0x14] [FAIL] GT911 Touch NOT responding");
     }
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_AUDIO
     ret = i2c_master_probe(bus_handle, 0x18, 100);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "[0x18] ✓ ES8311 Audio Codec");
+        ESP_LOGI(TAG, "[0x18] [OK] ES8311 Audio Codec");
         devices_found++;
     } else {
-        ESP_LOGE(TAG, "[0x18] ✗ ES8311 Audio NOT responding");
+        ESP_LOGE(TAG, "[0x18] [FAIL] ES8311 Audio NOT responding");
     }
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_RTC
     ret = i2c_master_probe(bus_handle, 0x32, 100);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "[0x32] ✓ RX8025T RTC");
+        ESP_LOGI(TAG, "[0x32] [OK] RX8025T RTC");
         devices_found++;
     } else {
-        ESP_LOGE(TAG, "[0x32] ✗ RX8025T RTC NOT responding");
+        ESP_LOGE(TAG, "[0x32] [FAIL] RX8025T RTC NOT responding");
     }
 #endif
 

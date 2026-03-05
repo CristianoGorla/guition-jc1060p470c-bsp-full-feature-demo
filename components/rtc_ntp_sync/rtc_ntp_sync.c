@@ -17,7 +17,7 @@ static const char *TAG = "RTC_NTP";
  */
 static void time_sync_notification_cb(struct timeval *tv)
 {
-    ESP_LOGI(TAG, "✓ NTP callback invoked! Time synchronized");
+    ESP_LOGI(TAG, "[OK] NTP callback invoked! Time synchronized");
 }
 
 /**
@@ -127,13 +127,13 @@ esp_err_t check_ntp_dns_resolution(const char *ntp_server)
     int64_t elapsed = (esp_timer_get_time() - start_time) / 1000;
     
     if (err != 0 || res == NULL) {
-        ESP_LOGE(TAG, "[DNS] ✗ Failed to resolve %s (err: %d, took %lld ms)", 
+        ESP_LOGE(TAG, "[DNS] [FAIL] Failed to resolve %s (err: %d, took %lld ms)", 
                  ntp_server, err, elapsed);
         return ESP_FAIL;
     }
     
     struct in_addr *addr = &((struct sockaddr_in *)res->ai_addr)->sin_addr;
-    ESP_LOGI(TAG, "[DNS] ✓ Resolved %s to %s (took %lld ms)", 
+    ESP_LOGI(TAG, "[DNS] [OK] Resolved %s to %s (took %lld ms)", 
              ntp_server, inet_ntoa(*addr), elapsed);
     
     freeaddrinfo(res);
@@ -226,7 +226,7 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         char strftime_buf[64];
         strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
         
-        ESP_LOGI(TAG, "✓✓✓ NTP SYNC SUCCESSFUL ✓✓✓");
+        ESP_LOGI(TAG, "[OK] NTP SYNC SUCCESSFUL [OK]");
         ESP_LOGI(TAG, "Current time: %s CET", strftime_buf);
         ESP_LOGI(TAG, "Sync completed after %d.%d seconds", retry / 10, retry % 10);
         ESP_LOGI(TAG, "========================================");
@@ -234,7 +234,7 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         return ESP_OK;
     } else {
         const char *status_str[] = {"RESET", "IN_PROGRESS", "COMPLETED"};
-        ESP_LOGE(TAG, "✗✗✗ NTP SYNC FAILED ✗✗✗");
+        ESP_LOGE(TAG, "[FAIL] NTP SYNC FAILED [FAIL]");
         ESP_LOGE(TAG, "Final status: %s (after %d seconds)", 
                  status_str[final_status], timeout_sec);
         ESP_LOGE(TAG, "Possible causes:");

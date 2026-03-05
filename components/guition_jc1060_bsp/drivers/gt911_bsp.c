@@ -101,26 +101,26 @@ static void read_gt911_config(void)
         
         ESP_LOGI(TAG, "Config Version: 0x%02X", config_data[0]);
         ESP_LOGI(TAG, "X Resolution: %d (expected %d) %s", x_max, TOUCH_MAX_X, 
-                 (x_max == TOUCH_MAX_X) ? "✅" : "❌ MISMATCH!");
+                 (x_max == TOUCH_MAX_X) ? "[PASS]" : "[FAIL] MISMATCH!");
         ESP_LOGI(TAG, "Y Resolution: %d (expected %d) %s", y_max, TOUCH_MAX_Y,
-                 (y_max == TOUCH_MAX_Y) ? "✅" : "❌ MISMATCH!");
+                 (y_max == TOUCH_MAX_Y) ? "[PASS]" : "[FAIL] MISMATCH!");
         ESP_LOGI(TAG, "Max Touch Points: %d (expected %d) %s", touch_num, TOUCH_MAX_POINTS,
-                 (touch_num == TOUCH_MAX_POINTS) ? "✅" : "❌ MISMATCH!");
+                 (touch_num == TOUCH_MAX_POINTS) ? "[PASS]" : "[FAIL] MISMATCH!");
         
         /* Display raw config bytes */
         dump_hex("  Config bytes (0x8047-0x804C)", config_data, 6);
         
         if (x_max != TOUCH_MAX_X || y_max != TOUCH_MAX_Y) {
             ESP_LOGE(TAG, "");
-            ESP_LOGE(TAG, "⚠️  RESOLUTION MISMATCH DETECTED!");
-            ESP_LOGE(TAG, "⚠️  GT911 is configured for %dx%d but display is %dx%d", 
+            ESP_LOGE(TAG, "[WARNING]  RESOLUTION MISMATCH DETECTED!");
+            ESP_LOGE(TAG, "[WARNING]  GT911 is configured for %dx%d but display is %dx%d", 
                      x_max, y_max, TOUCH_MAX_X, TOUCH_MAX_Y);
-            ESP_LOGE(TAG, "⚠️  Touch coordinates will be WRONG!");
-            ESP_LOGE(TAG, "⚠️  Solution: Write correct resolution to GT911 config");
+            ESP_LOGE(TAG, "[WARNING]  Touch coordinates will be WRONG!");
+            ESP_LOGE(TAG, "[WARNING]  Solution: Write correct resolution to GT911 config");
             ESP_LOGE(TAG, "");
         }
     } else {
-        ESP_LOGE(TAG, "❌ Failed to read GT911 configuration!");
+        ESP_LOGE(TAG, "[FAIL] Failed to read GT911 configuration!");
     }
     
     ESP_LOGI(TAG, "=========================================");
@@ -146,7 +146,7 @@ static void touch_debug_task(void *arg)
     uint32_t last_summary = 0;
     bool first_touch_logged = false;
     
-    ESP_LOGI(TAG, "✅ Touch monitor started (periodic summary every 5s)");
+    ESP_LOGI(TAG, "[PASS] Touch monitor started (periodic summary every 5s)");
     
     while (1) {
         /* Read status register */
@@ -159,7 +159,7 @@ static void touch_debug_task(void *arg)
                     
                     /* First touch: dump RAW bytes for analysis */
                     if (!first_touch_logged) {
-                        ESP_LOGI(TAG, "📊 === FIRST TOUCH RAW DATA ===");
+                        ESP_LOGI(TAG, "[STATS] === FIRST TOUCH RAW DATA ===");
                         dump_hex("  Status", &status, 1);
                         dump_hex("  Point data", point_data, 20);
                         
@@ -193,7 +193,7 @@ static void touch_debug_task(void *arg)
             /* Periodic summary (every 5 seconds) */
             uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
             if (now - last_summary > 5000) {
-                ESP_LOGI(TAG, "📊 Touch summary: %u touches detected", touch_count);
+                ESP_LOGI(TAG, "[STATS] Touch summary: %u touches detected", touch_count);
                 last_summary = now;
             }
         }
@@ -225,8 +225,8 @@ static esp_err_t touch_reset_sequence(void)
 {
     /* Skip reset if pins are disabled (GPIO_NUM_NC) */
     if (TOUCH_RESET_GPIO == GPIO_NUM_NC || TOUCH_INT_GPIO == GPIO_NUM_NC) {
-        ESP_LOGW(TAG, "⚠️  Reset sequence SKIPPED (RST/INT pins disabled for HW test)");
-        ESP_LOGW(TAG, "⚠️  GT911 will use default I2C address (may be 0x14 or 0x5D)");
+        ESP_LOGW(TAG, "[WARNING]  Reset sequence SKIPPED (RST/INT pins disabled for HW test)");
+        ESP_LOGW(TAG, "[WARNING]  GT911 will use default I2C address (may be 0x14 or 0x5D)");
         return ESP_OK;
     }
     
@@ -277,8 +277,8 @@ esp_err_t bsp_touch_reset(void)
 esp_lcd_touch_handle_t bsp_touch_init(void)
 {
     ESP_LOGI(TAG, "Initializing GT911 touch controller");
-    ESP_LOGI(TAG, "⚠️  HARDWARE TEST MODE: RST=GPIO_NUM_NC, INT=GPIO_NUM_NC");
-    ESP_LOGI(TAG, "⚠️  Pin manipulation disabled for isolation testing");
+    ESP_LOGI(TAG, "[WARNING]  HARDWARE TEST MODE: RST=GPIO_NUM_NC, INT=GPIO_NUM_NC");
+    ESP_LOGI(TAG, "[WARNING]  Pin manipulation disabled for isolation testing");
 
     if (g_i2c_bus_handle == NULL) {
         ESP_LOGE(TAG, "I2C bus not initialized! Call bsp_i2c_init() first");

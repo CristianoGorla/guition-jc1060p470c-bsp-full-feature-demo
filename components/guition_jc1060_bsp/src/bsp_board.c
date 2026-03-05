@@ -120,7 +120,7 @@ static esp_err_t bsp_phase_a_power_manager(void)
     gpio_set_level(CONFIG_BSP_PIN_SD_POWER_EN, 1);
     vTaskDelay(pdMS_TO_TICKS(SD_POWER_DELAY_MS));
     
-    ESP_LOGI(TAG, "[PHASE A] ✓ POWER_READY");
+    ESP_LOGI(TAG, "[PHASE A] [OK] POWER_READY");
     return ESP_OK;
 }
 
@@ -150,7 +150,7 @@ static esp_err_t bsp_i2c_bus_init(void)
     ESP_LOGI(TAG, "[I2C] Verbose logging enabled");
 #endif
     
-    ESP_LOGI(TAG, "[I2C] ✓ Ready");
+    ESP_LOGI(TAG, "[I2C] [OK] Ready");
     
     /* Test peripherals after I2C init (if enabled) */
 #ifdef CONFIG_DEBUG_I2C_TEST_PERIPHERALS
@@ -181,7 +181,7 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
 #ifdef CONFIG_BSP_ENABLE_DISPLAY
     g_display_handle = bsp_display_init();
     if (!g_display_handle) return ESP_FAIL;
-    ESP_LOGI(TAG, "[PHASE D] ✓ Display HW");
+    ESP_LOGI(TAG, "[PHASE D] [OK] Display HW");
 #endif
 
     /* NOW initialize I2C after display is stable */
@@ -190,21 +190,21 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
 #ifdef CONFIG_BSP_ENABLE_TOUCH
     g_touch_handle = bsp_touch_init();
     if (!g_touch_handle) return ESP_FAIL;
-    ESP_LOGI(TAG, "[PHASE D] ✓ Touch HW");
+    ESP_LOGI(TAG, "[PHASE D] [OK] Touch HW");
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_AUDIO
     bsp_audio_config_t audio_cfg = BSP_AUDIO_DEFAULT_CONFIG();
     ESP_ERROR_CHECK(bsp_audio_init(&audio_cfg));
-    ESP_LOGI(TAG, "[PHASE D] ✓ Audio");
+    ESP_LOGI(TAG, "[PHASE D] [OK] Audio");
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_RTC
     ESP_ERROR_CHECK(bsp_rtc_init());
-    ESP_LOGI(TAG, "[PHASE D] ✓ RTC");
+    ESP_LOGI(TAG, "[PHASE D] [OK] RTC");
 #endif
 
-    ESP_LOGI(TAG, "[PHASE D] ✓ Complete");
+    ESP_LOGI(TAG, "[PHASE D] [OK] Complete");
     return ESP_OK;
 }
 
@@ -219,7 +219,7 @@ esp_err_t bsp_board_init(void)
     ESP_ERROR_CHECK(bsp_phase_d_peripheral_drivers());
     
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ✓ BSP Ready (Hardware only)");
+    ESP_LOGI(TAG, "  [OK] BSP Ready (Hardware only)");
     ESP_LOGI(TAG, "  App must init LVGL separately");
     ESP_LOGI(TAG, "========================================");
     
