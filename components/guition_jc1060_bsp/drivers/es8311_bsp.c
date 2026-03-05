@@ -1,13 +1,19 @@
 #include "es8311_bsp.h"
 #include "esp_log.h"
 #include "esp_check.h"
+#include "bsp_log_panel.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "BSP_ES8311";
+static const char *TAG = BSP_LOG_TAG;
+
+#define LOG_UNIT "AUDIO"
+#define LOGI(fmt, ...) BSP_LOGI_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGW(fmt, ...) BSP_LOGW_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGE(fmt, ...) BSP_LOGE_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
 
 /* Hardware Pin Configuration */
 #define ES8311_I2C_ADDRESS     0x18
@@ -41,7 +47,7 @@ static esp_err_t ns4150_init(void)
     /* Start with PA disabled */
     gpio_set_level(NS4150_PA_CTRL_GPIO, 0);
     
-    ESP_LOGI(TAG, "NS4150 amplifier control initialized (GPIO %d)", NS4150_PA_CTRL_GPIO);
+    LOGI( "NS4150 amplifier control initialized (GPIO %d)", NS4150_PA_CTRL_GPIO);
     return ESP_OK;
 }
 
@@ -83,7 +89,7 @@ static esp_err_t i2s_init(uint32_t sample_rate, uint8_t bits_per_sample)
     ESP_RETURN_ON_ERROR(i2s_channel_enable(g_i2s_tx_handle), TAG,
                         "Failed to enable I2S channel");
 
-    ESP_LOGI(TAG, "I2S initialized (%lu Hz, %d-bit, MCLK=%d, BCLK=%d, WS=%d, DOUT=%d)",
+    LOGI( "I2S initialized (%lu Hz, %d-bit, MCLK=%d, BCLK=%d, WS=%d, DOUT=%d)",
              sample_rate, bits_per_sample, I2S_MCLK_GPIO, I2S_BCLK_GPIO, I2S_WS_GPIO, I2S_DOUT_GPIO);
     return ESP_OK;
 }
@@ -97,7 +103,7 @@ static esp_err_t i2s_init(uint32_t sample_rate, uint8_t bits_per_sample)
 static esp_err_t es8311_codec_init(void)
 {
     if (g_i2c_bus_handle == NULL) {
-        ESP_LOGE(TAG, "I2C bus not initialized! Call bsp_i2c_init() first");
+        LOGE( "I2C bus not initialized! Call bsp_i2c_init() first");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -115,13 +121,13 @@ static esp_err_t es8311_codec_init(void)
     /* TODO: Add ES8311 register initialization sequence here */
     /* For now, assume codec is in a workable default state */
     
-    ESP_LOGI(TAG, "ES8311 codec initialized (I2C address 0x%02X)", ES8311_I2C_ADDRESS);
+    LOGI( "ES8311 codec initialized (I2C address 0x%02X)", ES8311_I2C_ADDRESS);
     return ESP_OK;
 }
 
 esp_err_t bsp_audio_init(const bsp_audio_config_t *config)
 {
-    ESP_LOGI(TAG, "Initializing ES8311 + NS4150 audio system");
+    LOGI( "Initializing ES8311 + NS4150 audio system");
 
     /* Use default config if none provided */
     bsp_audio_config_t default_cfg = BSP_AUDIO_DEFAULT_CONFIG();
@@ -144,7 +150,7 @@ esp_err_t bsp_audio_init(const bsp_audio_config_t *config)
         ESP_RETURN_ON_ERROR(bsp_audio_set_pa_enable(true), TAG, "Failed to enable PA");
     }
 
-    ESP_LOGI(TAG, "Audio system initialized (%lu Hz, %d-bit, PA %s)",
+    LOGI( "Audio system initialized (%lu Hz, %d-bit, PA %s)",
              config->sample_rate, config->bits_per_sample, config->enable_pa ? "enabled" : "disabled");
     return ESP_OK;
 }
@@ -152,7 +158,7 @@ esp_err_t bsp_audio_init(const bsp_audio_config_t *config)
 esp_err_t bsp_audio_set_pa_enable(bool enable)
 {
     gpio_set_level(NS4150_PA_CTRL_GPIO, enable ? 1 : 0);
-    ESP_LOGI(TAG, "NS4150 power amplifier %s", enable ? "enabled" : "disabled");
+    LOGI( "NS4150 power amplifier %s", enable ? "enabled" : "disabled");
     return ESP_OK;
 }
 
@@ -163,7 +169,7 @@ esp_err_t bsp_audio_set_volume(uint8_t volume)
     }
     
     /* TODO: Implement ES8311 volume control via I2C registers */
-    ESP_LOGW(TAG, "Volume control not yet implemented (requested: %d%%)", volume);
+    LOGW( "Volume control not yet implemented (requested: %d%%)", volume);
     
     return ESP_OK;
 }

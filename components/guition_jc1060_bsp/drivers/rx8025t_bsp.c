@@ -1,10 +1,15 @@
 #include "rx8025t_bsp.h"
 #include "esp_log.h"
 #include "esp_check.h"
+#include "bsp_log_panel.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 
-static const char *TAG = "BSP_RX8025T";
+static const char *TAG = BSP_LOG_TAG;
+
+#define LOG_UNIT "RTC"
+#define LOGI(fmt, ...) BSP_LOGI_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGE(fmt, ...) BSP_LOGE_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
 
 /* Hardware Configuration */
 #define RX8025T_I2C_ADDRESS    0x32
@@ -44,10 +49,10 @@ static inline uint8_t bcd2dec(uint8_t bcd)
 
 esp_err_t bsp_rtc_init(void)
 {
-    ESP_LOGI(TAG, "Initializing RX8025T RTC");
+    LOGI( "Initializing RX8025T RTC");
 
     if (g_i2c_bus_handle == NULL) {
-        ESP_LOGE(TAG, "I2C bus not initialized! Call bsp_i2c_init() first");
+        LOGE( "I2C bus not initialized! Call bsp_i2c_init() first");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -76,7 +81,7 @@ esp_err_t bsp_rtc_init(void)
     ESP_RETURN_ON_ERROR(i2c_master_transmit(g_rtc_dev_handle, ctrl_data, sizeof(ctrl_data), 1000), TAG,
                         "Failed to configure RTC control register");
 
-    ESP_LOGI(TAG, "RX8025T initialized (address 0x%02X, INT on GPIO %d)", 
+    LOGI( "RX8025T initialized (address 0x%02X, INT on GPIO %d)", 
              RX8025T_I2C_ADDRESS, RX8025T_INT_GPIO);
     return ESP_OK;
 }
@@ -84,7 +89,7 @@ esp_err_t bsp_rtc_init(void)
 esp_err_t bsp_rtc_set_time(const bsp_rtc_time_t *time)
 {
     if (g_rtc_dev_handle == NULL) {
-        ESP_LOGE(TAG, "RTC not initialized");
+        LOGE( "RTC not initialized");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -103,7 +108,7 @@ esp_err_t bsp_rtc_set_time(const bsp_rtc_time_t *time)
     ESP_RETURN_ON_ERROR(i2c_master_transmit(g_rtc_dev_handle, data, sizeof(data), 1000), TAG,
                         "Failed to write RTC time");
 
-    ESP_LOGI(TAG, "RTC time set: 20%02d-%02d-%02d %02d:%02d:%02d",
+    LOGI( "RTC time set: 20%02d-%02d-%02d %02d:%02d:%02d",
              time->year, time->month, time->day, time->hour, time->minute, time->second);
     return ESP_OK;
 }
@@ -111,7 +116,7 @@ esp_err_t bsp_rtc_set_time(const bsp_rtc_time_t *time)
 esp_err_t bsp_rtc_get_time(bsp_rtc_time_t *time)
 {
     if (g_rtc_dev_handle == NULL) {
-        ESP_LOGE(TAG, "RTC not initialized");
+        LOGE( "RTC not initialized");
         return ESP_ERR_INVALID_STATE;
     }
 

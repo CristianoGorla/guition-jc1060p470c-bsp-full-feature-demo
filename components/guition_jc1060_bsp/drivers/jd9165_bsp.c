@@ -1,6 +1,7 @@
 #include "jd9165_bsp.h"
 #include "esp_log.h"
 #include "esp_check.h"
+#include "bsp_log_panel.h"
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
@@ -11,7 +12,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "BSP_JD9165";
+static const char *TAG = BSP_LOG_TAG;
+
+#define LOG_UNIT "JD9165"
+#define LOGI(fmt, ...) BSP_LOGI_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
 
 /* Hardware Pin Configuration */
 #define LCD_BACKLIGHT_GPIO     GPIO_NUM_23
@@ -86,6 +90,7 @@ static const jd9165_lcd_init_cmd_t lcd_init_cmds[] = {
 };
 
 static ledc_channel_t g_bl_channel = LCD_LEDC_CHANNEL;
+static esp_lcd_panel_io_handle_t g_dsi_io_handle = NULL;  // ✓ Store for LVGL
 
 static esp_err_t backlight_init(void)
 {
@@ -109,7 +114,7 @@ static esp_err_t backlight_init(void)
     ESP_RETURN_ON_ERROR(ledc_timer_config(&bl_timer), TAG, "Failed to config backlight timer");
     ESP_RETURN_ON_ERROR(ledc_channel_config(&bl_channel), TAG, "Failed to config backlight channel");
     
-    ESP_LOGI(TAG, "Backlight PWM initialized (GPIO %d, 20kHz)", LCD_BACKLIGHT_GPIO);
+    LOGI( "Backlight PWM initialized (GPIO %d, 20kHz)", LCD_BACKLIGHT_GPIO);
     return ESP_OK;
 }
 
@@ -122,19 +127,18 @@ static esp_err_t dsi_phy_power_on(void)
     };
     ESP_RETURN_ON_ERROR(esp_ldo_acquire_channel(&ldo_cfg, &phy_pwr_chan), TAG, 
                         "Failed to acquire LDO channel for DSI PHY");
-    ESP_LOGI(TAG, "MIPI DSI PHY powered on (LDO3 @ 2.5V)");
+    LOGI( "MIPI DSI PHY powered on (LDO3 @ 2.5V)");
     return ESP_OK;
 }
 
 esp_lcd_panel_handle_t bsp_display_init(void)
 {
-    ESP_LOGI(TAG, "Initializing JD9165 display (1024x600, 2-lane DSI)");
+    LOGI( "Initializing JD9165 display (1024x600, 2-lane DSI)");
 
     ESP_ERROR_CHECK(backlight_init());
     ESP_ERROR_CHECK(dsi_phy_power_on());
 
     esp_lcd_dsi_bus_handle_t mipi_dsi_bus = NULL;
-    esp_lcd_panel_io_handle_t io = NULL;
     esp_lcd_panel_handle_t disp_panel = NULL;
 
     /* Configure 2-lane MIPI DSI bus @ 750 Mbps (51.2MHz pixel clock equivalent) */
@@ -152,7 +156,7 @@ esp_lcd_panel_handle_t bsp_display_init(void)
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_dbi(mipi_dsi_bus, &dbi_config, &io));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_dbi(mipi_dsi_bus, &dbi_config, &g_dsi_io_handle));  // ✓ Store handle
 
     /* Configure DPI interface for pixel data */
     esp_lcd_dpi_panel_config_t dpi_config = {
@@ -160,7 +164,7 @@ esp_lcd_panel_handle_t bsp_display_init(void)
         .dpi_clock_freq_mhz = LCD_PIXEL_CLOCK_MHZ,
         .virtual_channel = 0,
         .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
-        .num_fbs = 1,
+        .num_fbs = 2,  /* FIX: Dual framebuffer required for avoid_tearing=true */
         .video_timing = {
             .h_size = LCD_H_RES,
             .v_size = LCD_V_RES,
@@ -193,15 +197,20 @@ esp_lcd_panel_handle_t bsp_display_init(void)
         .vendor_config = &vendor_config,
     };
     
-    ESP_ERROR_CHECK(esp_lcd_new_panel_jd9165(io, &lcd_dev_config, &disp_panel));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_jd9165(g_dsi_io_handle, &lcd_dev_config, &disp_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(disp_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(disp_panel));
 
     /* Set backlight to 100% brightness */
     bsp_display_set_brightness(100);
 
-    ESP_LOGI(TAG, "Display initialized successfully");
+    LOGI( "Display initialized successfully (dual FB mode)");
     return disp_panel;
+}
+
+esp_lcd_panel_io_handle_t bsp_jd9165_get_io(void)
+{
+    return g_dsi_io_handle;
 }
 
 esp_err_t bsp_display_set_brightness(uint8_t brightness_percent)

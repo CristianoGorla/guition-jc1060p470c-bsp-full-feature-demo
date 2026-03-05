@@ -52,13 +52,13 @@ static esp_err_t test_dns_resolution(const char *hostname)
     int64_t elapsed_ms = (esp_timer_get_time() - start) / 1000;
     
     if (err != 0 || res == NULL) {
-        ESP_LOGE(TAG, "[DNS] ✗ Resolution failed: error %d (took %lld ms)", 
+        ESP_LOGE(TAG, "[DNS] [FAIL] Resolution failed: error %d (took %lld ms)", 
                  err, elapsed_ms);
         return ESP_FAIL;
     }
     
     struct in_addr *addr = &((struct sockaddr_in *)res->ai_addr)->sin_addr;
-    ESP_LOGI(TAG, "[DNS] ✓ Resolved to %s (took %lld ms)", 
+    ESP_LOGI(TAG, "[DNS] [OK] Resolved to %s (took %lld ms)", 
              inet_ntoa(*addr), elapsed_ms);
     
     freeaddrinfo(res);
@@ -119,7 +119,7 @@ static esp_err_t test_ping(const char *target_name, const char *target_ip)
     
     ip_addr_t target_addr;
     if (!ipaddr_aton(target_ip, &target_addr)) {
-        ESP_LOGE(TAG, "[PING] ✗ Invalid IP address: %s", target_ip);
+        ESP_LOGE(TAG, "[PING] [FAIL] Invalid IP address: %s", target_ip);
         return ESP_FAIL;
     }
     
@@ -139,13 +139,13 @@ static esp_err_t test_ping(const char *target_name, const char *target_ip)
     esp_ping_handle_t ping;
     esp_err_t ret = esp_ping_new_session(&ping_config, &cbs, &ping);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "[PING] ✗ Failed to create ping session: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "[PING] [FAIL] Failed to create ping session: %s", esp_err_to_name(ret));
         return ret;
     }
     
     ret = esp_ping_start(ping);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "[PING] ✗ Failed to start ping: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "[PING] [FAIL] Failed to start ping: %s", esp_err_to_name(ret));
         esp_ping_delete_session(ping);
         return ret;
     }
@@ -189,7 +189,7 @@ static void time_sync_notification_cb(struct timeval *tv)
 #ifdef CONFIG_APP_NTP_DEBUG_ENABLE
     ntp_callback_invoked = true;  // Set flag
     int64_t elapsed_ms = (esp_timer_get_time() - test_start_time_us) / 1000;
-    ESP_LOGI(TAG, "✓ NTP callback invoked! Time synchronized (T+%.1fs)", elapsed_ms / 1000.0);
+    ESP_LOGI(TAG, "[OK] NTP callback invoked! Time synchronized (T+%.1fs)", elapsed_ms / 1000.0);
 #else
     ESP_LOGI(TAG, "NTP time synchronized!");
 #endif
@@ -210,9 +210,9 @@ esp_err_t rtc_reset_to_default(void)
     
     esp_err_t ret = bsp_rtc_set_time(&default_time);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "✓ RTC reset to: 2000-01-01 00:00:00");
+        ESP_LOGI(TAG, "[OK] RTC reset to: 2000-01-01 00:00:00");
     } else {
-        ESP_LOGE(TAG, "✗ RTC reset failed");
+        ESP_LOGE(TAG, "[FAIL] RTC reset failed");
     }
     
     return ret;
@@ -355,7 +355,7 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         sntp_sync_status_t final_status = esp_sntp_get_sync_status();
         ESP_LOGI(TAG, "");
         ESP_LOGI(TAG, "========================================");
-        ESP_LOGI(TAG, "   ✓✓✓ NTP SYNC SUCCESSFUL ✓✓✓");
+        ESP_LOGI(TAG, "   [OK] NTP SYNC SUCCESSFUL [OK]");
         ESP_LOGI(TAG, "========================================");
         ESP_LOGI(TAG, "Current time: %s CET", strftime_buf);
         ESP_LOGI(TAG, "Sync completed after %.1f seconds", total_ms / 1000.0);
@@ -364,7 +364,7 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
                  ntp_callback_invoked ? "YES" : "NO");
         ESP_LOGI(TAG, "========================================\n");
 #else
-        ESP_LOGI(TAG, "✓ NTP sync successful!");
+        ESP_LOGI(TAG, "[OK] NTP sync successful!");
         ESP_LOGI(TAG, "Current time: %s CET", strftime_buf);
 #endif
         
@@ -374,7 +374,7 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
         sntp_sync_status_t final_status = esp_sntp_get_sync_status();
         ESP_LOGE(TAG, "");
         ESP_LOGE(TAG, "========================================");
-        ESP_LOGE(TAG, "   ✗✗✗ NTP SYNC FAILED ✗✗✗");
+        ESP_LOGE(TAG, "   [FAIL] NTP SYNC FAILED [FAIL]");
         ESP_LOGE(TAG, "========================================");
         ESP_LOGE(TAG, "Final status: %s (%d)", sntp_status_to_str(final_status), final_status);
         ESP_LOGE(TAG, "Callback invoked: %s", ntp_callback_invoked ? "YES" : "NO");
@@ -389,7 +389,7 @@ esp_err_t sync_time_from_ntp(int timeout_sec)
                  sntp_status_to_str(final_status));
         ESP_LOGE(TAG, "========================================\n");
 #else
-        ESP_LOGE(TAG, "✗ NTP sync failed after %d seconds", timeout_sec);
+        ESP_LOGE(TAG, "[FAIL] NTP sync failed after %d seconds", timeout_sec);
 #endif
         return ESP_ERR_TIMEOUT;
     }
@@ -421,7 +421,7 @@ esp_err_t update_rtc_from_system_time(void)
     
     esp_err_t ret = bsp_rtc_set_time(&rtc_time);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "✓ RTC updated successfully");
+        ESP_LOGI(TAG, "[OK] RTC updated successfully");
         
         // Verify by reading back
         bsp_rtc_time_t verify_time;
@@ -431,7 +431,7 @@ esp_err_t update_rtc_from_system_time(void)
                      verify_time.hour, verify_time.minute, verify_time.second);
         }
     } else {
-        ESP_LOGE(TAG, "✗ RTC update failed");
+        ESP_LOGE(TAG, "[FAIL] RTC update failed");
     }
     
     return ret;

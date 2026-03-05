@@ -31,14 +31,13 @@ Implement GPIO6 handshake in `main/bootstrap_manager.c`, function `bootstrap_wif
 After calling `init_wifi()`, poll GPIO6 to wait for C6 firmware ready signal before proceeding to Phase B (SD mount). This should fix the first-boot WiFi timeout.
 
 **Documentation:**
-- Complete project status: https://github.com/CristianoGorla/host_sdcard_with_hosted/blob/main/docs/PROJECT_STATUS.md
-- Bootstrap sequence: https://github.com/CristianoGorla/host_sdcard_with_hosted/blob/main/docs/BOOTSTRAP_SEQUENCE.md
-- First boot issue + action plan: https://github.com/CristianoGorla/host_sdcard_with_hosted/blob/main/docs/WIFI_FIRST_BOOT_ISSUE.md
+- Complete project status: https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/blob/main/docs/PROJECT_STATUS.md
+- Bootstrap sequence: https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/blob/main/docs/BOOTSTRAP_SEQUENCE.md
+- First boot issue + action plan: https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/blob/main/docs/WIFI_FIRST_BOOT_ISSUE.md
 
 **Repository:**
-https://github.com/CristianoGorla/host_sdcard_with_hosted
-Branch: main
-Latest commit: v1.0.0-beta-60-g274c71b
+https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo
+Branch: feature/lvgl-v9-integration
 
 **Request:**
 Help me implement the GPIO6 handshake logic in bootstrap_wifi_sequence(). The function should:
@@ -68,8 +67,8 @@ Cause: Missing C6 firmware ready handshake on GPIO6 (C6_IO2 data ready interrupt
 Task: Implement GPIO6 polling in bootstrap_wifi_sequence() after init_wifi() call.
 
 Docs:
-- https://github.com/CristianoGorla/host_sdcard_with_hosted/blob/main/docs/WIFI_FIRST_BOOT_ISSUE.md
-- https://github.com/CristianoGorla/host_sdcard_with_hosted/blob/main/docs/PROJECT_STATUS.md
+- https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/blob/main/docs/WIFI_FIRST_BOOT_ISSUE.md
+- https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/blob/main/docs/PROJECT_STATUS.md
 
 File: main/bootstrap_manager.c
 Function: bootstrap_wifi_sequence()
@@ -104,7 +103,7 @@ The AI will help you:
 
 ## 🔗 Quick Links
 
-- [Repository](https://github.com/CristianoGorla/host_sdcard_with_hosted)
-- [Action Plan](https://github.com/CristianoGorla/host_sdcard_with_hosted/blob/main/docs/WIFI_FIRST_BOOT_ISSUE.md)
-- [Bootstrap Docs](https://github.com/CristianoGorla/host_sdcard_with_hosted/blob/main/docs/BOOTSTRAP_SEQUENCE.md)
-- [Project Status](https://github.com/CristianoGorla/host_sdcard_with_hosted/blob/main/docs/PROJECT_STATUS.md)
+- [Repository](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo)
+- [Action Plan](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/blob/main/docs/WIFI_FIRST_BOOT_ISSUE.md)
+- [Bootstrap Docs](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/blob/main/docs/BOOTSTRAP_SEQUENCE.md)
+- [Project Status](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo/blob/main/docs/PROJECT_STATUS.md)

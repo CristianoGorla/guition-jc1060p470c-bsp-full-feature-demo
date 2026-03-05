@@ -1,5 +1,37 @@
 # Release Notes
 
+## v1.3.0-dev (2026-03-05)
+
+**Status:** Development Branch Update (`feature/lvgl-v9-integration`)  
+**Focus:** BSP architecture cleanup, logging normalization, boot banner improvements
+
+### ✨ Added
+
+- ✅ **BSP hardware test service** (`bsp_tests`)
+  - `main` now delegates optional hardware checks to BSP-managed test APIs
+  - Test toggles remain configurable via menuconfig
+- ✅ **Panel logging utility** (`bsp_log_panel.h`)
+  - Consistent log format: `BSP: | UNIT | message`
+  - Applied across core BSP, drivers, and bootstrap modules
+
+### 🔧 Changed
+
+- **`main` log tag normalized** from legacy naming to `MAIN`
+- **Boot banner redesigned** with framed output (`┌ ┐ └ ┘`, `│`) and centered ASCII art
+- **Boot banner metadata refined**:
+  - Repository URL shown in two centered lines
+  - Firmware title shown explicitly
+  - Version/build footer aligned in a single row
+- **External log noise filtering** moved under BSP ownership and made menuconfig-driven
+
+### ✅ Validation Summary
+
+- Project builds successfully on ESP-IDF v5.5.3
+- Runtime logs validated through serial monitor captures
+- Existing known Kconfig `choice symbol` warnings remain unchanged (pre-existing)
+
+---
+
 ## v1.0.0-beta (2026-03-01)
 
 **Status:** Beta Release - All Features Validated  

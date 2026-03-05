@@ -1,21 +1,36 @@
 /**
  * @file sd_card_manager.c
- * @brief SD Card manager implementation for bootstrap system
+ * @brief SD Card manager with Clean Switch Protocol integration
  * 
- * v1.0.0-beta pattern: WiFi initializes SDMMC controller first,
- * then SD mounts using dummy init functions.
+ * Implements safe SDMMC controller slot switching using CCCR handshake
+ * protocol to prevent race condition 0x108 during WiFi→SD arbitration.
+ * 
+ * PROTOCOL SEQUENCE:
+ * 1. esp_hosted_pause_transport() - Clean handshake with C6 slave
+ * 2. sdmmc_host_deinit() - Release Slot 1
+ * 3. 50ms settling delay - Allow bus capacitance to discharge
+ * 4. sdmmc_host_init() - Reinitialize for Slot 0
+ * 5. SD card mount
+ * 6. esp_hosted_resume_transport() - Restore WiFi on Slot 1
  * 
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
  */
 
 #include "sd_card_manager.h"
+#include "esp_hosted_wifi.h"  // For Clean Switch Protocol
 #include "esp_vfs_fat.h"
 #include "driver/sdmmc_host.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "bsp_log_panel.h"
 
-static const char *TAG = "SD_MANAGER";
+static const char *TAG = BSP_LOG_TAG;
+
+#define LOG_UNIT "SDCARD"
+#define LOGI(fmt, ...) BSP_LOGI_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGW(fmt, ...) BSP_LOGW_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
+#define LOGE(fmt, ...) BSP_LOGE_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
 
 // Global SD card handle
 static sdmmc_card_t *g_sd_card = NULL;
@@ -45,29 +60,6 @@ static bool g_is_mounted = false;
 #endif
 
 /**
- * @brief Dummy host init function (ESP-Hosted compatibility)
- * 
- * When WiFi init_wifi() is called first, it initializes the SDMMC controller.
- * This dummy function prevents re-initialization.
- */
-static esp_err_t sdmmc_host_init_dummy(void)
-{
-    ESP_LOGI(TAG, "Skipping sdmmc_host_init (controller already initialized by WiFi)");
-    return ESP_OK;
-}
-
-/**
- * @brief Dummy host deinit function (ESP-Hosted compatibility)
- * 
- * Keeps SDMMC controller active for ESP-Hosted operation.
- */
-static esp_err_t sdmmc_host_deinit_dummy(void)
-{
-    ESP_LOGI(TAG, "Skipping sdmmc_host_deinit (keep controller active for WiFi)");
-    return ESP_OK;
-}
-
-/**
  * @brief Enable pull-ups on SDMMC data lines
  * 
  * Internal pull-ups prevent floating signals that cause 0x107 errors.
@@ -83,7 +75,7 @@ static void sd_card_enable_pullups(void)
         CONFIG_BSP_PIN_CLK
     };
     
-    ESP_LOGI(TAG, "Enabling pull-ups on SDMMC pins (GPIO39-44)...");
+    LOGI( "Enabling pull-ups on SDMMC pins (GPIO39-44)...");
     
     for (int i = 0; i < sizeof(sdmmc_pins) / sizeof(sdmmc_pins[0]); i++) {
         gpio_pullup_en(sdmmc_pins[i]);
@@ -93,23 +85,59 @@ static void sd_card_enable_pullups(void)
 esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
 {
     if (g_is_mounted) {
-        ESP_LOGW(TAG, "SD card already mounted");
+        LOGW( "SD card already mounted");
         if (out_card) {
             *out_card = g_sd_card;
         }
         return ESP_OK;
     }
     
-    ESP_LOGI(TAG, "=== SD Card Mount (Phase B - after WiFi) ===");
+    LOGI( "=== SD Card Mount (Phase B - after WiFi) ===");
     
-    // Step 1: Enable SD card power (managed by BSP Phase A, already on)
-    // Note: BSP Phase A already powered up SD card via GPIO 36
-    ESP_LOGI(TAG, "SD Card power already enabled by BSP Phase A (GPIO%d)", CONFIG_BSP_PIN_SD_POWER_EN);
+    // Step 1: SD card power (managed by BSP Phase A, already on)
+    LOGI( "SD Card power already enabled by BSP Phase A (GPIO%d)", CONFIG_BSP_PIN_SD_POWER_EN);
     
     // Step 2: Enable pull-ups BEFORE mount
     sd_card_enable_pullups();
     
-    // Step 3: Configure Slot 0 pins
+    // Step 3: CLEAN SWITCH PROTOCOL - Pause WiFi transport with CCCR handshake
+    // This performs:
+    //   - WiFi stack stop
+    //   - CCCR handshake to silence C6 interrupts
+    //   - WiFi driver deinit (kills ESP-Hosted tasks)
+    //   - Bus idle verification (DAT0 polling)
+    LOGI( "[BUS ARBITRATION] Initiating Clean Switch Protocol...");
+    esp_hosted_pause_transport();
+    
+    // Step 4: Deinitialize SDMMC controller (release Slot 1)
+    // WiFi initialized SDMMC for Slot 1, we need to switch to Slot 0
+    LOGI( "Deinitializing SDMMC controller (release Slot 1)...");
+    esp_err_t ret = sdmmc_host_deinit();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        LOGE( "Host deinit failed: %s", esp_err_to_name(ret));
+        // CRITICAL: Resume transport even on failure
+        esp_hosted_resume_transport();
+        return ret;
+    }
+    
+    // Step 5: SETTLING DELAY - Allow bus capacitance to discharge
+    // Hardware requirement: GPIO states need time to stabilize after deinit
+    LOGI( "Bus settling delay (50ms)...");
+    vTaskDelay(pdMS_TO_TICKS(50));
+    
+    // Step 6: Reinitialize controller for Slot 0
+    LOGI( "Reinitializing SDMMC controller for Slot 0...");
+    ret = sdmmc_host_init();
+    if (ret != ESP_OK) {
+        LOGE( "Host init failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        // CRITICAL: Resume transport even on failure
+        esp_hosted_resume_transport();
+        return ret;
+    }
+    
+    vTaskDelay(pdMS_TO_TICKS(100));  // Controller stabilization
+    
+    // Step 7: Configure Slot 0 pins
     sdmmc_slot_config_t slot_config = {
         .clk = CONFIG_BSP_PIN_CLK,
         .cmd = CONFIG_BSP_PIN_CMD,
@@ -123,29 +151,29 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         .flags = 0,
     };
     
-    // Step 4: Init slot only (host already initialized by WiFi)
-    ESP_LOGI(TAG, "Initializing SDMMC Slot 0 (host already active)...");
-    esp_err_t ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
+    // Step 8: Init Slot 0
+    LOGI( "Initializing SDMMC Slot 0...");
+    ret = sdmmc_host_init_slot(SDMMC_HOST_SLOT_0, &slot_config);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Slot init failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        LOGE( "Slot 0 init failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        // CRITICAL: Resume transport even on failure
+        esp_hosted_resume_transport();
         return ret;
     }
     
-    // Step 5: Configure mount options
+    // Step 9: Configure mount options
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = false,  // Don't auto-format
+        .format_if_mount_failed = false,
         .max_files = 5,
         .allocation_unit_size = 16 * 1024
     };
     
-    // Step 6: Create host config with dummy init/deinit
+    // Step 10: Mount filesystem
+    LOGI( "Mounting FAT filesystem on Slot 0...");
+    
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     host.slot = SDMMC_HOST_SLOT_0;
-    host.init = &sdmmc_host_init_dummy;    // Skip host init (WiFi already did it)
-    host.deinit = &sdmmc_host_deinit_dummy; // Skip host deinit (keep active)
     
-    // Step 7: Mount filesystem
-    ESP_LOGI(TAG, "Mounting FAT filesystem (using dummy host init)...");
     ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &g_sd_card);
     
     if (ret == ESP_OK) {
@@ -153,13 +181,25 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
         if (out_card) {
             *out_card = g_sd_card;
         }
-        ESP_LOGI(TAG, "✓ SD card mounted successfully");
-        ESP_LOGI(TAG, "   Card: %s", g_sd_card->cid.name);
-        ESP_LOGI(TAG, "   Capacity: %llu MB\n",
+        LOGI( "[OK] SD card mounted successfully");
+        LOGI( "   Card: %s", g_sd_card->cid.name);
+        LOGI( "   Capacity: %llu MB",
                 ((uint64_t)g_sd_card->csd.capacity) * g_sd_card->csd.sector_size / (1024 * 1024));
+        
+        // Step 11: Resume WiFi transport (Clean Switch Protocol reverse)
+        LOGI( "[BUS ARBITRATION] Resuming WiFi transport on Slot 1...");
+        esp_hosted_resume_transport();
+        
+        LOGI( "");  // Blank line for log readability
         return ESP_OK;
     } else {
-        ESP_LOGE(TAG, "Mount failed: %s (0x%x)\n", esp_err_to_name(ret), ret);
+        LOGE( "Mount failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        
+        // CRITICAL: Resume transport even on mount failure
+        LOGI( "[BUS ARBITRATION] Resuming WiFi transport (mount failed)...");
+        esp_hosted_resume_transport();
+        
+        LOGI( "");
         return ret;
     }
 }
@@ -167,19 +207,19 @@ esp_err_t sd_card_mount_safe(sdmmc_card_t **out_card)
 esp_err_t sd_card_unmount(void)
 {
     if (!g_is_mounted) {
-        ESP_LOGW(TAG, "SD card not mounted");
+        LOGW( "SD card not mounted");
         return ESP_OK;
     }
     
-    ESP_LOGI(TAG, "Unmounting SD card...");
+    LOGI( "Unmounting SD card...");
     esp_err_t ret = esp_vfs_fat_sdcard_unmount("/sdcard", g_sd_card);
     
     if (ret == ESP_OK) {
         g_is_mounted = false;
         g_sd_card = NULL;
-        ESP_LOGI(TAG, "✓ SD card unmounted");
+        LOGI( "[OK] SD card unmounted");
     } else {
-        ESP_LOGE(TAG, "Unmount failed: %s (0x%x)", esp_err_to_name(ret), ret);
+        LOGE( "Unmount failed: %s (0x%x)", esp_err_to_name(ret), ret);
     }
     
     return ret;
@@ -187,7 +227,6 @@ esp_err_t sd_card_unmount(void)
 
 esp_err_t sd_card_unmount_safe(void)
 {
-    // Wrapper for arbiter integration (same as sd_card_unmount)
     return sd_card_unmount();
 }
 

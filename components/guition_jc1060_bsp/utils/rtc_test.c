@@ -92,7 +92,7 @@ esp_err_t rtc_test_at_address(i2c_master_bus_handle_t bus_handle, uint8_t addr, 
     ret = i2c_master_receive(dev_handle, &dummy, 1, 1000);
     
     if (ret == ESP_OK || ret == ESP_ERR_TIMEOUT) {
-        ESP_LOGI(TAG, "  ✓ Device responds to receive (0x%x)", ret);
+        ESP_LOGI(TAG, "  [OK] Device responds to receive (0x%x)", ret);
         
         // Test 2: Try to read time registers
         uint8_t reg_addr = 0x00;  // Seconds register
@@ -100,7 +100,7 @@ esp_err_t rtc_test_at_address(i2c_master_bus_handle_t bus_handle, uint8_t addr, 
         ret = i2c_master_transmit_receive(dev_handle, &reg_addr, 1, time_data, 7, 1000);
         
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "  ✓✓ SUCCESS! Can read time registers!");
+            ESP_LOGI(TAG, "  [OK] SUCCESS! Can read time registers!");
             ESP_LOGI(TAG, "  Raw data: %02X %02X %02X %02X %02X %02X %02X",
                      time_data[0], time_data[1], time_data[2], time_data[3],
                      time_data[4], time_data[5], time_data[6]);
@@ -108,10 +108,10 @@ esp_err_t rtc_test_at_address(i2c_master_bus_handle_t bus_handle, uint8_t addr, 
             i2c_master_bus_rm_device(dev_handle);
             return ESP_OK;
         } else {
-            ESP_LOGW(TAG, "  ✗ Cannot read registers (0x%x)", ret);
+            ESP_LOGW(TAG, "  [FAIL] Cannot read registers (0x%x)", ret);
         }
     } else {
-        ESP_LOGW(TAG, "  ✗ No response (0x%x)", ret);
+        ESP_LOGW(TAG, "  [FAIL] No response (0x%x)", ret);
     }
 
     i2c_master_bus_rm_device(dev_handle);
@@ -145,12 +145,12 @@ esp_err_t rtc_test_read_only(i2c_master_bus_handle_t bus_handle)
     ret = i2c_master_receive(dev_handle, data, sizeof(data), 1000);
     
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "✓ SUCCESS! RTC responds to direct read!");
+        ESP_LOGI(TAG, "[OK] SUCCESS! RTC responds to direct read!");
         ESP_LOGI(TAG, "Data: %02X %02X %02X %02X %02X %02X %02X %02X",
                  data[0], data[1], data[2], data[3],
                  data[4], data[5], data[6], data[7]);
     } else {
-        ESP_LOGE(TAG, "✗ Failed (0x%x)", ret);
+        ESP_LOGE(TAG, "[FAIL] Failed (0x%x)", ret);
     }
 
     i2c_master_bus_rm_device(dev_handle);
@@ -175,14 +175,14 @@ void rtc_test_speeds(i2c_master_bus_handle_t bus_handle)
         esp_err_t ret = rtc_test_at_address(bus_handle, 0x32, speed);
         
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "\n✓✓✓ FOUND WORKING SPEED: %lu Hz ✓✓✓\n", speed);
+            ESP_LOGI(TAG, "\n[OK] FOUND WORKING SPEED: %lu Hz [OK]\n", speed);
             return;  // Stop at first working speed
         }
         
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     
-    ESP_LOGE(TAG, "\n✗✗✗ No working speed found ✗✗✗\n");
+    ESP_LOGE(TAG, "\n[FAIL] No working speed found [FAIL]\n");
 }
 
 void rtc_hardware_test(i2c_master_bus_handle_t bus_handle)
@@ -216,7 +216,7 @@ void rtc_hardware_test(i2c_master_bus_handle_t bus_handle)
     // Test 1: Read-only (gentlest approach)
     esp_err_t ret = rtc_test_read_only(bus_handle);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "\n✓✓✓ RTC FOUND with read-only test! ✓✓✓\n");
+        ESP_LOGI(TAG, "\n[OK] RTC FOUND with read-only test! [OK]\n");
         return;
     }
 
@@ -240,7 +240,7 @@ void rtc_hardware_test(i2c_master_bus_handle_t bus_handle)
         ret = rtc_test_at_address(bus_handle, addr, 100000);
         
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "\n✓✓✓ FOUND RTC at address 0x%02X! ✓✓✓\n", addr);
+            ESP_LOGI(TAG, "\n[OK] FOUND RTC at address 0x%02X! [OK]\n", addr);
             return;
         }
         
@@ -266,12 +266,12 @@ void rtc_hardware_test(i2c_master_bus_handle_t bus_handle)
         ret = i2c_master_transmit_receive(dev_handle, &reg_addr, 1, time_data, 7, 2000);
         
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "✓ Ultra-slow test succeeded!");
+            ESP_LOGI(TAG, "[OK] Ultra-slow test succeeded!");
             ESP_LOGI(TAG, "Data: %02X %02X %02X %02X %02X %02X %02X",
                      time_data[0], time_data[1], time_data[2], time_data[3],
                      time_data[4], time_data[5], time_data[6]);
         } else {
-            ESP_LOGE(TAG, "✗ Ultra-slow test failed (0x%x)", ret);
+            ESP_LOGE(TAG, "[FAIL] Ultra-slow test failed (0x%x)", ret);
         }
         
         i2c_master_bus_rm_device(dev_handle);
@@ -284,10 +284,10 @@ void rtc_hardware_test(i2c_master_bus_handle_t bus_handle)
     ESP_LOGI(TAG, "");
     
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "\n⚠️  CONCLUSION: I2C bus stuck or RTC not responding");
+        ESP_LOGE(TAG, "\n[WARNING]  CONCLUSION: I2C bus stuck or RTC not responding");
         ESP_LOGE(TAG, "The 'clear bus failed (0x103)' error indicates:");
-        ESP_LOGE(TAG, "  → I2C bus is STUCK (SDA or SCL held LOW)");
-        ESP_LOGE(TAG, "  → Likely caused by GT911 reset sequence");
+        ESP_LOGE(TAG, "  -> I2C bus is STUCK (SDA or SCL held LOW)");
+        ESP_LOGE(TAG, "  -> Likely caused by GT911 reset sequence");
         ESP_LOGE(TAG, "");
         ESP_LOGE(TAG, "Possible solutions:");
         ESP_LOGE(TAG, "  1. Initialize RTC BEFORE GT911 reset");
