@@ -135,7 +135,6 @@ static void touch_debug_task(void *arg)
     uint32_t touch_count = 0;
     uint32_t last_summary = 0;
     bool first_touch_logged = false;
-    bool config_read = false;
     
     ESP_LOGI(TAG, "✅ Touch monitor started (periodic summary every 5s)");
     
@@ -143,7 +142,6 @@ static void touch_debug_task(void *arg)
         /* Read status register */
         if (gt911_read_register(GT911_REG_STATUS, &status, 1) == ESP_OK) {
             uint8_t touch_points = status & 0x0F;
-            bool buffer_status = (status >> 7) & 0x01;
             
             if (touch_points > 0) {
                 /* Read touch point data */
@@ -162,7 +160,6 @@ static void touch_debug_task(void *arg)
                         
                         /* Read config on first touch */
                         read_gt911_config();
-                        config_read = true;
                     }
                     
                     touch_count++;
