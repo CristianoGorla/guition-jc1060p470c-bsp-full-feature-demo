@@ -26,6 +26,7 @@ static const char *TOUCH_TAG = "TOUCH_DEBUG";
 
 static uint32_t g_flush_count = 0;
 static lv_indev_read_cb_t original_touch_read_cb = NULL;  // Original callback from esp_lvgl_port
+static uint32_t wrapper_call_count = 0;  // Count wrapper invocations
 
 /**
  * @brief DSI color transfer done callback
@@ -46,24 +47,48 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel,
  */
 static void debug_touch_wrapper_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
-    // 1. Call the original esp_lvgl_port callback (does the real work: reads touch HW)
-    if (original_touch_read_cb) {
-        original_touch_read_cb(indev, data);
+    wrapper_call_count++;
+    
+    // Log every 100th call to verify wrapper is being called
+    if (wrapper_call_count % 100 == 0) {
+        ESP_LOGI(TOUCH_TAG, "[HEARTBEAT] Wrapper called %lu times", wrapper_call_count);
     }
     
-    // 2. Log what LVGL received after esp_lvgl_port processing
+    // Log state BEFORE calling original callback
+    ESP_LOGI(TOUCH_TAG, "[WRAPPER ENTRY] Call #%lu, state BEFORE original callback: %d",
+             wrapper_call_count, data->state);
+    
+    // 1. Call the original esp_lvgl_port callback (does the real work: reads touch HW)
+    if (original_touch_read_cb) {
+        ESP_LOGI(TOUCH_TAG, "[WRAPPER] Calling original callback at %p", original_touch_read_cb);
+        original_touch_read_cb(indev, data);
+        ESP_LOGI(TOUCH_TAG, "[WRAPPER] Original callback returned");
+    } else {
+        ESP_LOGE(TOUCH_TAG, "[WRAPPER ERROR] Original callback is NULL!");
+    }
+    
+    // Log state AFTER calling original callback
+    ESP_LOGI(TOUCH_TAG, "[WRAPPER EXIT] State AFTER original callback: %d (0=REL, 1=PR, 2=PR_REL)",
+             data->state);
+    ESP_LOGI(TOUCH_TAG, "[WRAPPER EXIT] Coordinates: X=%d Y=%d",
+             data->point.x, data->point.y);
+    
+    // 2. Log significant state changes
     static lv_indev_state_t last_state = LV_INDEV_STATE_RELEASED;
     
     if (data->state == LV_INDEV_STATE_PRESSED) {
-        // Only log on first press or coordinate changes
         if (last_state == LV_INDEV_STATE_RELEASED) {
+            ESP_LOGI(TOUCH_TAG, "========================================");
             ESP_LOGI(TOUCH_TAG, "[PRESSED] LVGL received: X=%d Y=%d (screen=%dx%d)",
                      data->point.x, data->point.y, BSP_LCD_H_RES, BSP_LCD_V_RES);
+            ESP_LOGI(TOUCH_TAG, "========================================");
         }
         last_state = LV_INDEV_STATE_PRESSED;
     } else if (data->state == LV_INDEV_STATE_RELEASED) {
         if (last_state == LV_INDEV_STATE_PRESSED) {
+            ESP_LOGI(TOUCH_TAG, "========================================");
             ESP_LOGI(TOUCH_TAG, "[RELEASED]");
+            ESP_LOGI(TOUCH_TAG, "========================================");
         }
         last_state = LV_INDEV_STATE_RELEASED;
     }
@@ -156,17 +181,30 @@ esp_err_t lvgl_port_init_custom(void)
         return ESP_FAIL;
     }
     
+    ESP_LOGI(TAG, "[DEBUG] Touch indev created at: %p", touch_indev);
+    
     /* Save original callback from esp_lvgl_port */
     original_touch_read_cb = lv_indev_get_read_cb(touch_indev);
     if (!original_touch_read_cb) {
-        ESP_LOGW(TAG, "[WARN] Could not get original touch callback");
+        ESP_LOGE(TAG, "[ERROR] Could not get original touch callback!");
+        return ESP_FAIL;
     } else {
         ESP_LOGI(TAG, "[OK] Original touch callback saved: %p", original_touch_read_cb);
     }
     
     /* Install wrapper callback that calls original + logs */
     lv_indev_set_read_cb(touch_indev, debug_touch_wrapper_cb);
-    ESP_LOGI(TAG, "[OK] Debug wrapper callback installed (preserves polling)");
+    
+    // Verify callback was set
+    lv_indev_read_cb_t verify_cb = lv_indev_get_read_cb(touch_indev);
+    if (verify_cb == debug_touch_wrapper_cb) {
+        ESP_LOGI(TAG, "[OK] Wrapper callback installed and verified: %p", debug_touch_wrapper_cb);
+    } else {
+        ESP_LOGE(TAG, "[ERROR] Wrapper callback verification failed! Got %p, expected %p",
+                 verify_cb, debug_touch_wrapper_cb);
+        return ESP_FAIL;
+    }
+    
     ESP_LOGI(TAG, "[OK] Touch registered via lvgl_port_add_touch (automatic polling)");
     
     ESP_LOGI(TAG, "========================================");
@@ -175,7 +213,7 @@ esp_err_t lvgl_port_init_custom(void)
              (BSP_LCD_DRAW_BUFF_SIZE * 2) / 1024.0f,
              BSP_LCD_DRAW_BUFF_DOUBLE ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: esp_lvgl_port (auto-rotation via sw_rotate)");
-    ESP_LOGI(TAG, "  Touch debug: WRAPPER mode (logs LVGL input)");
+    ESP_LOGI(TAG, "  Touch debug: AGGRESSIVE mode (logs every call)");
     ESP_LOGI(TAG, "  Config: buff_dma=false, buff_spiram=true");
     ESP_LOGI(TAG, "  DSI: avoid_tearing=false (vendor config)");
     ESP_LOGI(TAG, "  Rotation: swap_xy=true (landscape mode)");
