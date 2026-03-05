@@ -37,6 +37,30 @@
 
 ## 🔧 Recent Fixes
 
+### Fix #4: BSP Test Service + Unified Banner/Logging (2026-03-05)
+
+**Issue**: Runtime logs and startup output were inconsistent across modules, while hardware tests were still partially app-owned.
+
+**Solution Applied**:
+
+- Added BSP-owned hardware test service:
+   - `components/guition_jc1060_bsp/include/bsp_tests.h`
+   - `components/guition_jc1060_bsp/src/bsp_tests.c`
+- Added shared panel logging utility:
+   - `components/guition_jc1060_bsp/include/bsp_log_panel.h`
+- Refactored startup and log ownership:
+   - `main` keeps high-level app lifecycle logs (`MAIN`)
+   - BSP modules emit detailed component logs via panel format
+- Updated boot banner format to framed output with centered ASCII art and repository/version/build metadata.
+
+**Result**:
+
+- ✅ Clear ownership boundary (`MAIN` vs `BSP` internals)
+- ✅ Cleaner, more readable serial output
+- ✅ Hardware tests managed by BSP service and controlled via menuconfig
+
+---
+
 ### Fix #3: Touch Debug Wrapper Removal (2026-03-05)
 
 **Issue**: Console spam from aggressive touch debug logging

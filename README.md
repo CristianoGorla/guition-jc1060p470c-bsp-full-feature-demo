@@ -371,6 +371,146 @@ Navigate to: **Guition JC1060P470C Board Configuration → Hardware Peripherals*
 > [!WARNING]
 > Do NOT enable SD Card (`BSP_ENABLE_SDCARD`) unless you understand the slot arbitration issue and accept potential boot loops.
 
+### Complete Kconfig Menu Map (Current)
+
+The table above is a quick view. The full menu tree currently available in
+`components/guition_jc1060_bsp/Kconfig.projbuild` is listed below.
+
+> [!NOTE]
+> Defaults shown in Kconfig are symbol defaults. Effective values can differ in
+> your local `sdkconfig`.
+
+```text
+Guition JC1060P470C Board Configuration
+|- Hardware Peripherals
+|  |- BSP_ENABLE_DISPLAY
+|  |  |- Display Configuration
+|  |     |- BSP_DISPLAY_WIDTH
+|  |     |- BSP_DISPLAY_HEIGHT
+|  |     |- BSP_PIN_LCD_BL
+|  |     |- BSP_LCD_BL_DEFAULT_DUTY
+|  |
+|  |- BSP_ENABLE_I2C
+|  |  |- I2C Bus Configuration
+|  |  |  |- BSP_I2C_SDA_GPIO
+|  |  |  |- BSP_I2C_SCL_GPIO
+|  |  |  |- BSP_I2C_FREQ_HZ
+|  |  |  |- BSP_ENABLE_TOUCH
+|  |  |  |  |- Touch Controller Configuration
+|  |  |  |     |- BSP_TOUCH_I2C_ADDR
+|  |  |  |     |- BSP_PIN_TOUCH_RST
+|  |  |  |     |- BSP_PIN_TOUCH_INT
+|  |  |  |     |- BSP_TOUCH_MAX_POINTS
+|  |  |  |- BSP_ENABLE_AUDIO
+|  |  |  |  |- Audio Configuration
+|  |  |  |     |- BSP_AUDIO_CODEC_I2C_ADDR
+|  |  |  |     |- BSP_PIN_I2S_MCLK
+|  |  |  |     |- BSP_PIN_I2S_BCLK
+|  |  |  |     |- BSP_PIN_I2S_WS
+|  |  |  |     |- BSP_PIN_I2S_DOUT
+|  |  |  |     |- BSP_PIN_PA_ENABLE
+|  |  |  |     |- BSP_AUDIO_SAMPLE_RATE
+|  |  |  |- BSP_ENABLE_RTC
+|  |  |     |- RTC Configuration
+|  |  |        |- BSP_RTC_I2C_ADDR
+|  |  |        |- BSP_PIN_RTC_INT
+|  |
+|  |- BSP_ENABLE_SDCARD
+|  |  |- SD Card Configuration (Experimental)
+|  |     |- BSP_SDMMC_SLOT
+|  |     |- BSP_SDMMC_BUS_WIDTH (choice)
+|  |     |  |- BSP_SDMMC_BUS_WIDTH_4
+|  |     |  |- BSP_SDMMC_BUS_WIDTH_1
+|  |     |- BSP_PIN_CMD
+|  |     |- BSP_PIN_CLK
+|  |     |- BSP_PIN_D0
+|  |     |- BSP_PIN_D1
+|  |     |- BSP_PIN_D2
+|  |     |- BSP_PIN_D3
+|  |     |- BSP_PIN_SD_POWER_EN
+|  |
+|  |- BSP_ENABLE_WIFI
+|     |- WiFi ESP-Hosted Configuration
+|        |- BSP_WIFI_SDIO_SLOT
+|        |- ESP-Hosted GPIO Pins
+|        |  |- BSP_PIN_WIFI_RESET
+|        |  |- BSP_PIN_WIFI_DATA_READY
+|        |  |- BSP_PIN_WIFI_HANDSHAKE
+|        |  |- BSP_PIN_WIFI_SDIO_CLK
+|        |  |- BSP_PIN_WIFI_SDIO_CMD
+|        |  |- BSP_PIN_WIFI_SDIO_D0
+|        |  |- BSP_PIN_WIFI_SDIO_D1
+|        |  |- BSP_PIN_WIFI_SDIO_D2
+|        |  |- BSP_PIN_WIFI_SDIO_D3
+|        |- ESP-Hosted Timing
+|           |- BSP_WIFI_RESET_HOLD_MS
+|           |- BSP_WIFI_BOOT_DELAY_MS
+|           |- BSP_WIFI_SDIO_FREQ_KHZ
+|
+|- LVGL Graphics Library (v9.2.2)
+|  |- BSP_ENABLE_LVGL
+|  |- Display Buffer Configuration
+|  |  |- BSP_LVGL_BUFFER_LINES
+|  |  |- BSP_LVGL_DOUBLE_BUFFER
+|  |  |- BSP_LVGL_USE_DMA_BUFFER
+|  |  |- BSP_LVGL_USE_SPIRAM_BUFFER
+|  |- Display Rotation
+|  |  |- BSP_LVGL_ENABLE_SW_ROTATE
+|  |  |- BSP_LVGL_ROTATION (choice)
+|  |  |  |- BSP_LVGL_ROTATION_0
+|  |  |  |- BSP_LVGL_ROTATION_90
+|  |  |  |- BSP_LVGL_ROTATION_180
+|  |  |  |- BSP_LVGL_ROTATION_270
+|  |  |- BSP_LVGL_ROTATION_DEGREE
+|  |- Touch Input Integration
+|  |  |- BSP_LVGL_TOUCH_ENABLE
+|  |- Demo Applications
+|     |- BSP_LVGL_ENABLE_DEMO
+|     |- BSP_LVGL_DEMO_TYPE (choice)
+|        |- BSP_LVGL_DEMO_SIMPLE
+|        |- BSP_LVGL_DEMO_WIDGETS
+|        |- BSP_LVGL_DEMO_BENCHMARK
+|        |- BSP_LVGL_DEMO_STRESS
+|
+|- Power Management
+|  |- BSP_ENABLE_HARD_RESET
+|  |- BSP_HARD_RESET_DISCHARGE_MS
+|  |- BSP_POWER_STABILIZATION_MS
+|
+|- Application Features
+|  |- APP_ENABLE_NVS
+|  |- APP_ENABLE_WIFI_CONNECT
+|  |- APP_ENABLE_RTC_NTP_SYNC
+|  |- NTP Sync Configuration
+|  |  |- APP_NTP_SYNC_TIMEOUT_SEC
+|  |  |- APP_NTP_DEBUG_ENABLE
+|  |- Log Output Filtering
+|     |- APP_REDUCE_EXTERNAL_LOG_NOISE
+|     |- APP_EXTERNAL_LOG_FILTER_LEVEL (choice)
+|        |- APP_EXTERNAL_LOG_FILTER_WARN
+|        |- APP_EXTERNAL_LOG_FILTER_ERROR
+|        |- APP_EXTERNAL_LOG_FILTER_NONE
+|
+|- Debug Logging (Development)
+|  |- BSP_ENABLE_DEBUG_MODE
+|  |- Hardware Tests
+|  |  |- APP_ENABLE_RTC_TEST
+|  |  |- APP_ENABLE_SD_TEST
+|  |  |- APP_ENABLE_WIFI_SCAN_TEST
+|  |- BSP_ENABLE_HEARTBEAT
+|  |- BSP_HEARTBEAT_INTERVAL_MS
+|  |- BSP_HEARTBEAT_TASK_PRIORITY
+|  |- BSP_HEARTBEAT_TASK_STACK_SIZE
+|  |- DEBUG_DISPLAY_AGGRESSIVE
+|  |- DEBUG_LVGL_AGGRESSIVE
+|  |- I2C Debug & Testing
+|  |  |- DEBUG_I2C_GPIO_CHECK
+|  |  |- DEBUG_I2C_AUTO_RECOVERY
+|  |  |- DEBUG_I2C_TEST_PERIPHERALS
+|  |  |- DEBUG_I2C_VERBOSE
+|  |- DEBUG_LOG_LEVEL_VERBOSE
+```
+
 ---
 
 ## 📊 System Status Overview
@@ -427,6 +567,33 @@ Navigate to: **Guition JC1060P470C Board Configuration → Hardware Peripherals*
 - `0x14` - GT911 Touch Controller ✅
 - `0x18` - ES8311 Audio Codec ✅
 - `0x32` - RX8025T RTC ✅
+
+---
+
+## 🧾 Boot Banner (Current)
+
+The current firmware prints a framed startup banner at boot.
+
+```text
+I (924) MAIN: ┌==============================================================================┐
+I (925) MAIN: │                       ____    _            ___    ___                        │
+I (925) MAIN: │                      | __ )  (_)   ___    ( _ )  / _ \                       │
+I (925) MAIN: │                      |  _ \  | |  / _ \   / _ \ | | | |                      │
+I (925) MAIN: │                      | |_) | | | | |_| | | (_) || |_| |                      │
+I (926) MAIN: │                      |____/  |_|  \___/   \___/  \___/                       │
+I (926) MAIN: │                                                                              │
+I (926) MAIN: │                      https://github.com/CristianoGorla/                      │
+I (926) MAIN: │                  guition-jc1060p470c-bsp-full-feature-demo                   │
+I (927) MAIN: │                                                                              │
+I (927) MAIN: │                         Guition JC1060P470C Firmware                         │
+I (927) MAIN: │                                                                              │
+I (927) MAIN: │            Version: v1.3.0-dev             Build: <git_commit>               │
+I (927) MAIN: └==============================================================================┘
+```
+
+> [!NOTE]
+> Historical logs in this repository may still show `GUITION_MAIN`.
+> Current startup logs use `MAIN`, while peripheral/bootstrap logs are grouped under `BSP` panel-style messages.
 
 ---
 
