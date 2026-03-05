@@ -127,6 +127,10 @@ static void read_gt911_config(void)
 
 /**
  * @brief Minimal touch debug task - only periodic summary
+ * 
+ * NOTE: Currently DISABLED to prevent console spam.
+ *       LVGL handles touch polling automatically via esp_lcd_touch driver.
+ *       This task was for debugging only.
  */
 static void touch_debug_task(void *arg)
 {
@@ -318,9 +322,11 @@ esp_lcd_touch_handle_t bsp_touch_init(void)
     /* Store global handle for debug task */
     g_touch_handle = touch_handle;
 
-    /* Start minimal touch monitor task */
-    ESP_LOGI(TAG, "Starting touch monitor task...");
-    xTaskCreate(touch_debug_task, "touch_monitor", 4096, NULL, 5, &g_touch_debug_task);
+    /* DISABLED: Touch monitor task causes console spam */
+    /* LVGL already polls touch via esp_lcd_touch driver */
+    // ESP_LOGI(TAG, "Starting touch monitor task...");
+    // xTaskCreate(touch_debug_task, "touch_monitor", 4096, NULL, 5, &g_touch_debug_task);
+    ESP_LOGI(TAG, "Touch monitor task disabled (LVGL handles polling)");
 
     return touch_handle;
 }
