@@ -51,20 +51,24 @@ static void debug_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     uint8_t touch_cnt = 0;
     
     // Read raw coordinates from touch hardware
-    if (esp_lcd_touch_get_coordinates(g_touch_handle, x, y, strength, &touch_cnt, 1) == ESP_OK) {
+    esp_err_t ret = esp_lcd_touch_get_coordinates(g_touch_handle, x, y, strength, &touch_cnt, 1);
+    
+    if (ret == ESP_OK) {
         if (touch_cnt > 0) {
             data->point.x = x[0];
             data->point.y = y[0];
             data->state = LV_INDEV_STATE_PRESSED;
             
-            // Log every touch event with RAW and LVGL coordinates
-            ESP_LOGI(TOUCH_TAG, "RAW: X=%d Y=%d -> LVGL will receive: X=%d Y=%d (screen: %dx%d)",
+            // Log every touch event with RAW hardware coords and what LVGL receives
+            ESP_LOGI(TOUCH_TAG, "[PRESSED] RAW HW: X=%d Y=%d -> LVGL receives: X=%d Y=%d (screen=%dx%d)",
                      x[0], y[0], data->point.x, data->point.y, BSP_LCD_H_RES, BSP_LCD_V_RES);
         } else {
             data->state = LV_INDEV_STATE_RELEASED;
+            ESP_LOGI(TOUCH_TAG, "[RELEASED]");
         }
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
+        ESP_LOGW(TOUCH_TAG, "[ERROR] esp_lcd_touch_get_coordinates failed: %d", ret);
     }
 }
 
@@ -144,7 +148,7 @@ esp_err_t lvgl_port_init_custom(void)
     ESP_ERROR_CHECK(esp_lcd_dpi_panel_register_event_callbacks(display_handle, &cbs, disp));
     ESP_LOGI(TAG, "DSI flush callback registered (silent mode)");
     
-    /* Register touch input */
+    /* Register touch input - EXACT VENDOR APPROACH */
     ESP_LOGI(TAG, "Registering touch input via esp_lvgl_port helper...");
     
     const lvgl_port_touch_cfg_t touch_cfg = {
@@ -158,14 +162,9 @@ esp_err_t lvgl_port_init_custom(void)
         return ESP_FAIL;
     }
     
-    /* Apply 90° rotation to touch coordinates to match display rotation */
-    lv_indev_set_display_rotation(touch_indev, LV_DISPLAY_ROTATION_90);
-    ESP_LOGI(TAG, "[OK] Touch rotation applied: 90° (matching display landscape)");
-    
-    /* Override with debug callback to log coordinates */
+    /* Override with debug callback to log all touch events */
     lv_indev_set_read_cb(touch_indev, debug_touch_read_cb);
-    ESP_LOGI(TAG, "[OK] Debug touch callback installed (will log all touch events)");
-    
+    ESP_LOGI(TAG, "[OK] Debug touch callback installed - will log every touch event");
     ESP_LOGI(TAG, "[OK] Touch registered via lvgl_port_add_touch (automatic polling)");
     
     ESP_LOGI(TAG, "========================================");
@@ -174,8 +173,7 @@ esp_err_t lvgl_port_init_custom(void)
              (BSP_LCD_DRAW_BUFF_SIZE * 2) / 1024.0f,
              BSP_LCD_DRAW_BUFF_DOUBLE ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: esp_lvgl_port (auto-rotation via sw_rotate)");
-    ESP_LOGI(TAG, "  Touch rotation: 90° applied to input device");
-    ESP_LOGI(TAG, "  Touch debug: ENABLED (logs every touch)");
+    ESP_LOGI(TAG, "  Touch debug: ENABLED (logs PRESSED/RELEASED with coords)");
     ESP_LOGI(TAG, "  Config: buff_dma=false, buff_spiram=true");
     ESP_LOGI(TAG, "  DSI: avoid_tearing=false (vendor config)");
     ESP_LOGI(TAG, "  Rotation: swap_xy=true (landscape mode)");
