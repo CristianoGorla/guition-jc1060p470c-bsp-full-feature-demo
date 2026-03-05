@@ -97,8 +97,29 @@ menu "Guition JC1060P470C Board Configuration"
                     default 21
 
                 config BSP_PIN_TOUCH_INT
-                    int "Touch Interrupt GPIO"
+                    int "Touch Interrupt GPIO (NOT USED - reserved for future)"
                     default 22
+                    help
+                        Hardware INT pin connected to GPIO 22.
+                        
+                        ⚠️ NOTE: This pin is CONFIGURED but NOT USED in current implementation.
+                        
+                        CURRENT BEHAVIOR:
+                          • LVGL uses POLLING mode (reads I2C every ~5ms)
+                          • Touch data retrieved via periodic timer callback
+                          • Pin INT is electrically connected but software-ignored
+                        
+                        WHY POLLING INSTEAD OF INTERRUPTS:
+                          • I2C transactions require task context (cannot run in ISR)
+                          • LVGL timer already runs every 5ms (polling is "free")
+                          • 5ms latency is imperceptible for touch UI
+                          • Simpler code (no ISR→task signaling needed)
+                        
+                        FUTURE USE:
+                          • Low-power implementations (wake-on-touch)
+                          • Ultra-responsive touch (ISR triggers I2C read in task)
+                        
+                        MAPPING PRESERVED: Keep default 22 to maintain hardware compatibility.
 
                 config BSP_TOUCH_MAX_POINTS
                     int "Maximum touch points"
