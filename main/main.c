@@ -95,6 +95,19 @@ static void main_log_banner_row_lcr(const char *left, const char *center, const 
     ESP_LOGI(TAG, "│%s│", row);
 }
 
+static void main_log_centered_plain(const char *text)
+{
+    size_t len = strlen(text);
+    int left_pad = 0;
+
+    if (len > MAIN_BANNER_WIDTH) {
+        len = MAIN_BANNER_WIDTH;
+    }
+
+    left_pad = (int)((MAIN_BANNER_WIDTH - len) / 2);
+    ESP_LOGI(TAG, "%*s%.*s", left_pad, "", (int)len, text);
+}
+
 void app_main(void)
 {
     esp_err_t ret;
@@ -120,6 +133,10 @@ void app_main(void)
     main_log_banner_row("");
     main_log_banner_row_lcr(version_line, center_line, build_line);
     main_log_banner_border(0);
+
+    ESP_LOGI(TAG, "");
+    main_log_centered_plain(BUILD_TIMESTAMP);
+    ESP_LOGI(TAG, "");
 
     /* Step 1: BSP - Hardware Only (Display/Touch/Audio/RTC drivers) */
     ret = bsp_board_init();

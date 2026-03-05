@@ -14,12 +14,14 @@ This project provides a comprehensive demonstration of all hardware capabilities
 
 ## ⚠️ Important Notices
 
-### 🎨 LVGL v9 Integration Status (This Branch)
+### 🎨 LVGL v9 Integration Status (Current Development Branch)
 
 > [!NOTE]
-> **Branch**: `feature/lvgl-v9-integration`
+> **Branch**: `develop/v1.3.0`
 >
-> This branch features **LVGL v9.2.2 integration** with optimized memory configuration.
+> **LVGL feature branch freeze tag**: `freeze-lvgl-v9-integration-2026-03-06`
+>
+> Current development line includes **LVGL v9.2.2 integration** with optimized memory configuration.
 >
 > **Recent Fix (2026-03-04)**:
 > - ✅ LVGL DSI configuration optimized (`avoid_tearing = false`)
@@ -28,11 +30,11 @@ This project provides a comprehensive demonstration of all hardware capabilities
 > - ✅ Display 1024×600 MIPI DSI fully functional with touch input
 > - 📄 See [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md) for technical details
 
-**What works on this branch:**
+**What works on the current development branch:**
 - ✅ LVGL v9.2.2 fully integrated with display and touch
 - ✅ Optimized memory configuration (2.0 MB vs 2.8 MB)
 - ✅ All I2C peripherals (Touch GT911, Audio ES8311, RTC RX8025T)
-- ✅ WiFi (ESP-Hosted) fully functional on SDMMC Slot 1
+- ✅ WiFi (ESP-Hosted) available on SDMMC Slot 1 (disabled by default in `sdkconfig.defaults`)
 - ⚠️ SD Card support disabled by default (see below)
 
 **For LVGL-less configuration with SD Card working, use**:
@@ -43,7 +45,7 @@ This project provides a comprehensive demonstration of all hardware capabilities
 ### 💾 SD Card Support Status
 
 > [!WARNING]
-> **SD Card support is currently DISABLED by default** on this branch due to an unresolved SDMMC controller slot arbitration issue.
+> **SD Card support is currently DISABLED by default** on the current development branch due to an unresolved SDMMC controller slot arbitration issue.
 >
 > **Known Issue:**
 > - Error **0x108 (SDIO timeout)** occurs during WiFi→SD slot switch
@@ -74,7 +76,7 @@ This project provides a comprehensive demonstration of all hardware capabilities
 - ✅ WiFi connection and RTC NTP synchronization
 - ✅ Comprehensive documentation and troubleshooting guide
 - ⚠️ Beta status: Production testing ongoing
-- ❌ No LVGL integration (use `feature/lvgl-v9-integration` branch for LVGL)
+- ❌ No LVGL integration (use `develop/v1.3.0` for current LVGL development)
 
 **Installation:**
 ```bash
@@ -84,34 +86,17 @@ git checkout v1.0.0-beta
 idf.py build flash monitor
 ```
 
-### Development Version - LVGL Branch
+### Development Version - Current Line
 
-**feature/lvgl-v9-integration** (this branch)
+**v1.3.0-dev** (`develop/v1.3.0`, current branch)
 
 - ✅ LVGL v9.2.2 fully integrated
 - ✅ Optimized memory configuration (avoid_tearing=false)
 - ✅ Display 1024×600 with touch input
-- ✅ WiFi (ESP-Hosted) fully functional
+- ✅ WiFi (ESP-Hosted) supported
+- ⚠️ WiFi default in `sdkconfig.defaults`: `CONFIG_BSP_ENABLE_WIFI=n`
 - ⚠️ **SD Card disabled by default** (slot arbitration issue)
 - 📄 See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for latest updates
-
-**Installation:**
-```bash
-git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
-cd guition-jc1060p470c-bsp-full-feature-demo
-git checkout feature/lvgl-v9-integration
-idf.py build flash monitor
-```
-
-### Development Version - Main Line
-
-**v1.3.0-dev** (develop/v1.3.0 branch)
-
-- 🚧 Active development with latest features (no LVGL)
-- ✅ Fixed NTP sync with ESP-Hosted (callback-based detection)
-- ✅ Enhanced NTP diagnostic tools (DNS, ping, detailed logging)
-- ⚠️ **SD Card disabled by default** (slot arbitration issue)
-- 🚧 May contain experimental features
 
 **Installation:**
 ```bash
@@ -121,6 +106,23 @@ git checkout develop/v1.3.0
 idf.py build flash monitor
 ```
 
+### Frozen LVGL Feature Snapshot
+
+**feature/lvgl-v9-integration** (frozen)
+
+- 📌 Frozen as historical integration snapshot
+- 🏷️ Tag: `freeze-lvgl-v9-integration-2026-03-06`
+- ✅ Source branch merged into `develop/v1.3.0`
+- ✅ Useful for diffs/cherry-picks and historical comparison
+
+**Checkout (reference only):**
+```bash
+git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
+cd guition-jc1060p470c-bsp-full-feature-demo
+git checkout feature/lvgl-v9-integration
+git checkout freeze-lvgl-v9-integration-2026-03-06
+```
+
 **See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete version history.**
 
 ---
@@ -128,7 +130,7 @@ idf.py build flash monitor
 ## 📋 Table of Contents
 
 - [Important Notices](#️-important-notices)
-  - [LVGL v9 Integration Status](#-lvgl-v9-integration-status-this-branch)
+   - [LVGL v9 Integration Status](#-lvgl-v9-integration-status-current-development-branch)
   - [SD Card Support Status](#-sd-card-support-status)
 - [Versions](#-versions)
 - [Features](#-features)
@@ -152,7 +154,7 @@ idf.py build flash monitor
 ### Hardware Support
 
 - **🖥️ Display**: JD9165 4.7" 1024x600 MIPI DSI touchscreen with full graphics acceleration
-- **🎨 LVGL v9**: Integrated graphics library with optimized memory config (this branch) - ✅ **WORKING**
+- **🎨 LVGL v9**: Integrated graphics library with optimized memory config (current development branch) - ✅ **WORKING**
 - **👆 Touch Controller**: GT911 capacitive multi-touch (up to 5 points) with gesture support - ✅ **WORKING**
 - **🔊 Audio Codec**: ES8311 I2S audio codec with integrated speaker amplifier control
 - **⏰ Real-Time Clock**: RX8025T I2C RTC with battery backup and automatic NTP synchronization
@@ -163,7 +165,7 @@ idf.py build flash monitor
 
 ### Software Features
 
-- **🎨 LVGL v9.2.2 Integration** (this branch): Memory-optimized configuration with DSI display support
+- **🎨 LVGL v9.2.2 Integration** (develop/v1.3.0): Memory-optimized configuration with DSI display support
 - **⚡ Three-Phase Bootstrap Manager**: Deterministic initialization preventing SDMMC bus conflicts
 - **🔄 Automatic Power Sequencing**: Hardware reset cycle on warm boot for clean initialization
 - **🏛️ Feature Flags System**: Easy enable/disable of peripherals via Kconfig (menuconfig)
@@ -171,7 +173,7 @@ idf.py build flash monitor
 - **📊 System Monitoring**: Real-time boot timing analysis and hardware status tracking
 - **🛡️ Error Handling**: Robust error recovery for all peripherals with detailed logging
 
-### LVGL Configuration (This Branch)
+### LVGL Configuration (Current Development Branch)
 
 **Memory-Optimized Setup**:
 - Hardware frame buffer: `num_fbs = 1` (single buffer, 1.2 MB)
@@ -202,7 +204,7 @@ idf.py build flash monitor
 
 **Guition JC1060P470C_I_W_Y** - ESP32-P4 Development Board
 
-| Component | Specification | Status (This Branch) |
+| Component | Specification | Status (Current Development Branch) |
 |-----------|--------------|----------------------|
 | **Main Processor** | ESP32-P4 @ 360 MHz | ✅ Stable |
 | **WiFi Coprocessor** | ESP32-C6 | ✅ Stable (WiFi works) |
@@ -318,13 +320,13 @@ Phase B: SD Manager (Priority 22) - ⚠️ DISABLED BY DEFAULT
    # Expected: ESP-IDF v5.5.3 or later
    ```
 
-### Quick Start (This Branch - LVGL Enabled)
+### Quick Start (develop/v1.3.0 - LVGL Enabled)
 
 1. **Clone this repository**
    ```bash
    git clone https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo.git
    cd guition-jc1060p470c-bsp-full-feature-demo
-   git checkout feature/lvgl-v9-integration
+   git checkout develop/v1.3.0
    ```
 
 2. **Set ESP-IDF target**
@@ -365,7 +367,7 @@ Navigate to: **Guition JC1060P470C Board Configuration → Hardware Peripherals*
 | **Touch** | `BSP_ENABLE_TOUCH` | ✅ ON | GT911 capacitive + LVGL input |
 | **Audio** | `BSP_ENABLE_AUDIO` | ✅ ON | ES8311 codec |
 | **RTC** | `BSP_ENABLE_RTC` | ✅ ON | RX8025T battery-backed |
-| **WiFi** | `BSP_ENABLE_WIFI` | ✅ ON | ESP-Hosted SDIO |
+| **WiFi** | `BSP_ENABLE_WIFI` | ❌ **OFF** | Supported, disabled in `sdkconfig.defaults` |
 | **SD Card** | `BSP_ENABLE_SDCARD` | ❌ **OFF** | **Experimental** (see notice) |
 
 > [!WARNING]
@@ -589,6 +591,9 @@ I (927) MAIN: │                         Guition JC1060P470C Firmware          
 I (927) MAIN: │                                                                              │
 I (927) MAIN: │            Version: v1.3.0-dev             Build: <git_commit>               │
 I (927) MAIN: └==============================================================================┘
+I (928) MAIN:
+I (928) MAIN:                               2026-03-06 21:15:42
+I (928) MAIN:
 ```
 
 > [!NOTE]
@@ -599,9 +604,9 @@ I (927) MAIN: └===============================================================
 
 ## 🚀 Advanced Features
 
-### LVGL Demo Applications (This Branch)
+### LVGL Demo Applications (Current Development Branch)
 
-This branch includes LVGL v9 integration. You can test various LVGL demos:
+The current development branch includes LVGL v9 integration. You can test various LVGL demos:
 
 **Available demos:**
 - `lv_demo_widgets()` - UI component showcase
@@ -681,7 +686,7 @@ Synchronize RTC with Network Time Protocol (requires WiFi connection):
 | **Flash** | 16 MB @ 40MHz | SPI flash |
 | **SDMMC Slot 1** | 4-bit @ 40MHz | WiFi (STABLE) |
 | **SDMMC Slot 0** | Disabled | SD Card (EXPERIMENTAL) |
-| **LVGL** | v9.2.2 | Graphics library (this branch) |
+| **LVGL** | v9.2.2 | Graphics library (develop/v1.3.0) |
 
 ---
 
@@ -697,7 +702,7 @@ E (1464) lcd.dsi: esp_lcd_dpi_panel_get_frame_buffer(409): invalid frame buffer 
 E (1464) LVGL: lvgl_port_add_disp_priv(341): Get RGB buffers failed
 ```
 
-**Solution**: Already fixed in this branch! See [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md)
+**Solution**: Already fixed in current development branch. See [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md)
 
 The fix sets `avoid_tearing = false` to work with `num_fbs = 1`, saving 800 KB of memory.
 
@@ -797,7 +802,7 @@ E (6224) GT911: touch_gt911_read_cfg(410): GT911 read error!
 
 ## 📚 Documentation
 
-### Technical Documentation (This Branch)
+### Technical Documentation (Current Development Branch)
 
 - **[docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md)** - ✨ **NEW (2026-03-04)**
   - Complete LVGL DSI configuration guide
@@ -850,4 +855,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ---
 
-**Project Status**: ✅ LVGL v9 + WiFi Stable | **Last Updated**: 2026-03-04
+**Project Status**: ✅ LVGL v9 integrated on develop/v1.3.0 | **Last Updated**: 2026-03-06

@@ -2,7 +2,7 @@
 
 ## v1.3.0-dev (2026-03-05)
 
-**Status:** Development Branch Update (`feature/lvgl-v9-integration`)  
+**Status:** Development Branch Update (`develop/v1.3.0`, merged from `feature/lvgl-v9-integration`)  
 **Focus:** BSP architecture cleanup, logging normalization, boot banner improvements
 
 ### ✨ Added
