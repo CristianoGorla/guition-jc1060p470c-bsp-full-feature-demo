@@ -463,6 +463,49 @@ menu "Guition JC1060P470C Board Configuration"
 
     menu "Debug Logging (Development)"
 
+        config BSP_ENABLE_HEARTBEAT
+            bool "Enable system heartbeat monitoring"
+            default n
+            help
+                Enable background task that logs system uptime and memory stats.
+                Useful for debugging to verify ESP32-P4 is responsive and detect memory leaks.
+                Creates a low-priority FreeRTOS task that runs independently.
+
+                Disable in production to reduce log verbosity and save minimal resources.
+
+        config BSP_HEARTBEAT_INTERVAL_MS
+            int "Heartbeat log interval (milliseconds)"
+            depends on BSP_ENABLE_HEARTBEAT
+            default 5000
+            range 1000 60000
+            help
+                Time interval between heartbeat log messages.
+                Default: 5000ms (5 seconds)
+                Range: 1-60 seconds
+
+        config BSP_HEARTBEAT_TASK_PRIORITY
+            int "Heartbeat task priority"
+            depends on BSP_ENABLE_HEARTBEAT
+            default 1
+            range 0 10
+            help
+                FreeRTOS task priority for heartbeat monitoring.
+                Lower value = lower priority (less CPU time).
+                Default: 1 (very low priority, runs only when system is idle)
+
+        config BSP_HEARTBEAT_TASK_STACK_SIZE
+            int "Heartbeat task stack size (bytes)"
+            depends on BSP_ENABLE_HEARTBEAT
+            default 2048
+            range 1024 4096
+            help
+                Stack size allocated for heartbeat task.
+                Default: 2048 bytes (sufficient for logging only)
+
+        comment "--------------------------------------------------------------"
+        comment "Display & LVGL Debug"
+        comment "--------------------------------------------------------------"
+
         config DEBUG_DISPLAY_AGGRESSIVE
             bool "⚠️  Enable aggressive display driver logging"
             default n

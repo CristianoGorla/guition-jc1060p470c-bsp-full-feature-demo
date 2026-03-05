@@ -1,6 +1,7 @@
 # Build source list based on Kconfig
 set(COMPONENT_SRCS
     "src/bsp_board.c"
+    "src/bsp_heartbeat.c"
 )
 
 # Display driver (always needed if BSP enabled)

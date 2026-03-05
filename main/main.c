@@ -17,6 +17,9 @@
 #include "esp_lcd_touch.h"
 #include "build_info.h"
 #include "bsp_board.h"
+#ifdef CONFIG_BSP_ENABLE_HEARTBEAT
+#include "bsp_heartbeat.h"
+#endif
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "rtc_test.h"
@@ -24,7 +27,6 @@
 #include "esp_hosted_wifi.h"
 #include "bootstrap_manager.h"
 #include "backlight_test.h"
-#include "esp_heap_caps.h"
 
 #ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
 #include "wifi_config.h"
@@ -192,17 +194,19 @@ void app_main(void)
     ESP_LOGI(TAG, "   ALL HARDWARE TESTS COMPLETE");
     ESP_LOGI(TAG, "========================================\n");
     
-    ESP_LOGI(TAG, "=== System Ready ===");
-    ESP_LOGI(TAG, "Entering main loop...\n");
-    
-    uint32_t loop_count = 0;
+    ESP_LOGI(TAG, "=== System Ready ===\n");
+
+#ifdef CONFIG_BSP_ENABLE_HEARTBEAT
+    /* Start BSP heartbeat monitoring (if enabled in menuconfig) */
+    ret = bsp_heartbeat_start();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to start heartbeat: %s", esp_err_to_name(ret));
+    }
+#endif
+
+    /* Main loop now just sleeps - heartbeat runs in background task */
+    ESP_LOGI(TAG, "Entering idle loop...\n");
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(5000));
-        loop_count++;
-        size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-        ESP_LOGI(TAG, "[%lu] Uptime: %lu s | Free PSRAM: %zu KB", 
-                 loop_count,
-                 xTaskGetTickCount() * portTICK_PERIOD_MS / 1000,
-                 free_psram / 1024);
+        vTaskDelay(pdMS_TO_TICKS(60000));
     }
 }
