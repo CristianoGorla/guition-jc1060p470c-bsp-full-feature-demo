@@ -58,7 +58,7 @@ static void debug_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
             data->state = LV_INDEV_STATE_PRESSED;
             
             // Log every touch event with RAW and LVGL coordinates
-            ESP_LOGI(TOUCH_TAG, "RAW: X=%d Y=%d → LVGL will receive: X=%d Y=%d (screen: %dx%d)",
+            ESP_LOGI(TOUCH_TAG, "RAW: X=%d Y=%d -> LVGL will receive: X=%d Y=%d (screen: %dx%d)",
                      x[0], y[0], data->point.x, data->point.y, BSP_LCD_H_RES, BSP_LCD_V_RES);
         } else {
             data->state = LV_INDEV_STATE_RELEASED;
@@ -154,22 +154,22 @@ esp_err_t lvgl_port_init_custom(void)
     
     lv_indev_t *touch_indev = lvgl_port_add_touch(&touch_cfg);
     if (!touch_indev) {
-        ESP_LOGE(TAG, "❌ Failed to add touch input device!");
+        ESP_LOGE(TAG, "[ERROR] Failed to add touch input device!");
         return ESP_FAIL;
     }
     
     /* Apply 90° rotation to touch coordinates to match display rotation */
     lv_indev_set_display_rotation(touch_indev, LV_DISPLAY_ROTATION_90);
-    ESP_LOGI(TAG, "✅ Touch rotation applied: 90° (matching display landscape)");
+    ESP_LOGI(TAG, "[OK] Touch rotation applied: 90° (matching display landscape)");
     
     /* Override with debug callback to log coordinates */
     lv_indev_set_read_cb(touch_indev, debug_touch_read_cb);
-    ESP_LOGI(TAG, "✅ Debug touch callback installed (will log all touch events)");
+    ESP_LOGI(TAG, "[OK] Debug touch callback installed (will log all touch events)");
     
-    ESP_LOGI(TAG, "✅ Touch registered via lvgl_port_add_touch (automatic polling)");
+    ESP_LOGI(TAG, "[OK] Touch registered via lvgl_port_add_touch (automatic polling)");
     
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  ✓ LVGL Ready (1024x600)");
+    ESP_LOGI(TAG, "  LVGL Ready (1024x600)");
     ESP_LOGI(TAG, "  Buffer: 480x800 (%.1f KB, %s, PSRAM)",
              (BSP_LCD_DRAW_BUFF_SIZE * 2) / 1024.0f,
              BSP_LCD_DRAW_BUFF_DOUBLE ? "double" : "single");
