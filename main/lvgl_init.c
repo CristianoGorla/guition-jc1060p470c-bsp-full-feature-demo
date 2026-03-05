@@ -16,6 +16,7 @@
 #include "sdkconfig.h"
 
 static const char *TAG = "LVGL_INIT";
+static const char *TOUCH_TAG = "TOUCH_DEBUG";
 
 /* VENDOR CONFIGURATION - Exact match with GUITION-LVGL-V9-DEMO-ESP32P4 */
 #define BSP_LCD_H_RES 1024
@@ -24,6 +25,7 @@ static const char *TAG = "LVGL_INIT";
 #define BSP_LCD_DRAW_BUFF_DOUBLE   (0)          // Single buffer only
 
 static uint32_t g_flush_count = 0;
+static esp_lcd_touch_handle_t g_touch_handle = NULL;  // Store for debug callback
 
 /**
  * @brief DSI color transfer done callback
@@ -37,6 +39,33 @@ static bool on_color_trans_done(esp_lcd_panel_handle_t panel,
     g_flush_count++;
     lv_display_flush_ready(disp);
     return false;
+}
+
+/**
+ * @brief Debug touch read callback - logs coordinates for diagnostics
+ */
+static void debug_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    uint16_t x[1], y[1];
+    uint16_t strength[1];
+    uint8_t touch_cnt = 0;
+    
+    // Read raw coordinates from touch hardware
+    if (esp_lcd_touch_get_coordinates(g_touch_handle, x, y, strength, &touch_cnt, 1) == ESP_OK) {
+        if (touch_cnt > 0) {
+            data->point.x = x[0];
+            data->point.y = y[0];
+            data->state = LV_INDEV_STATE_PRESSED;
+            
+            // Log every touch event with RAW and LVGL coordinates
+            ESP_LOGI(TOUCH_TAG, "RAW: X=%d Y=%d → LVGL will receive: X=%d Y=%d (screen: %dx%d)",
+                     x[0], y[0], data->point.x, data->point.y, BSP_LCD_H_RES, BSP_LCD_V_RES);
+        } else {
+            data->state = LV_INDEV_STATE_RELEASED;
+        }
+    } else {
+        data->state = LV_INDEV_STATE_RELEASED;
+    }
 }
 
 esp_err_t lvgl_port_init_custom(void)
@@ -53,6 +82,9 @@ esp_err_t lvgl_port_init_custom(void)
         ESP_LOGE(TAG, "Touch not initialized! Call bsp_board_init() first.");
         return ESP_FAIL;
     }
+    
+    // Store touch handle for debug callback
+    g_touch_handle = touch_handle;
     
     ESP_LOGI(TAG, "Initializing LVGL port (VENDOR CONFIG)...");
     
@@ -130,6 +162,10 @@ esp_err_t lvgl_port_init_custom(void)
     lv_indev_set_display_rotation(touch_indev, LV_DISPLAY_ROTATION_90);
     ESP_LOGI(TAG, "✅ Touch rotation applied: 90° (matching display landscape)");
     
+    /* Override with debug callback to log coordinates */
+    lv_indev_set_read_cb(touch_indev, debug_touch_read_cb);
+    ESP_LOGI(TAG, "✅ Debug touch callback installed (will log all touch events)");
+    
     ESP_LOGI(TAG, "✅ Touch registered via lvgl_port_add_touch (automatic polling)");
     
     ESP_LOGI(TAG, "========================================");
@@ -139,6 +175,7 @@ esp_err_t lvgl_port_init_custom(void)
              BSP_LCD_DRAW_BUFF_DOUBLE ? "double" : "single");
     ESP_LOGI(TAG, "  Touch: esp_lvgl_port (auto-rotation via sw_rotate)");
     ESP_LOGI(TAG, "  Touch rotation: 90° applied to input device");
+    ESP_LOGI(TAG, "  Touch debug: ENABLED (logs every touch)");
     ESP_LOGI(TAG, "  Config: buff_dma=false, buff_spiram=true");
     ESP_LOGI(TAG, "  DSI: avoid_tearing=false (vendor config)");
     ESP_LOGI(TAG, "  Rotation: swap_xy=true (landscape mode)");
