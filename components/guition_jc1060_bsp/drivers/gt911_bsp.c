@@ -40,9 +40,11 @@ static const char *TAG = "BSP_GT911";
 /* External I2C handle (initialized by bsp_i2c_init) */
 extern i2c_master_bus_handle_t g_i2c_bus_handle;
 
-/* Global touch handle for debug task */
+/* Global touch handle */
 static esp_lcd_touch_handle_t g_touch_handle = NULL;
-static TaskHandle_t g_touch_debug_task = NULL;
+
+/* Debug task handle (currently unused) */
+// static TaskHandle_t g_touch_debug_task = NULL;
 
 /**
  * @brief Read GT911 raw register for debugging
@@ -125,13 +127,17 @@ static void read_gt911_config(void)
     ESP_LOGI(TAG, "");
 }
 
-/**
- * @brief Minimal touch debug task - only periodic summary
+/*
+ * DISABLED: Touch debug task
  * 
- * NOTE: Currently DISABLED to prevent console spam.
- *       LVGL handles touch polling automatically via esp_lcd_touch driver.
- *       This task was for debugging only.
+ * This function is commented out to prevent compiler warnings.
+ * LVGL handles touch polling automatically via esp_lcd_touch driver.
+ * 
+ * To re-enable for debugging:
+ * 1. Uncomment this function and g_touch_debug_task variable
+ * 2. Uncomment xTaskCreate call in bsp_touch_init()
  */
+#if 0
 static void touch_debug_task(void *arg)
 {
     uint8_t status = 0;
@@ -195,6 +201,7 @@ static void touch_debug_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(50));  /* Poll every 50ms */
     }
 }
+#endif
 
 /**
  * @brief Perform GT911 reset sequence to force I2C address to 0x14
