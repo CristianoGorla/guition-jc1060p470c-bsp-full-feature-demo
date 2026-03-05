@@ -31,12 +31,14 @@ static lv_obj_t *fps_label = NULL;
 static lv_obj_t *coord_label = NULL;
 static lv_obj_t *slider_label = NULL;
 static lv_obj_t *button_label = NULL;
+static lv_obj_t *center_label = NULL;  // Center button label
 static lv_obj_t *crosshair_h = NULL;  // Horizontal line
 static lv_obj_t *crosshair_v = NULL;  // Vertical line
 static lv_obj_t *crosshair_center = NULL;  // Center dot
 static uint32_t frame_count = 0;
 static uint64_t last_time = 0;
 static uint32_t button_clicks = 0;
+static uint32_t center_clicks = 0;
 
 /**
  * @brief FPS counter timer callback
@@ -142,6 +144,22 @@ static void button_event_cb(lv_event_t *e)
     }
 }
 
+/**
+ * @brief Center button event handler
+ */
+static void center_button_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    
+    if (code == LV_EVENT_CLICKED) {
+        center_clicks++;
+        if (center_label) {
+            lv_label_set_text_fmt(center_label, "CENTER\n%lu", center_clicks);
+        }
+        ESP_LOGI(TAG, "[CENTER BUTTON] Clicked! Count: %lu", center_clicks);
+    }
+}
+
 esp_err_t lvgl_demo_custom(void)
 {
     ESP_LOGI(TAG, "Creating custom interactive demo...");
@@ -178,12 +196,33 @@ esp_err_t lvgl_demo_custom(void)
     lv_obj_set_style_text_color(coord_label, lv_color_hex(0x00ff88), 0);
     lv_obj_align(coord_label, LV_ALIGN_TOP_RIGHT, -15, 15);
     
+    /* ========== CENTER TEST BUTTON (512, 300) ========== */
+    
+    lv_obj_t *center_btn = lv_button_create(demo_screen);
+    lv_obj_set_size(center_btn, 200, 200);
+    lv_obj_set_pos(center_btn, 512 - 100, 300 - 100);  // Center at (512, 300)
+    lv_obj_set_style_bg_color(center_btn, lv_color_hex(0xff0000), 0);
+    lv_obj_set_style_bg_color(center_btn, lv_color_hex(0xff6666), LV_STATE_PRESSED);
+    lv_obj_set_style_radius(center_btn, 20, 0);
+    lv_obj_set_style_border_color(center_btn, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_border_width(center_btn, 4, 0);
+    lv_obj_add_event_cb(center_btn, center_button_event_cb, LV_EVENT_CLICKED, NULL);
+    
+    center_label = lv_label_create(center_btn);
+    lv_label_set_text(center_label, "CENTER\n0");
+    lv_obj_set_style_text_font(center_label, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_align(center_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(center_label);
+    
+    ESP_LOGI(TAG, "[CENTER BUTTON] Created at position (512-100, 300-100) = (412, 200)");
+    ESP_LOGI(TAG, "[CENTER BUTTON] Size: 200x200, so center is at (512, 300)");
+    
     /* ========== CROSSHAIR (initially hidden) ========== */
     
     /* Horizontal line */
     crosshair_h = lv_obj_create(demo_screen);
     lv_obj_set_size(crosshair_h, 1024, 2);
-    lv_obj_set_style_bg_color(crosshair_h, lv_color_hex(0xff0000), 0);
+    lv_obj_set_style_bg_color(crosshair_h, lv_color_hex(0x00ff00), 0);
     lv_obj_set_style_bg_opa(crosshair_h, LV_OPA_70, 0);
     lv_obj_set_style_border_width(crosshair_h, 0, 0);
     lv_obj_clear_flag(crosshair_h, LV_OBJ_FLAG_CLICKABLE);
@@ -192,7 +231,7 @@ esp_err_t lvgl_demo_custom(void)
     /* Vertical line */
     crosshair_v = lv_obj_create(demo_screen);
     lv_obj_set_size(crosshair_v, 2, 600);
-    lv_obj_set_style_bg_color(crosshair_v, lv_color_hex(0xff0000), 0);
+    lv_obj_set_style_bg_color(crosshair_v, lv_color_hex(0x00ff00), 0);
     lv_obj_set_style_bg_opa(crosshair_v, LV_OPA_70, 0);
     lv_obj_set_style_border_width(crosshair_v, 0, 0);
     lv_obj_clear_flag(crosshair_v, LV_OBJ_FLAG_CLICKABLE);
@@ -201,26 +240,26 @@ esp_err_t lvgl_demo_custom(void)
     /* Center dot */
     crosshair_center = lv_obj_create(demo_screen);
     lv_obj_set_size(crosshair_center, 10, 10);
-    lv_obj_set_style_bg_color(crosshair_center, lv_color_hex(0xff0000), 0);
+    lv_obj_set_style_bg_color(crosshair_center, lv_color_hex(0x00ff00), 0);
     lv_obj_set_style_radius(crosshair_center, 5, 0);
     lv_obj_set_style_border_width(crosshair_center, 0, 0);
     lv_obj_clear_flag(crosshair_center, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(crosshair_center, LV_OBJ_FLAG_HIDDEN);
     
-    /* ========== INTERACTIVE CONTROLS ========== */
+    /* ========== INTERACTIVE CONTROLS (moved down) ========== */
     
     /* Container for controls */
     lv_obj_t *controls = lv_obj_create(demo_screen);
-    lv_obj_set_size(controls, 700, 250);
-    lv_obj_align(controls, LV_ALIGN_CENTER, 0, 30);
+    lv_obj_set_size(controls, 700, 180);
+    lv_obj_align(controls, LV_ALIGN_BOTTOM_MID, 0, -60);
     lv_obj_set_style_bg_color(controls, lv_color_hex(0x16213e), 0);
     lv_obj_set_style_border_color(controls, lv_color_hex(0x0f3460), 0);
     lv_obj_set_style_border_width(controls, 2, 0);
     lv_obj_set_style_radius(controls, 15, 0);
     lv_obj_set_flex_flow(controls, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(controls, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(controls, 30, 0);
-    lv_obj_set_style_pad_row(controls, 25, 0);
+    lv_obj_set_style_pad_all(controls, 20, 0);
+    lv_obj_set_style_pad_row(controls, 20, 0);
     
     /* === SLIDER === */
     lv_obj_t *slider_container = lv_obj_create(controls);
@@ -231,13 +270,13 @@ esp_err_t lvgl_demo_custom(void)
     
     slider_label = lv_label_create(slider_container);
     lv_label_set_text(slider_label, "Slider: 50%");
-    lv_obj_set_style_text_font(slider_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(slider_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(slider_label, lv_color_white(), 0);
     lv_obj_align(slider_label, LV_ALIGN_TOP_MID, 0, 0);
     
     lv_obj_t *slider = lv_slider_create(slider_container);
-    lv_obj_set_size(slider, 600, 15);
-    lv_obj_align(slider, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_size(slider, 600, 12);
+    lv_obj_align(slider, LV_ALIGN_TOP_MID, 0, 35);
     lv_slider_set_value(slider, 50, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(slider, lv_color_hex(0x4a4a6a), 0);
     lv_obj_set_style_bg_color(slider, lv_color_hex(0x00d9ff), LV_PART_INDICATOR);
@@ -246,7 +285,7 @@ esp_err_t lvgl_demo_custom(void)
     
     /* === BUTTON === */
     lv_obj_t *btn = lv_button_create(controls);
-    lv_obj_set_size(btn, 250, 70);
+    lv_obj_set_size(btn, 200, 50);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0x0f3460), 0);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0x16b1ff), LV_STATE_PRESSED);
     lv_obj_set_style_radius(btn, 10, 0);
@@ -254,20 +293,20 @@ esp_err_t lvgl_demo_custom(void)
     
     lv_obj_t *btn_text = lv_label_create(btn);
     lv_label_set_text(btn_text, "Click Me!");
-    lv_obj_set_style_text_font(btn_text, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(btn_text, &lv_font_montserrat_20, 0);
     lv_obj_center(btn_text);
     
     button_label = lv_label_create(controls);
     lv_label_set_text(button_label, "Clicks: 0");
-    lv_obj_set_style_text_font(button_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(button_label, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(button_label, lv_color_hex(0xffaa00), 0);
     
     /* ========== INSTRUCTIONS ========== */
     
     lv_obj_t *instructions = lv_label_create(demo_screen);
     lv_label_set_text(instructions, 
-        "☝ Touch anywhere to see crosshair \u2022 Red lines track your finger");
-    lv_obj_set_style_text_font(instructions, &lv_font_montserrat_16, 0);
+        "Touch RED center button to test (512,300) | Touch anywhere for crosshair");
+    lv_obj_set_style_text_font(instructions, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(instructions, lv_color_hex(0x888888), 0);
     lv_obj_align(instructions, LV_ALIGN_BOTTOM_MID, 0, -15);
     
@@ -286,12 +325,14 @@ esp_err_t lvgl_demo_custom(void)
     last_time = esp_timer_get_time();
     frame_count = 0;
     button_clicks = 0;
+    center_clicks = 0;
     lv_timer_create(fps_timer_cb, 100, NULL);
     
     lvgl_port_unlock();
     
-    ESP_LOGI(TAG, "\u2705 Custom demo started successfully");
-    ESP_LOGI(TAG, "   - Crosshair: Touch screen to activate");
+    ESP_LOGI(TAG, "[OK] Custom demo started successfully");
+    ESP_LOGI(TAG, "   - CENTER BUTTON: Red 200x200 at exact center (512, 300)");
+    ESP_LOGI(TAG, "   - Crosshair: Touch screen to activate (green)");
     ESP_LOGI(TAG, "   - Slider: Drag to change value");
     ESP_LOGI(TAG, "   - Button: Click to increment counter");
     return ESP_OK;
@@ -339,6 +380,7 @@ esp_err_t lvgl_demo_stop(void)
         coord_label = NULL;
         slider_label = NULL;
         button_label = NULL;
+        center_label = NULL;
         crosshair_h = NULL;
         crosshair_v = NULL;
         crosshair_center = NULL;
