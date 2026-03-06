@@ -1,5 +1,11 @@
 # LVGL Dashboard Refactoring - Complete Specification v2
 
+**Repository**: [CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo](https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo)
+**Branch**: `develop/v1.3.0`
+**Target File**: `main/lvgl_demo.c`
+
+---
+
 ## 🎯 OBJECTIVE
 Refactor `main/lvgl_demo.c` to implement a hierarchical navigation system with:
 1. **Tileview** with horizontal swipe navigation (Status Page + Test Tools Pages)
