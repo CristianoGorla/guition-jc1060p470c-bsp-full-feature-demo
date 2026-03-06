@@ -1,4 +1,4 @@
-# Dashboard Refactor V2 - Specification
+# Dashboard Refactor V2 - Specification (CORRECTED)
 
 **Repository**: `CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo`  
 **Branch**: `develop/v1.3.0`  
@@ -35,6 +35,24 @@ CONFIG_BSP_ENABLE_SDCARD      (default n, experimental)
 CONFIG_BSP_ENABLE_WIFI        (default n)
 ```
 
+### BSP Public API (bsp_board.h)
+```c
+esp_lcd_panel_handle_t bsp_display_get_handle(void);
+esp_lcd_touch_handle_t bsp_touch_get_handle(void);
+i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void);
+```
+- **NOTA**: Questi sono gli unici modi pubblici per verificare lo stato hardware
+- **NO** variabili globali `g_touch_handle` (è static in bsp_board.c)
+- **NO** funzioni `bsp_*_available()` (non esistono)
+
+### bootstrap_manager.h API
+```c
+sdmmc_card_t* bootstrap_manager_get_sd_card(bootstrap_manager_t *manager);
+bool bootstrap_is_warm_boot(void);
+```
+- **NO** `g_wifi_ready` o API per query WiFi status
+- WiFi status non è queryable via API pubblica
+
 ### Current Dashboard Architecture (lvgl_dashboard.c)
 - **12 periferiche fisse** (array `s_dash.peripherals[12]`):
   - Display, Touch, I2C Bus, Audio, RTC, SD Card, WiFi (attive)
@@ -52,7 +70,7 @@ Trasformare il dashboard esistente da **status viewer statico** a **interactive 
 
 1. **Peripheral Cards**: aggiungere callback click → overlay settings
 2. **Test Pages**: renderizzare dinamicamente solo per periferiche abilitate
-3. **Status logic**: calcolare stato reale (non solo config check)
+3. **Status logic**: calcolare stato reale usando **BSP public API**
 4. **Navigation**: back button da overlay → main dashboard
 
 ---
@@ -86,9 +104,9 @@ static void periph_card_event_cb(lv_event_t *e) {
 
 **Overlay Layout**:
 ```
-┌─────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────┐
 │ [← Back]   Peripheral Name      [⚙ Settings]   │
-├─────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────┤
 │                                                  │
 │   Status: OK / WARN / ERROR                      │
 │   Description: ...                               │
@@ -98,7 +116,7 @@ static void periph_card_event_cb(lv_event_t *e) {
 │                                                  │
 │   [Test Peripheral] [View Logs] [Calibrate]     │
 │                                                  │
-└─────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────┘
 ```
 
 ### 2. Dynamic Test Pages (MODIFIED)
@@ -111,46 +129,34 @@ for (uint8_t i = 0; i < TEST_TOOL_TEST_MAX; i++) {
 }
 ```
 
-**Nuovo** (conditional rendering):
+**Nuovo** (conditional rendering usando **#ifdef**):
 ```c
-// Test cards dinamiche basate su periferiche attive
-typedef struct {
-    const char *name;
-    test_tool_t test_id;
-    bool (*is_available)(void); // Function pointer per check
-} test_info_ext_t;
-
-static bool is_display_available(void) {
-    return IS_ENABLED(CONFIG_BSP_ENABLE_DISPLAY);
-}
-
-static bool is_touch_available(void) {
-    return IS_ENABLED(CONFIG_BSP_ENABLE_TOUCH);
-}
-
-static const test_info_ext_t s_tests_ext[] = {
-    // Display tests (sempre disponibili, display è obbligatorio)
-    { "Pattern Test", TEST_TOOL_DISPLAY_PATTERN, is_display_available },
-    { "Color Test", TEST_TOOL_DISPLAY_COLOR, is_display_available },
-    { "Gradient Test", TEST_TOOL_DISPLAY_GRADIENT, is_display_available },
-    { "Backlight Control", TEST_TOOL_DISPLAY_BACKLIGHT, is_display_available },
+// Test cards dinamiche basate su Kconfig
+static void create_screen3_tests(lv_obj_t *tile) {
+    lv_obj_t *container = lv_obj_create(tile);
+    // ... setup container ...
     
-    // Touch tests (solo se CONFIG_BSP_ENABLE_TOUCH)
-    { "Multi-Touch Test", TEST_TOOL_TOUCH_MULTITOUCH, is_touch_available },
-    { "Calibration Test", TEST_TOOL_TOUCH_CALIBRATION, is_touch_available },
-    { "Gesture Detection", TEST_TOOL_TOUCH_GESTURE, is_touch_available },
-    { "Palm Rejection", TEST_TOOL_TOUCH_PALM_REJECTION, is_touch_available },
-};
-
-// Render loop
-for (uint8_t i = 0; i < ARRAY_SIZE(s_tests_ext); i++) {
-    if (s_tests_ext[i].is_available && s_tests_ext[i].is_available()) {
-        create_test_tool_card(container, &s_tests_ext[i]);
-    }
+    // Display tests (sempre disponibili se LVGL attivo)
+#ifdef CONFIG_BSP_ENABLE_DISPLAY
+    create_test_tool_card(container, &s_tests[TEST_IDX_DISPLAY_PATTERN]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_DISPLAY_COLOR]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_DISPLAY_GRADIENT]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_DISPLAY_BACKLIGHT]);
+#endif
+    
+    // Touch tests (solo se touch abilitato)
+#ifdef CONFIG_BSP_ENABLE_TOUCH
+    create_test_tool_card(container, &s_tests[TEST_IDX_TOUCH_MULTITOUCH]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_TOUCH_CALIBRATION]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_TOUCH_GESTURE]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_TOUCH_PALM_REJECTION]);
+#endif
 }
 ```
 
-### 3. Peripheral Status Logic (ENHANCED)
+**NOTA**: Usare `#ifdef` è più robusto di `IS_ENABLED()` per questo codebase.
+
+### 3. Peripheral Status Logic (ENHANCED - CORRECTED)
 
 **Attuale** (lvgl_dashboard.c:253-266):
 ```c
@@ -175,8 +181,10 @@ static void set_peripheral_status(peripheral_info_t *periph) {
 }
 ```
 
-**Nuovo** (runtime checks, senza bsp_*_available()):
+**Nuovo** (runtime checks usando **BSP public API**):
 ```c
+#include "bsp_board.h"  // Per bsp_*_get_handle()
+
 static void set_peripheral_status(peripheral_info_t *periph) {
     if (!periph->implemented) {
         periph->status = PERIPH_STATUS_NOT_IMPL;
@@ -188,26 +196,28 @@ static void set_peripheral_status(peripheral_info_t *periph) {
         return;
     }
     
-    // Runtime status checks (usando get_handle o global state)
+    // Runtime status checks usando BSP API pubbliche
     if (strcmp(periph->name, "Display") == 0) {
-        // Display sempre OK se LVGL è attivo
-        periph->status = PERIPH_STATUS_OK;
+        // Display OK se handle valido
+        esp_lcd_panel_handle_t disp = bsp_display_get_handle();
+        periph->status = (disp != NULL) ? PERIPH_STATUS_OK : PERIPH_STATUS_ERROR;
     }
     else if (strcmp(periph->name, "Touch") == 0) {
-        // Touch OK se handle valido (da esp_lvgl_port)
-        extern esp_lcd_touch_handle_t g_touch_handle; // Dichiarato altrove
-        periph->status = (g_touch_handle != NULL) ? PERIPH_STATUS_OK : PERIPH_STATUS_ERROR;
+        // Touch OK se handle valido (CORRETTO: usa bsp_touch_get_handle())
+        esp_lcd_touch_handle_t touch = bsp_touch_get_handle();
+        periph->status = (touch != NULL) ? PERIPH_STATUS_OK : PERIPH_STATUS_ERROR;
     }
     else if (strcmp(periph->name, "I2C Bus") == 0) {
-        // I2C OK se bus attivo (check config)
-        periph->status = IS_ENABLED(CONFIG_BSP_ENABLE_I2C) ? PERIPH_STATUS_OK : PERIPH_STATUS_ERROR;
+        // I2C OK se handle valido (CORRETTO: usa bsp_i2c_get_bus_handle())
+        i2c_master_bus_handle_t i2c = bsp_i2c_get_bus_handle();
+        periph->status = (i2c != NULL) ? PERIPH_STATUS_OK : PERIPH_STATUS_ERROR;
     }
     else if (strcmp(periph->name, "Audio") == 0) {
-        // Audio: status dipende da ES8311 init (non verificabile facilmente, assume OK)
+        // Audio: nessuna API pubblica per check, assume OK se config enabled
         periph->status = PERIPH_STATUS_OK;
     }
     else if (strcmp(periph->name, "RTC") == 0) {
-        // RTC: status dipende da RX8025T probe (non verificabile facilmente, assume OK)
+        // RTC: nessuna API pubblica per check, assume OK se config enabled
         periph->status = PERIPH_STATUS_OK;
     }
     else if (strcmp(periph->name, "SD Card") == 0) {
@@ -215,68 +225,101 @@ static void set_peripheral_status(peripheral_info_t *periph) {
         periph->status = PERIPH_STATUS_WARNING;
     }
     else if (strcmp(periph->name, "WiFi") == 0) {
-        // WiFi: controllare se ESP-Hosted è connesso
-        extern bool g_wifi_ready; // Global da bootstrap_manager
-        periph->status = g_wifi_ready ? PERIPH_STATUS_OK : PERIPH_STATUS_ERROR;
+        // WiFi: NESSUNA API pubblica per query status
+        // Opzioni:
+        // 1. Lasciare OK (assume bootstrap success)
+        // 2. Sempre UNKNOWN (onesto ma brutto)
+        // Scelta: OK (se bootstrap_manager_init() ha successo, WiFi è up)
+        periph->status = PERIPH_STATUS_OK;
     }
     else {
-        // Default: OK se enabled
+        // Default: OK se enabled (per periferiche senza API)
         periph->status = PERIPH_STATUS_OK;
     }
 }
 ```
 
-**Note**: 
-- **NON esistono** funzioni `bsp_display_available()` o simili nel BSP corrente
-- Status checks devono usare **global handles** o **Kconfig symbols**
-- Per periferiche complesse (WiFi, SD), check runtime usando variabili globali
+**Differenze critiche vs versione precedente**:
+- ✅ **Touch**: usa `bsp_touch_get_handle()` (PUBLIC API), non `extern g_touch_handle` (PRIVATE)
+- ✅ **I2C**: usa `bsp_i2c_get_bus_handle()` (PUBLIC API), non `IS_ENABLED()` (fragile)
+- ✅ **WiFi**: OK di default (nessuna API pubblica per status), documentato come limitation
+- ✅ **Include**: richiede `#include "bsp_board.h"` in lvgl_dashboard.c
 
 ---
 
 ## Implementation Checklist
 
-### Phase 1: Peripheral Card Click (NEW FEATURE)
+### Phase 1: Include BSP API
+- [ ] Aggiungere `#include "bsp_board.h"` in lvgl_dashboard.c
+- [ ] Verificare che `components/guition_jc1060_bsp` sia nel include path
+
+### Phase 2: Peripheral Card Click (NEW FEATURE)
 - [ ] Aggiungere `periph_card_event_cb()` callback
 - [ ] Modificare `create_peripheral_card()` per rendere card clickable se abilitata
 - [ ] Implementare `show_peripheral_overlay()` con layout base
 - [ ] Aggiungere back button → `lv_obj_del(overlay)` per tornare a dashboard
 
-### Phase 2: Dynamic Test Pages (REFACTOR)
-- [ ] Creare `test_info_ext_t` struct con `is_available()` function pointer
-- [ ] Definire array `s_tests_ext[]` con conditional checks
-- [ ] Modificare `create_screen3_tests()` per render condizionale
+### Phase 3: Dynamic Test Pages (REFACTOR)
+- [ ] Modificare `create_screen3_tests()` per render condizionale con `#ifdef`
+- [ ] Definire indici array `s_tests[]` come costanti (TEST_IDX_DISPLAY_PATTERN, etc.)
 - [ ] Rimuovere test cards per periferiche disabilitate
+- [ ] Verificare che test array s_tests[] contenga tutte le entry (anche se non renderizzate)
 
-### Phase 3: Enhanced Status Logic (REFACTOR)
+### Phase 4: Enhanced Status Logic (REFACTOR)
 - [ ] Rifattorizzare `set_peripheral_status()` con runtime checks
-- [ ] Dichiarare extern per global handles necessari (touch, wifi)
-- [ ] Rimuovere hardcoded check "SD Card"
-- [ ] Testare status updates con diverse configurazioni Kconfig
+- [ ] Usare `bsp_display_get_handle()` per Display status
+- [ ] Usare `bsp_touch_get_handle()` per Touch status (NON extern)
+- [ ] Usare `bsp_i2c_get_bus_handle()` per I2C status (NON IS_ENABLED)
+- [ ] Documentare WiFi limitation (no public API per status)
 
-### Phase 4: Testing & Validation
+### Phase 5: Testing & Validation
 - [ ] Testare dashboard con tutte le periferiche abilitate
 - [ ] Testare con solo Display+Touch (config minimale)
 - [ ] Verificare overlay navigation (click card → overlay → back)
 - [ ] Verificare test pages dinamiche (solo test per HW presente)
+- [ ] Verificare status LED corretto per Display/Touch/I2C (runtime check)
 
 ---
 
 ## Files Modified
 
 1. **main/src/lvgl_dashboard.c** (MAIN TARGET)
-   - Refactor: `set_peripheral_status()` (enhanced logic)
+   - Add: `#include "bsp_board.h"`
+   - Refactor: `set_peripheral_status()` (BSP API calls)
    - New: `periph_card_event_cb()`, `show_peripheral_overlay()`
-   - Refactor: `create_screen3_tests()` (dynamic rendering)
+   - Refactor: `create_screen3_tests()` (dynamic rendering con #ifdef)
    - Refactor: `create_peripheral_card()` (add clickable flag)
 
 2. **main/include/lvgl_dashboard.h** (se necessario)
-   - New: `typedef bool (*periph_check_fn_t)(void);`
-   - New: struct `test_info_ext_t` definition
+   - New: enum per test indices (TEST_IDX_DISPLAY_PATTERN, etc.)
 
 3. **NO CHANGES TO**:
    - `main/main.c` (already calls `lvgl_dashboard_init()` directly)
    - `main/Kconfig.projbuild` (no new symbols needed)
-   - `components/guition_jc1060_bsp/Kconfig.projbuild` (BSP config unchanged)
+   - `components/guition_jc1060_bsp/` (no BSP API changes)
+
+---
+
+## Known Limitations
+
+### WiFi Status Check
+**Problema**: `bootstrap_manager.h` non esporta API per query WiFi readiness.
+
+**Soluzioni possibili**:
+1. **Attuale (SCELTA)**: assume OK dopo `bootstrap_manager_init()` success
+2. **Future**: aggiungere `bootstrap_manager_get_wifi_status()` in bootstrap API
+3. **Workaround**: leggere GPIO handshake (C6_IO2_HANDSHAKE), ma è hack
+
+**Decisione**: lasciare OK, documentare come limitation. Se bootstrap fallisce, main.c fa restart.
+
+### Audio/RTC Status Check
+**Problema**: nessuna API pubblica per verificare ES8311/RX8025T init.
+
+**Soluzione**: assume OK se Kconfig enabled. Per check reale, servirebbe:
+- Audio: `bsp_audio_get_handle()` (non esiste)
+- RTC: `bsp_rtc_get_handle()` (non esiste)
+
+**Decisione**: acceptable, perché bsp_board_init() fa log ERROR se falliscono.
 
 ---
 
@@ -284,16 +327,19 @@ static void set_peripheral_status(peripheral_info_t *periph) {
 
 - **Backward compatible**: il dashboard continua a funzionare senza modifiche a main.c
 - **Config-driven**: tutte le feature si abilitano/disabilitano via Kconfig esistente
-- **Runtime safe**: check di nullptr su tutti gli handle globali
+- **Runtime safe**: check di nullptr su tutti gli handle BSP
 - **No API breaking**: funzioni pubbliche `lvgl_dashboard_*()` invariate
+- **Include dependency**: richiede `bsp_board.h` (già disponibile nel component)
 
 ---
 
 ## Success Criteria
 
 ✅ Card periferiche diventano clickable → overlay settings  
-✅ Test pages mostrano solo test per periferiche abilitate  
-✅ Status periferiche riflette stato runtime (non solo Kconfig)  
+✅ Test pages mostrano solo test per periferiche abilitate (`#ifdef`)  
+✅ Status periferiche usa **BSP public API** (no extern, no IS_ENABLED fragile)  
+✅ Display/Touch/I2C status riflette handle validity (runtime check)  
 ✅ Back button da overlay torna a dashboard  
 ✅ Dashboard compila senza warning con tutte le combinazioni Kconfig  
-✅ Nessuna modifica a main.c, solo refactor interno di lvgl_dashboard.c
+✅ Nessuna modifica a main.c, solo refactor interno di lvgl_dashboard.c  
+✅ WiFi limitation documentata (no public API per status)
