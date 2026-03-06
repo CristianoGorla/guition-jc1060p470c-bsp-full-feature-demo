@@ -4,6 +4,7 @@
 
 #include <string.h>
 
+#include "bsp_board.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -223,6 +224,17 @@ static const test_info_t s_tests[] = {
     },
 };
 
+typedef enum {
+    TEST_IDX_DISPLAY_PATTERN = 0,
+    TEST_IDX_DISPLAY_COLOR,
+    TEST_IDX_DISPLAY_GRADIENT,
+    TEST_IDX_DISPLAY_BACKLIGHT,
+    TEST_IDX_TOUCH_MULTITOUCH,
+    TEST_IDX_TOUCH_CALIBRATION,
+    TEST_IDX_TOUCH_GESTURE,
+    TEST_IDX_TOUCH_PALM_REJECTION,
+} test_index_t;
+
 static lv_color_t status_to_color(periph_status_t status)
 {
     switch (status) {
@@ -258,6 +270,10 @@ static const char *status_to_text(periph_status_t status)
 
 static void set_peripheral_status(peripheral_info_t *periph)
 {
+    esp_lcd_panel_handle_t display;
+    esp_lcd_touch_handle_t touch;
+    i2c_master_bus_handle_t i2c;
+
     if (!periph->implemented) {
         periph->status = PERIPH_STATUS_NOT_IMPL;
         return;
@@ -265,6 +281,24 @@ static void set_peripheral_status(peripheral_info_t *periph)
 
     if (!periph->enabled_in_config) {
         periph->status = PERIPH_STATUS_DISABLED;
+        return;
+    }
+
+    if (strcmp(periph->name, "Display") == 0) {
+        display = bsp_display_get_handle();
+        periph->status = (display != NULL) ? PERIPH_STATUS_OK : PERIPH_STATUS_ERROR;
+        return;
+    }
+
+    if (strcmp(periph->name, "Touch") == 0) {
+        touch = bsp_touch_get_handle();
+        periph->status = (touch != NULL) ? PERIPH_STATUS_OK : PERIPH_STATUS_ERROR;
+        return;
+    }
+
+    if (strcmp(periph->name, "I2C Bus") == 0) {
+        i2c = bsp_i2c_get_bus_handle();
+        periph->status = (i2c != NULL) ? PERIPH_STATUS_OK : PERIPH_STATUS_ERROR;
         return;
     }
 
@@ -285,7 +319,11 @@ static void init_peripheral_list(void)
         .description = "JD9165 1024x600 MIPI-DSI",
         .detail = "2-lane, 60Hz",
         .icon_symbol = LV_SYMBOL_IMAGE,
+#ifdef CONFIG_BSP_ENABLE_DISPLAY
         .enabled_in_config = true,
+#else
+        .enabled_in_config = false,
+#endif
         .implemented = true,
     };
 
@@ -294,7 +332,11 @@ static void init_peripheral_list(void)
         .description = "GT911 5-point capacitive",
         .detail = "I2C 0x14",
         .icon_symbol = LV_SYMBOL_EDIT,
+#ifdef CONFIG_BSP_ENABLE_TOUCH
         .enabled_in_config = true,
+#else
+        .enabled_in_config = false,
+#endif
         .implemented = true,
     };
 
@@ -303,7 +345,11 @@ static void init_peripheral_list(void)
         .description = "400kHz master",
         .detail = "Touch+Audio+RTC",
         .icon_symbol = LV_SYMBOL_SHUFFLE,
+#ifdef CONFIG_BSP_ENABLE_I2C
         .enabled_in_config = true,
+#else
+        .enabled_in_config = false,
+#endif
         .implemented = true,
     };
 
@@ -437,17 +483,26 @@ static void apply_peripheral_status_to_ui(void)
     for (uint8_t i = 0; i < s_dash.periph_count; i++) {
         peripheral_info_t *periph = &s_dash.peripherals[i];
         lv_opa_t opacity;
+        bool is_disabled;
 
         if (!periph->status_led || !periph->status_label || !periph->card) {
             continue;
         }
 
+        is_disabled = (periph->status == PERIPH_STATUS_DISABLED ||
+                       periph->status == PERIPH_STATUS_NOT_IMPL);
+
         lv_obj_set_style_bg_color(periph->status_led, status_to_color(periph->status), 0);
         lv_label_set_text(periph->status_label, status_to_text(periph->status));
 
-        opacity = (periph->status == PERIPH_STATUS_DISABLED ||
-                   periph->status == PERIPH_STATUS_NOT_IMPL) ? LV_OPA_40 : LV_OPA_COVER;
+        opacity = is_disabled ? LV_OPA_40 : LV_OPA_COVER;
         lv_obj_set_style_opa(periph->card, opacity, 0);
+
+        if (is_disabled) {
+            lv_obj_remove_flag(periph->card, LV_OBJ_FLAG_CLICKABLE);
+        } else {
+            lv_obj_add_flag(periph->card, LV_OBJ_FLAG_CLICKABLE);
+        }
     }
 }
 
@@ -517,6 +572,149 @@ static void test_card_event_cb(lv_event_t *e)
     if (s_dash.config.test_callback) {
         s_dash.config.test_callback(test_id, s_dash.config.user_data);
     }
+}
+
+static void overlay_back_event_cb(lv_event_t *e)
+{
+    lv_obj_t *overlay;
+
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    overlay = (lv_obj_t *)lv_event_get_user_data(e);
+    if (overlay) {
+        lv_obj_del(overlay);
+    }
+}
+
+static void show_peripheral_overlay(peripheral_info_t *periph)
+{
+    lv_obj_t *overlay;
+    lv_obj_t *header;
+    lv_obj_t *back_btn;
+    lv_obj_t *back_label;
+    lv_obj_t *title;
+    lv_obj_t *content;
+    lv_obj_t *status;
+    lv_obj_t *desc;
+    lv_obj_t *cfg;
+    lv_obj_t *actions;
+    lv_obj_t *btn;
+    lv_obj_t *btn_label;
+    const char *labels[] = {"Test Peripheral", "View Logs", "Calibrate"};
+
+    overlay = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(overlay, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(overlay, lv_color_hex(COLOR_BG_DARK), 0);
+    lv_obj_set_style_border_width(overlay, 0, 0);
+    lv_obj_set_style_radius(overlay, 0, 0);
+    lv_obj_move_foreground(overlay);
+
+    header = lv_obj_create(overlay);
+    lv_obj_set_size(header, LV_PCT(100), 70);
+    lv_obj_set_pos(header, 0, 0);
+    lv_obj_set_style_bg_color(header, lv_color_hex(COLOR_BG_HEADER), 0);
+    lv_obj_set_style_border_width(header, 0, 0);
+    lv_obj_set_style_radius(header, 0, 0);
+
+    back_btn = lv_button_create(header);
+    lv_obj_set_size(back_btn, 120, 44);
+    lv_obj_align(back_btn, LV_ALIGN_LEFT_MID, 12, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1a3e66), 0);
+    lv_obj_set_style_border_color(back_btn, lv_color_hex(COLOR_ACCENT), 0);
+    lv_obj_set_style_border_width(back_btn, 1, 0);
+    lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_CLICKED, overlay);
+
+    back_label = lv_label_create(back_btn);
+    lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
+    lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+    lv_obj_center(back_label);
+
+    title = lv_label_create(header);
+    lv_label_set_text_fmt(title, "%s  %s", periph->name, LV_SYMBOL_SETTINGS);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ACCENT), 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 50, 0);
+
+    content = lv_obj_create(overlay);
+    lv_obj_set_size(content, LV_PCT(94), 460);
+    lv_obj_set_pos(content, 30, 92);
+    lv_obj_set_style_bg_color(content, lv_color_hex(COLOR_BG_CARD), 0);
+    lv_obj_set_style_border_color(content, lv_color_hex(COLOR_ACCENT), 0);
+    lv_obj_set_style_border_width(content, 2, 0);
+    lv_obj_set_style_radius(content, 10, 0);
+    lv_obj_set_style_pad_all(content, 20, 0);
+    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(content, 12, 0);
+
+    status = lv_label_create(content);
+    lv_label_set_text_fmt(status, "Status: %s", status_to_text(periph->status));
+    lv_obj_set_style_text_font(status, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(status, status_to_color(periph->status), 0);
+
+    desc = lv_label_create(content);
+    lv_label_set_text_fmt(desc, "Description: %s", periph->description);
+    lv_obj_set_style_text_font(desc, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(desc, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+
+    cfg = lv_label_create(content);
+    lv_label_set_text_fmt(cfg,
+                          "Configuration:\n"
+                          "- Detail: %s\n"
+                          "- Config enabled: %s\n"
+                          "- Implemented: %s",
+                          periph->detail,
+                          periph->enabled_in_config ? "yes" : "no",
+                          periph->implemented ? "yes" : "no");
+    lv_obj_set_style_text_font(cfg, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(cfg, lv_color_hex(COLOR_TEXT_SECONDARY), 0);
+
+    actions = lv_obj_create(content);
+    lv_obj_set_size(actions, LV_PCT(100), 72);
+    lv_obj_set_style_bg_opa(actions, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(actions, 0, 0);
+    lv_obj_set_style_pad_all(actions, 0, 0);
+    lv_obj_set_flex_flow(actions, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(actions, 12, 0);
+
+    for (uint32_t i = 0; i < 3; i++) {
+        btn = lv_button_create(actions);
+        lv_obj_set_size(btn, 180, 52);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x1a3e66), 0);
+        lv_obj_set_style_border_color(btn, lv_color_hex(COLOR_ACCENT), 0);
+        lv_obj_set_style_border_width(btn, 1, 0);
+
+        btn_label = lv_label_create(btn);
+        lv_label_set_text(btn_label, labels[i]);
+        lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(btn_label, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+        lv_obj_center(btn_label);
+    }
+
+    ESP_LOGI(TAG, "Opened peripheral overlay: %s", periph->name);
+}
+
+static void periph_card_event_cb(lv_event_t *e)
+{
+    peripheral_info_t *periph;
+
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    periph = (peripheral_info_t *)lv_event_get_user_data(e);
+    if (periph == NULL) {
+        return;
+    }
+
+    if (periph->status == PERIPH_STATUS_DISABLED ||
+        periph->status == PERIPH_STATUS_NOT_IMPL) {
+        return;
+    }
+
+    show_peripheral_overlay(periph);
 }
 
 static void tileview_event_cb(lv_event_t *e)
@@ -601,6 +799,8 @@ static lv_obj_t *create_peripheral_card(lv_obj_t *parent, peripheral_info_t *per
     lv_obj_set_style_text_font(periph->status_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(periph->status_label, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
     lv_obj_align(periph->status_label, LV_ALIGN_BOTTOM_RIGHT, -28, -5);
+
+    lv_obj_add_event_cb(card, periph_card_event_cb, LV_EVENT_CLICKED, periph);
 
     periph->card = card;
     return card;
@@ -902,9 +1102,20 @@ static void create_screen3_tests(lv_obj_t *tile)
     lv_obj_set_flex_align(container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
 
-    for (uint8_t i = 0; i < TEST_TOOL_TEST_MAX; i++) {
-        create_test_tool_card(container, &s_tests[i]);
-    }
+    /* Render only tests for peripherals enabled in the current build. */
+#ifdef CONFIG_BSP_ENABLE_DISPLAY
+    create_test_tool_card(container, &s_tests[TEST_IDX_DISPLAY_PATTERN]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_DISPLAY_COLOR]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_DISPLAY_GRADIENT]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_DISPLAY_BACKLIGHT]);
+#endif
+
+#ifdef CONFIG_BSP_ENABLE_TOUCH
+    create_test_tool_card(container, &s_tests[TEST_IDX_TOUCH_MULTITOUCH]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_TOUCH_CALIBRATION]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_TOUCH_GESTURE]);
+    create_test_tool_card(container, &s_tests[TEST_IDX_TOUCH_PALM_REJECTION]);
+#endif
 
     create_page_area(tile, 2);
     create_footer(tile, "ESP-IDF v5.5.3 | LVGL v9.2.2 | ESP32-P4 @ 400MHz | Test Suite: Display + Touch");
