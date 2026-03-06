@@ -255,6 +255,29 @@ menu "Guition JC1060P470C Board Configuration"
                     hex "Expected OV02C10 CHIP_ID"
                     default 0x560243
 
+                config ESP_MIPI_CSI_ENABLE
+                    bool "Enable MIPI CSI hardware path"
+                    default y
+                    help
+                        Project-level gate used by camera wrapper for CSI bring-up.
+
+                config ESP_ISP_ENABLE
+                    bool "Enable hardware ISP pipeline"
+                    default y
+                    depends on ESP_MIPI_CSI_ENABLE
+                    help
+                        Enables ISP processor pipeline for RAW input conversion.
+
+                config ESP_ISP_AUTO_AWB
+                    bool "Enable ISP auto white balance controller"
+                    default y
+                    depends on ESP_ISP_ENABLE
+
+                config ESP_ISP_AUTO_AE
+                    bool "Enable ISP auto exposure controller"
+                    default y
+                    depends on ESP_ISP_ENABLE
+
                 choice BSP_CAMERA_RESOLUTION
                     prompt "Camera default resolution"
                     default BSP_CAMERA_RES_1080P
