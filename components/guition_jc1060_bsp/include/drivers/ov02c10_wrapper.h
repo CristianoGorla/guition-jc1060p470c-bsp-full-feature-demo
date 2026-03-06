@@ -1,5 +1,5 @@
 /*
- * OV02C10 Camera Wrapper (Phase 2: Link + Streaming)
+ * OV02C10 Camera Wrapper (Phase 1: Detection)
  *
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
@@ -30,11 +30,6 @@ esp_err_t bsp_camera_power_on(void);
  * expected ID (0x560243).
  */
 esp_err_t bsp_camera_init(void);
-
-/**
- * @brief Start OV02C10 streaming mode (1080p profile).
- */
-esp_err_t bsp_camera_start_stream(void);
 
 /**
  * @brief Deinitialize camera wrapper resources.
