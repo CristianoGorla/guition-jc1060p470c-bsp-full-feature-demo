@@ -92,8 +92,8 @@ static esp_err_t bootstrap_camera_phase_a(void)
     LOGI( "[Phase A] Starting camera HW reset...");
     esp_err_t ret = bsp_camera_power_on();
     if (ret != ESP_OK) {
-        LOGE( "[Phase A] Camera reset failed: %s", esp_err_to_name(ret));
-        return ret;
+        LOGW( "[Phase A] Camera reset failed: %s", esp_err_to_name(ret));
+        return ESP_OK;
     }
 
     LOGI( "[Phase A] [OK] Camera XSHUTDN sequence complete");
@@ -105,8 +105,8 @@ static esp_err_t bootstrap_camera_phase_d(void)
     LOGI( "[Phase D] Starting OV02C10 SCCB probe + ISP registration...");
     esp_err_t ret = bsp_camera_init();
     if (ret != ESP_OK) {
-        LOGE( "[Phase D] Camera init failed: %s", esp_err_to_name(ret));
-        return ret;
+        LOGW( "[Phase D] Camera init failed: %s", esp_err_to_name(ret));
+        return ESP_OK;
     }
 
     LOGI( "[Phase D] [OK] OV02C10 ready");

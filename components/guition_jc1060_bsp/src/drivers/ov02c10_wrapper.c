@@ -72,12 +72,11 @@ static isp_proc_handle_t s_isp_proc = NULL;
 
 static inline uint8_t ov02c10_sccb_addr_7bit(void)
 {
-    uint32_t addr = (uint32_t)CONFIG_BSP_CAMERA_I2C_ADDR;
-
-    if (addr > 0x7FU) {
-        return (uint8_t)(addr >> 1);
-    }
-    return (uint8_t)addr;
+    /*
+     * Board/docs define OV02C10 SCCB address as 0x6C (8-bit notation).
+     * ESP-IDF I2C API requires 7-bit address, so convert by shifting right.
+     */
+    return (uint8_t)(((uint32_t)CONFIG_BSP_CAMERA_I2C_ADDR >> 1U) & 0x7FU);
 }
 
 static esp_err_t ov02c10_ensure_i2c_device(void)
@@ -243,6 +242,7 @@ esp_err_t bsp_camera_power_on(void)
 esp_err_t bsp_camera_init(void)
 {
     uint32_t chip_id = 0;
+    esp_err_t ret;
 
     if (s_initialized) {
         return ESP_OK;
@@ -252,8 +252,19 @@ esp_err_t bsp_camera_init(void)
         ESP_RETURN_ON_ERROR(bsp_camera_power_on(), TAG, "Camera power-on failed");
     }
 
-    ESP_RETURN_ON_ERROR(ov02c10_ensure_i2c_device(), TAG, "SCCB setup failed");
-    ESP_RETURN_ON_ERROR(ov02c10_probe_chip_id(&chip_id), TAG, "Sensor detection failed");
+    ret = ov02c10_ensure_i2c_device();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = ov02c10_probe_chip_id(&chip_id);
+    if (ret != ESP_OK) {
+        if (s_cam_dev_handle) {
+            i2c_master_bus_rm_device(s_cam_dev_handle);
+            s_cam_dev_handle = NULL;
+        }
+        return ESP_ERR_INVALID_STATE;
+    }
 
 #if CONFIG_ESP_ISP_ENABLE
     ESP_RETURN_ON_ERROR(ov02c10_register_isp_instance(), TAG, "ISP registration failed");
