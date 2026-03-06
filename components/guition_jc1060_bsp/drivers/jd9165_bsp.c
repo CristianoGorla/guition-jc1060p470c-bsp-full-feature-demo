@@ -108,7 +108,7 @@ static esp_err_t backlight_init(void)
         .duty_resolution = LEDC_TIMER_10_BIT,
         .timer_num = 1,
         .freq_hz = 20000,
-        .clk_cfg = LEDC_AUTO_CLK
+        .clk_cfg = LEDC_USE_PLL_DIV_CLK
     };
 
     ESP_RETURN_ON_ERROR(ledc_timer_config(&bl_timer), TAG, "Failed to config backlight timer");
