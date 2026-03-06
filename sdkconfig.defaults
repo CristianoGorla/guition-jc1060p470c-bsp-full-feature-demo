@@ -118,7 +118,11 @@ CONFIG_ESP_MIPI_CSI_ENABLE=y
 CONFIG_ESP_ISP_ENABLE=y
 CONFIG_ESP_ISP_AUTO_AWB=y
 CONFIG_ESP_ISP_AUTO_AE=y
+CONFIG_ESP_PPA_ENABLE=y
 CONFIG_BSP_ESP32P4_SILICON_REV_LOWER_3=y
+
+# Keep GT911 in polling mode to avoid interrupt interference with camera preview.
+# BSP touch driver already uses polling and does not rely on TOUCH_INT IRQ.
 
 # === LVGL v9 Performance Optimizations (CRITICAL) ===
 # Hardware Acceleration

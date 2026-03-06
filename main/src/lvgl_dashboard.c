@@ -5,10 +5,15 @@
 #include <string.h>
 
 #include "bsp_board.h"
+#include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_lvgl_port.h"
+
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+#include "drivers/ov02c10_wrapper.h"
+#endif
 
 #ifdef CONFIG_BSP_ENABLE_LVGL
 
@@ -89,10 +94,17 @@ typedef struct {
     /* Overlay is diagnostic/read-only: no HW config writes from UI. */
     lv_obj_t *overlay;
     peripheral_info_t *overlay_periph;
+    debug_tool_t overlay_tool;
+    lv_obj_t *camera_canvas;
+    lv_obj_t *camera_status_label;
 } dashboard_state_t;
 
 static const char *TAG = "lvgl_dashboard";
 static dashboard_state_t s_dash = {0};
+
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+static void dashboard_camera_preview_frame_ready(void *user_data);
+#endif
 
 static const tool_info_t s_tools[] = {
     {
@@ -625,6 +637,119 @@ static void on_debug_tool_logs_clicked(lv_event_t *e)
     ESP_LOGI(TAG, "User clicked 'View Logs' for: %s", tool->name);
 }
 
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+static void dashboard_camera_preview_frame_ready(void *user_data)
+{
+    (void)user_data;
+
+    if (!s_dash.camera_canvas) {
+        return;
+    }
+
+    if (!lvgl_port_lock(5)) {
+        return;
+    }
+
+    lv_obj_invalidate(s_dash.camera_canvas);
+    lvgl_port_unlock();
+}
+
+static void show_camera_tool_overlay(const tool_info_t *tool)
+{
+    lv_obj_t *header;
+    lv_obj_t *back_btn;
+    lv_obj_t *back_label;
+    lv_obj_t *title;
+    esp_err_t ret;
+    const uint8_t *preview_buf;
+
+    if (tool == NULL) {
+        return;
+    }
+
+    if (s_dash.overlay) {
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+        if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
+            bsp_camera_stop_preview();
+        }
+#endif
+        lv_obj_del(s_dash.overlay);
+        s_dash.overlay = NULL;
+        s_dash.overlay_periph = NULL;
+        s_dash.camera_canvas = NULL;
+        s_dash.camera_status_label = NULL;
+    }
+
+    s_dash.overlay = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(s_dash.overlay, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(s_dash.overlay, lv_color_hex(0x03080f), 0);
+    lv_obj_set_style_border_width(s_dash.overlay, 0, 0);
+    lv_obj_set_style_radius(s_dash.overlay, 0, 0);
+    lv_obj_set_style_pad_all(s_dash.overlay, 0, 0);
+    lv_obj_move_foreground(s_dash.overlay);
+
+    s_dash.overlay_tool = DEBUG_TOOL_CAMERA_TEST;
+
+    header = lv_obj_create(s_dash.overlay);
+    lv_obj_set_size(header, LV_PCT(100), 70);
+    lv_obj_set_pos(header, 0, 0);
+    lv_obj_set_style_bg_color(header, lv_color_hex(COLOR_BG_HEADER), 0);
+    lv_obj_set_style_bg_opa(header, LV_OPA_80, 0);
+    lv_obj_set_style_border_width(header, 0, 0);
+    lv_obj_set_style_radius(header, 0, 0);
+
+    back_btn = lv_button_create(header);
+    lv_obj_set_size(back_btn, 120, 44);
+    lv_obj_align(back_btn, LV_ALIGN_LEFT_MID, 12, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1a3e66), 0);
+    lv_obj_set_style_border_color(back_btn, lv_color_hex(COLOR_ACCENT), 0);
+    lv_obj_set_style_border_width(back_btn, 1, 0);
+    lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_CLICKED, NULL);
+
+    back_label = lv_label_create(back_btn);
+    lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
+    lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+    lv_obj_center(back_label);
+
+    title = lv_label_create(header);
+    lv_label_set_text_fmt(title, "%s", tool->name);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ACCENT), 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 50, 0);
+
+    s_dash.camera_status_label = lv_label_create(header);
+    lv_label_set_text(s_dash.camera_status_label, "Starting camera preview...");
+    lv_obj_set_style_text_font(s_dash.camera_status_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_dash.camera_status_label, lv_color_hex(COLOR_TEXT_SECONDARY), 0);
+    lv_obj_align(s_dash.camera_status_label, LV_ALIGN_RIGHT_MID, -12, 0);
+
+    ret = bsp_camera_start_preview(dashboard_camera_preview_frame_ready, NULL);
+    if (ret != ESP_OK) {
+        lv_label_set_text_fmt(s_dash.camera_status_label, "Preview start failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Camera preview start failed: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    preview_buf = bsp_camera_get_preview_buffer();
+    if (!preview_buf || bsp_camera_get_preview_buffer_size() == 0) {
+        lv_label_set_text(s_dash.camera_status_label, "Preview buffer unavailable");
+        ESP_LOGE(TAG, "Camera preview buffer unavailable");
+        bsp_camera_stop_preview();
+        return;
+    }
+
+    s_dash.camera_canvas = lv_canvas_create(s_dash.overlay);
+    lv_canvas_set_buffer(s_dash.camera_canvas,
+                         (void *)preview_buf,
+                         (int32_t)bsp_camera_get_preview_width(),
+                         (int32_t)bsp_camera_get_preview_height(),
+                         LV_COLOR_FORMAT_RGB888);
+    lv_obj_set_pos(s_dash.camera_canvas, 0, 0);
+
+    lv_label_set_text(s_dash.camera_status_label, "Preview running");
+}
+#endif
+
 static void show_debug_tool_overlay(const tool_info_t *tool)
 {
     lv_obj_t *header;
@@ -642,10 +767,25 @@ static void show_debug_tool_overlay(const tool_info_t *tool)
         return;
     }
 
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+    if (tool->tool_id == DEBUG_TOOL_CAMERA_TEST) {
+        show_camera_tool_overlay(tool);
+        return;
+    }
+#endif
+
     if (s_dash.overlay) {
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+        if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
+            bsp_camera_stop_preview();
+        }
+#endif
         lv_obj_del(s_dash.overlay);
         s_dash.overlay = NULL;
         s_dash.overlay_periph = NULL;
+        s_dash.overlay_tool = DEBUG_TOOL_MAX;
+        s_dash.camera_canvas = NULL;
+        s_dash.camera_status_label = NULL;
     }
 
     s_dash.overlay = lv_obj_create(lv_scr_act());
@@ -654,6 +794,7 @@ static void show_debug_tool_overlay(const tool_info_t *tool)
     lv_obj_set_style_border_width(s_dash.overlay, 0, 0);
     lv_obj_set_style_radius(s_dash.overlay, 0, 0);
     lv_obj_move_foreground(s_dash.overlay);
+    s_dash.overlay_tool = tool->tool_id;
 
     header = lv_obj_create(s_dash.overlay);
     lv_obj_set_size(header, LV_PCT(100), 70);
@@ -745,9 +886,17 @@ static void overlay_back_event_cb(lv_event_t *e)
     (void)lv_event_get_user_data(e);
 
     if (s_dash.overlay) {
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+        if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
+            bsp_camera_stop_preview();
+        }
+#endif
         lv_obj_del(s_dash.overlay);
         s_dash.overlay = NULL;
         s_dash.overlay_periph = NULL;
+        s_dash.overlay_tool = DEBUG_TOOL_MAX;
+        s_dash.camera_canvas = NULL;
+        s_dash.camera_status_label = NULL;
     }
 }
 
@@ -766,9 +915,17 @@ static void show_peripheral_overlay(peripheral_info_t *periph)
     char pins_buf[320];
 
     if (s_dash.overlay) {
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+        if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
+            bsp_camera_stop_preview();
+        }
+#endif
         lv_obj_del(s_dash.overlay);
         s_dash.overlay = NULL;
         s_dash.overlay_periph = NULL;
+        s_dash.overlay_tool = DEBUG_TOOL_MAX;
+        s_dash.camera_canvas = NULL;
+        s_dash.camera_status_label = NULL;
     }
 
     s_dash.overlay = lv_obj_create(lv_scr_act());
@@ -777,6 +934,7 @@ static void show_peripheral_overlay(peripheral_info_t *periph)
     lv_obj_set_style_border_width(s_dash.overlay, 0, 0);
     lv_obj_set_style_radius(s_dash.overlay, 0, 0);
     lv_obj_move_foreground(s_dash.overlay);
+    s_dash.overlay_tool = DEBUG_TOOL_MAX;
 
     header = lv_obj_create(s_dash.overlay);
     lv_obj_set_size(header, LV_PCT(100), 70);
@@ -1219,6 +1377,7 @@ esp_err_t lvgl_dashboard_init(const dashboard_config_t *config)
     }
 
     memset(&s_dash, 0, sizeof(s_dash));
+    s_dash.overlay_tool = DEBUG_TOOL_MAX;
 
     if (config) {
         memcpy(&s_dash.config, config, sizeof(dashboard_config_t));
@@ -1293,9 +1452,17 @@ esp_err_t lvgl_dashboard_deinit(void)
     }
 
     if (s_dash.overlay) {
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+        if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
+            bsp_camera_stop_preview();
+        }
+#endif
         lv_obj_del(s_dash.overlay);
         s_dash.overlay = NULL;
         s_dash.overlay_periph = NULL;
+        s_dash.overlay_tool = DEBUG_TOOL_MAX;
+        s_dash.camera_canvas = NULL;
+        s_dash.camera_status_label = NULL;
     }
 
     if (s_dash.tileview) {

@@ -65,6 +65,7 @@ set(COMPONENT_REQUIRES
     freertos
     nvs_flash
     esp_driver_cam
+    esp_driver_ppa
 )
 
 if(CONFIG_BSP_ENABLE_DISPLAY)

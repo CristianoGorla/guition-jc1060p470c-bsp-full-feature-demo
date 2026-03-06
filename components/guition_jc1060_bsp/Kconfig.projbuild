@@ -278,6 +278,13 @@ menu "Guition JC1060P470C Board Configuration"
                     default y
                     depends on ESP_ISP_ENABLE
 
+                config ESP_PPA_ENABLE
+                    bool "Enable PPA scaler for camera preview"
+                    default y
+                    depends on ESP_ISP_ENABLE
+                    help
+                        Enables PPA hardware scaling path used by OV02C10 preview.
+
                 config BSP_ESP32P4_SILICON_REV_LOWER_3
                     bool "ESP32-P4 Silicon Revision < v3.0"
                     default y

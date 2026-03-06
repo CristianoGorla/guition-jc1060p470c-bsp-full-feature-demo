@@ -28,6 +28,10 @@
 #include "esp_heap_caps.h"
 #endif
 
+#if CONFIG_ESP_PPA_ENABLE
+#include "driver/ppa.h"
+#endif
+
 #define LOG_UNIT "OV02C10"
 #define LOGI(fmt, ...) BSP_LOGI_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
 #define LOGW(fmt, ...) BSP_LOGW_PANEL(LOG_UNIT, fmt, ##__VA_ARGS__)
@@ -88,6 +92,11 @@ static const char *TAG = BSP_LOG_TAG;
 #define OV02C10_ISP_TASK_STACK          4096
 #define OV02C10_ISP_TASK_PRIO           5
 
+#define OV02C10_PREVIEW_WIDTH           1024U
+#define OV02C10_PREVIEW_HEIGHT          600U
+#define OV02C10_PREVIEW_TASK_STACK      6144
+#define OV02C10_PREVIEW_TASK_PRIO       6
+
 #if SOC_LEDC_SUPPORT_HS_MODE
 #define OV02C10_MCLK_LEDC_SPEED_MODE    LEDC_HIGH_SPEED_MODE
 #define OV02C10_MCLK_LEDC_TIMER         LEDC_TIMER_0
@@ -126,6 +135,16 @@ static isp_wbg_gain_t s_awb_gain_pending = {
 static void *s_isp_rgb888_frame = NULL;
 static size_t s_isp_rgb888_frame_size = 0;
 static portMUX_TYPE s_isp_lock = portMUX_INITIALIZER_UNLOCKED;
+#if CONFIG_ESP_PPA_ENABLE
+static ppa_client_handle_t s_ppa_srm_client = NULL;
+static TaskHandle_t s_preview_task = NULL;
+static bool s_preview_task_running = false;
+static bool s_preview_enabled = false;
+static void *s_preview_rgb888_frame = NULL;
+static size_t s_preview_rgb888_frame_size = 0;
+static bsp_camera_preview_frame_cb_t s_preview_frame_cb = NULL;
+static void *s_preview_frame_cb_user_data = NULL;
+#endif
 #endif
 
 typedef struct {
@@ -134,6 +153,27 @@ typedef struct {
     uint16_t delay_ms;
 } ov02c10_reg_setting_t;
 
+#if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
+static IRAM_ATTR bool ov02c10_csi_on_get_new_trans(esp_cam_ctlr_handle_t handle,
+                                                    esp_cam_ctlr_trans_t *trans,
+                                                    void *user_data)
+{
+    (void)handle;
+    (void)user_data;
+
+    if (trans == NULL) {
+        return false;
+    }
+
+    if (s_isp_rgb888_frame && s_isp_rgb888_frame_size > 0) {
+        trans->buffer = s_isp_rgb888_frame;
+        trans->buflen = s_isp_rgb888_frame_size;
+    }
+
+    return false;
+}
+#endif
+
 static IRAM_ATTR bool ov02c10_csi_on_trans_finished(esp_cam_ctlr_handle_t handle,
                                                      esp_cam_ctlr_trans_t *trans,
                                                      void *user_data)
@@ -141,6 +181,13 @@ static IRAM_ATTR bool ov02c10_csi_on_trans_finished(esp_cam_ctlr_handle_t handle
     (void)handle;
     (void)trans;
     (void)user_data;
+#if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
+    if (s_preview_enabled && s_preview_task) {
+        BaseType_t hp_task_woken = pdFALSE;
+        vTaskNotifyGiveFromISR(s_preview_task, &hp_task_woken);
+        return hp_task_woken == pdTRUE;
+    }
+#endif
     return false;
 }
 
@@ -208,6 +255,15 @@ static esp_err_t ov02c10_write_reg8(uint16_t reg, uint8_t value)
     }
 
     return i2c_master_transmit(s_cam_dev_handle, payload, sizeof(payload), 1000);
+}
+
+static esp_err_t ov02c10_set_sensor_stream_mode(bool enable)
+{
+    if (s_cam_dev_handle == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return ov02c10_write_reg8(OV02C10_REG_MODE_SELECT, enable ? 0x01 : 0x00);
 }
 
 #if CONFIG_ESP_ISP_ENABLE
@@ -375,6 +431,156 @@ static void ov02c10_stop_isp_control_task(void)
     }
 }
 
+#if CONFIG_ESP_PPA_ENABLE
+static esp_err_t ov02c10_init_ppa_scaler(void)
+{
+    if (s_ppa_srm_client) {
+        return ESP_OK;
+    }
+
+    ppa_client_config_t client_cfg = {
+        .oper_type = PPA_OPERATION_SRM,
+        .max_pending_trans_num = 1,
+        .data_burst_length = PPA_DATA_BURST_LENGTH_128,
+    };
+
+    esp_err_t ret = ppa_register_client(&client_cfg, &s_ppa_srm_client);
+    if (ret != ESP_OK) {
+        LOGE("Failed to register PPA SRM client: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    s_preview_rgb888_frame_size = (size_t)OV02C10_PREVIEW_WIDTH *
+                                  (size_t)OV02C10_PREVIEW_HEIGHT * 3U;
+    s_preview_rgb888_frame = heap_caps_aligned_alloc(64,
+                                                     s_preview_rgb888_frame_size,
+                                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (s_preview_rgb888_frame == NULL) {
+        LOGE("Failed to allocate preview RGB888 buffer in PSRAM (%u bytes)",
+             (unsigned int)s_preview_rgb888_frame_size);
+        (void)ppa_unregister_client(s_ppa_srm_client);
+        s_ppa_srm_client = NULL;
+        s_preview_rgb888_frame_size = 0;
+        return ESP_ERR_NO_MEM;
+    }
+
+    LOGI("[OV02C10] PPA Scaler initialized: 1080p -> 1024x600.");
+    return ESP_OK;
+}
+
+static void ov02c10_deinit_ppa_scaler(void)
+{
+    if (s_ppa_srm_client) {
+        (void)ppa_unregister_client(s_ppa_srm_client);
+        s_ppa_srm_client = NULL;
+    }
+
+    if (s_preview_rgb888_frame) {
+        heap_caps_free(s_preview_rgb888_frame);
+        s_preview_rgb888_frame = NULL;
+        s_preview_rgb888_frame_size = 0;
+    }
+}
+
+static void task_camera_preview(void *arg)
+{
+    (void)arg;
+
+    while (s_preview_task_running) {
+        uint32_t notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500));
+        if (notified == 0) {
+            continue;
+        }
+
+        if (!s_preview_enabled || !s_ppa_srm_client || !s_isp_rgb888_frame || !s_preview_rgb888_frame) {
+            continue;
+        }
+
+        ppa_srm_oper_config_t oper_cfg = {
+            .in = {
+                .buffer = s_isp_rgb888_frame,
+                .pic_w = CONFIG_BSP_CAMERA_FRAME_WIDTH,
+                .pic_h = CONFIG_BSP_CAMERA_FRAME_HEIGHT,
+                .block_w = CONFIG_BSP_CAMERA_FRAME_WIDTH,
+                .block_h = CONFIG_BSP_CAMERA_FRAME_HEIGHT,
+                .block_offset_x = 0,
+                .block_offset_y = 0,
+                .srm_cm = PPA_SRM_COLOR_MODE_RGB888,
+                .yuv_range = PPA_COLOR_RANGE_FULL,
+                .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
+            },
+            .out = {
+                .buffer = s_preview_rgb888_frame,
+                .buffer_size = s_preview_rgb888_frame_size,
+                .pic_w = OV02C10_PREVIEW_WIDTH,
+                .pic_h = OV02C10_PREVIEW_HEIGHT,
+                .block_offset_x = 0,
+                .block_offset_y = 0,
+                .srm_cm = PPA_SRM_COLOR_MODE_RGB888,
+                .yuv_range = PPA_COLOR_RANGE_FULL,
+                .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
+            },
+            .rotation_angle = PPA_SRM_ROTATION_ANGLE_0,
+            .scale_x = (float)OV02C10_PREVIEW_WIDTH / (float)CONFIG_BSP_CAMERA_FRAME_WIDTH,
+            .scale_y = (float)OV02C10_PREVIEW_HEIGHT / (float)CONFIG_BSP_CAMERA_FRAME_HEIGHT,
+            .mirror_x = false,
+            .mirror_y = false,
+            .rgb_swap = false,
+            .byte_swap = false,
+            .alpha_update_mode = PPA_ALPHA_NO_CHANGE,
+            .mode = PPA_TRANS_MODE_BLOCKING,
+            .user_data = NULL,
+        };
+
+        esp_err_t ret = ppa_do_scale_rotate_mirror(s_ppa_srm_client, &oper_cfg);
+        if (ret != ESP_OK) {
+            LOGW("PPA scale failed: %s", esp_err_to_name(ret));
+            continue;
+        }
+
+        if (s_preview_frame_cb) {
+            s_preview_frame_cb(s_preview_frame_cb_user_data);
+        }
+    }
+
+    s_preview_task = NULL;
+    vTaskDelete(NULL);
+}
+
+static esp_err_t ov02c10_start_preview_task(void)
+{
+    if (s_preview_task) {
+        return ESP_OK;
+    }
+
+    s_preview_task_running = true;
+    BaseType_t ok = xTaskCreatePinnedToCore(task_camera_preview,
+                                            "task_camera_preview",
+                                            OV02C10_PREVIEW_TASK_STACK,
+                                            NULL,
+                                            OV02C10_PREVIEW_TASK_PRIO,
+                                            &s_preview_task,
+                                            1);
+    if (ok != pdPASS) {
+        s_preview_task_running = false;
+        s_preview_task = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
+    LOGI("[OV02C10] Preview task started on Core 1.");
+    return ESP_OK;
+}
+
+static void ov02c10_stop_preview_task(void)
+{
+    if (s_preview_task) {
+        s_preview_task_running = false;
+        vTaskDelete(s_preview_task);
+        s_preview_task = NULL;
+    }
+}
+#endif
+
 static void ov02c10_release_isp_pipeline(void)
 {
 #if CONFIG_ESP_ISP_AUTO_AWB
@@ -393,6 +599,13 @@ static void ov02c10_release_isp_pipeline(void)
         (void)esp_isp_del_ae_controller(s_isp_ae_ctlr);
         s_isp_ae_ctlr = NULL;
     }
+#endif
+
+#if CONFIG_ESP_PPA_ENABLE
+    s_preview_enabled = false;
+    s_preview_frame_cb = NULL;
+    s_preview_frame_cb_user_data = NULL;
+    ov02c10_stop_preview_task();
 #endif
 
     ov02c10_stop_isp_control_task();
@@ -430,6 +643,10 @@ static void ov02c10_release_isp_pipeline(void)
         s_isp_rgb888_frame = NULL;
         s_isp_rgb888_frame_size = 0;
     }
+
+#if CONFIG_ESP_PPA_ENABLE
+    ov02c10_deinit_ppa_scaler();
+#endif
 
     s_ae_exposure_reg = OV02C10_ISP_AE_EXPO_DEFAULT;
     s_ae_update_pending = false;
@@ -496,7 +713,7 @@ static esp_err_t ov02c10_init_csi_link(void)
         .data_lane_num = OV02C10_MIPI_DATA_LANES,
         .lane_bit_rate_mbps = OV02C10_MIPI_LANE_BITRATE_MBPS,
         .input_data_color_type = CAM_CTLR_COLOR_RAW10,
-        .output_data_color_type = CAM_CTLR_COLOR_RAW10,
+        .output_data_color_type = CAM_CTLR_COLOR_RGB888,
         .queue_items = 1,
         .byte_swap_en = 0,
         .bk_buffer_dis = 0,
@@ -506,7 +723,12 @@ static esp_err_t ov02c10_init_csi_link(void)
     ESP_RETURN_ON_ERROR(ret, TAG, "Failed to create CSI controller");
 
     const esp_cam_ctlr_evt_cbs_t csi_cbs = {
-        .on_get_new_trans = NULL,
+        .on_get_new_trans =
+#if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
+            ov02c10_csi_on_get_new_trans,
+#else
+            NULL,
+#endif
         .on_trans_finished = ov02c10_csi_on_trans_finished,
     };
     ret = esp_cam_ctlr_register_event_callbacks(s_csi_ctlr, &csi_cbs, NULL);
@@ -853,10 +1075,19 @@ static esp_err_t ov02c10_register_isp_instance(void)
                               (size_t)CONFIG_BSP_CAMERA_FRAME_HEIGHT * 3U;
     s_isp_rgb888_frame = heap_caps_malloc(s_isp_rgb888_frame_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (s_isp_rgb888_frame == NULL) {
-        LOGW("Failed to allocate RGB888 frame buffer in PSRAM (%u bytes)", (unsigned int)s_isp_rgb888_frame_size);
-    } else {
-        LOGI("ISP RGB888 output buffer allocated in PSRAM (%u bytes)", (unsigned int)s_isp_rgb888_frame_size);
+        LOGE("Failed to allocate RGB888 frame buffer in PSRAM (%u bytes)", (unsigned int)s_isp_rgb888_frame_size);
+        ov02c10_release_isp_pipeline();
+        return ESP_ERR_NO_MEM;
     }
+    LOGI("ISP RGB888 output buffer allocated in PSRAM (%u bytes)", (unsigned int)s_isp_rgb888_frame_size);
+
+#if CONFIG_ESP_PPA_ENABLE
+    ret = ov02c10_init_ppa_scaler();
+    if (ret != ESP_OK) {
+        ov02c10_release_isp_pipeline();
+        return ret;
+    }
+#endif
 
     ret = ov02c10_start_isp_control_task();
     if (ret != ESP_OK) {
@@ -940,11 +1171,6 @@ esp_err_t bsp_camera_init(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    ret = bsp_camera_start_stream();
-    if (ret != ESP_OK) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
 #if CONFIG_ESP_ISP_ENABLE
     ESP_RETURN_ON_ERROR(ov02c10_register_isp_instance(), TAG, "ISP registration failed");
 #else
@@ -957,8 +1183,17 @@ esp_err_t bsp_camera_init(void)
 
 esp_err_t bsp_camera_start_stream(void)
 {
+    esp_err_t ret;
+
     if (s_streaming) {
         return ESP_OK;
+    }
+
+    if (!s_initialized) {
+        ret = bsp_camera_init();
+        if (ret != ESP_OK) {
+            return ret;
+        }
     }
 
     if (s_cam_dev_handle == NULL) {
@@ -968,7 +1203,7 @@ esp_err_t bsp_camera_start_stream(void)
     ESP_RETURN_ON_ERROR(ov02c10_apply_stream_profile(), TAG, "Failed to apply 1080p60 register profile");
 
     LOGI("[OV02C10] MIPI Link ready: 2-lane @ 800Mbps. Starting stream...");
-    ESP_RETURN_ON_ERROR(ov02c10_write_reg8(OV02C10_REG_MODE_SELECT, 0x01), TAG,
+    ESP_RETURN_ON_ERROR(ov02c10_set_sensor_stream_mode(true), TAG,
                         "Failed to set OV02C10 stream mode");
 
     if (s_csi_ctlr) {
@@ -977,6 +1212,96 @@ esp_err_t bsp_camera_start_stream(void)
 
     s_streaming = true;
     return ESP_OK;
+}
+
+esp_err_t bsp_camera_stop_stream(void)
+{
+    if (!s_initialized || s_cam_dev_handle == NULL) {
+        return ESP_OK;
+    }
+
+    if (s_streaming && s_csi_ctlr) {
+        (void)esp_cam_ctlr_stop(s_csi_ctlr);
+    }
+
+    ESP_RETURN_ON_ERROR(ov02c10_set_sensor_stream_mode(false), TAG,
+                        "Failed to set OV02C10 standby mode");
+
+    s_streaming = false;
+    return ESP_OK;
+}
+
+esp_err_t bsp_camera_start_preview(bsp_camera_preview_frame_cb_t frame_cb, void *user_data)
+{
+#if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
+    esp_err_t ret = bsp_camera_start_stream();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    if (!s_isp_rgb888_frame || !s_preview_rgb888_frame || !s_ppa_srm_client) {
+        (void)bsp_camera_stop_stream();
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    s_preview_frame_cb = frame_cb;
+    s_preview_frame_cb_user_data = user_data;
+    s_preview_enabled = true;
+
+    ret = ov02c10_start_preview_task();
+    if (ret != ESP_OK) {
+        s_preview_enabled = false;
+        s_preview_frame_cb = NULL;
+        s_preview_frame_cb_user_data = NULL;
+        (void)bsp_camera_stop_stream();
+        return ret;
+    }
+
+    return ESP_OK;
+#else
+    (void)frame_cb;
+    (void)user_data;
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
+void bsp_camera_stop_preview(void)
+{
+#if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
+    s_preview_enabled = false;
+    s_preview_frame_cb = NULL;
+    s_preview_frame_cb_user_data = NULL;
+    ov02c10_stop_preview_task();
+    (void)bsp_camera_stop_stream();
+#endif
+}
+
+const uint8_t *bsp_camera_get_preview_buffer(void)
+{
+#if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
+    return (const uint8_t *)s_preview_rgb888_frame;
+#else
+    return NULL;
+#endif
+}
+
+size_t bsp_camera_get_preview_buffer_size(void)
+{
+#if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
+    return s_preview_rgb888_frame_size;
+#else
+    return 0;
+#endif
+}
+
+uint16_t bsp_camera_get_preview_width(void)
+{
+    return (uint16_t)OV02C10_PREVIEW_WIDTH;
+}
+
+uint16_t bsp_camera_get_preview_height(void)
+{
+    return (uint16_t)OV02C10_PREVIEW_HEIGHT;
 }
 
 void bsp_camera_deinit(void)

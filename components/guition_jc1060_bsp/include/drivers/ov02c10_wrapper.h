@@ -7,6 +7,9 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -35,6 +38,32 @@ esp_err_t bsp_camera_init(void);
  * @brief Start OV02C10 streaming mode (1080p profile).
  */
 esp_err_t bsp_camera_start_stream(void);
+
+/**
+ * @brief Stop camera stream and put sensor in software standby.
+ */
+esp_err_t bsp_camera_stop_stream(void);
+
+typedef void (*bsp_camera_preview_frame_cb_t)(void *user_data);
+
+/**
+ * @brief Start camera preview pipeline (CSI/ISP frame sync + PPA scaling).
+ */
+esp_err_t bsp_camera_start_preview(bsp_camera_preview_frame_cb_t frame_cb, void *user_data);
+
+/**
+ * @brief Stop camera preview task and place sensor in software standby.
+ */
+void bsp_camera_stop_preview(void);
+
+/**
+ * @brief Get PPA-scaled preview buffer (RGB888, 1024x600).
+ */
+const uint8_t *bsp_camera_get_preview_buffer(void);
+
+size_t bsp_camera_get_preview_buffer_size(void);
+uint16_t bsp_camera_get_preview_width(void);
+uint16_t bsp_camera_get_preview_height(void);
 
 /**
  * @brief Deinitialize camera wrapper resources.
