@@ -326,9 +326,14 @@ static void ov02c10_isp_control_task(void *arg)
             (void)ov02c10_write_exposure_registers(exposure);
         }
 
+#if CONFIG_BSP_ESP32P4_SILICON_REV_LOWER_3
+        (void)awb_pending;
+        (void)gain;
+#else
         if (awb_pending && s_isp_wbg_enabled && s_isp_proc) {
             (void)esp_isp_wbg_set_wb_gain(s_isp_proc, gain);
         }
+#endif
 
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -392,6 +397,7 @@ static void ov02c10_release_isp_pipeline(void)
 
     ov02c10_stop_isp_control_task();
 
+#if !CONFIG_BSP_ESP32P4_SILICON_REV_LOWER_3
     if (s_isp_wbg_enabled && s_isp_proc) {
         (void)esp_isp_wbg_disable(s_isp_proc);
         s_isp_wbg_enabled = false;
@@ -401,6 +407,7 @@ static void ov02c10_release_isp_pipeline(void)
         (void)esp_isp_blc_disable(s_isp_proc);
         s_isp_blc_enabled = false;
     }
+#endif
 
     if (s_isp_ccm_enabled && s_isp_proc) {
         (void)esp_isp_ccm_disable(s_isp_proc);
@@ -684,6 +691,9 @@ static esp_err_t ov02c10_register_isp_instance(void)
     }
     s_isp_ccm_enabled = true;
 
+#if CONFIG_BSP_ESP32P4_SILICON_REV_LOWER_3
+    LOGI("ISP Pipeline: Silicon < v3.0 detected, BLC/WBG hardware bypass enabled.");
+#else
     esp_isp_blc_config_t blc_cfg = {
         .window = {
             .top_left = {.x = 0, .y = 0},
@@ -707,21 +717,18 @@ static esp_err_t ov02c10_register_isp_instance(void)
         },
     };
     ret = esp_isp_blc_configure(s_isp_proc, &blc_cfg);
-    if (ret == ESP_OK) {
-        ret = esp_isp_blc_enable(s_isp_proc);
-        if (ret != ESP_OK) {
-            LOGE("Failed to enable ISP BLC: %s", esp_err_to_name(ret));
-            ov02c10_release_isp_pipeline();
-            return ret;
-        }
-        s_isp_blc_enabled = true;
-    } else if (ret == ESP_ERR_NOT_SUPPORTED) {
-        LOGW("ISP BLC not supported on this silicon revision, continue without BLC");
-    } else {
+    if (ret != ESP_OK) {
         LOGE("Failed to configure ISP BLC: %s", esp_err_to_name(ret));
         ov02c10_release_isp_pipeline();
         return ret;
     }
+    ret = esp_isp_blc_enable(s_isp_proc);
+    if (ret != ESP_OK) {
+        LOGE("Failed to enable ISP BLC: %s", esp_err_to_name(ret));
+        ov02c10_release_isp_pipeline();
+        return ret;
+    }
+    s_isp_blc_enabled = true;
 
     esp_isp_wbg_config_t wbg_cfg = {
         .flags = {
@@ -729,28 +736,26 @@ static esp_err_t ov02c10_register_isp_instance(void)
         },
     };
     ret = esp_isp_wbg_configure(s_isp_proc, &wbg_cfg);
-    if (ret == ESP_OK) {
-        ret = esp_isp_wbg_enable(s_isp_proc);
-        if (ret != ESP_OK) {
-            LOGE("Failed to enable ISP WBG: %s", esp_err_to_name(ret));
-            ov02c10_release_isp_pipeline();
-            return ret;
-        }
-
-        isp_wbg_gain_t init_gain = {
-            .gain_r = OV02C10_ISP_AWB_GAIN_BASE,
-            .gain_g = OV02C10_ISP_AWB_GAIN_BASE,
-            .gain_b = OV02C10_ISP_AWB_GAIN_BASE,
-        };
-        (void)esp_isp_wbg_set_wb_gain(s_isp_proc, init_gain);
-        s_isp_wbg_enabled = true;
-    } else if (ret == ESP_ERR_NOT_SUPPORTED) {
-        LOGW("ISP WBG not supported on this silicon revision, AWB gain updates disabled");
-    } else {
+    if (ret != ESP_OK) {
         LOGE("Failed to configure ISP WBG: %s", esp_err_to_name(ret));
         ov02c10_release_isp_pipeline();
         return ret;
     }
+    ret = esp_isp_wbg_enable(s_isp_proc);
+    if (ret != ESP_OK) {
+        LOGE("Failed to enable ISP WBG: %s", esp_err_to_name(ret));
+        ov02c10_release_isp_pipeline();
+        return ret;
+    }
+
+    isp_wbg_gain_t init_gain = {
+        .gain_r = OV02C10_ISP_AWB_GAIN_BASE,
+        .gain_g = OV02C10_ISP_AWB_GAIN_BASE,
+        .gain_b = OV02C10_ISP_AWB_GAIN_BASE,
+    };
+    (void)esp_isp_wbg_set_wb_gain(s_isp_proc, init_gain);
+    s_isp_wbg_enabled = true;
+#endif
 
 #if CONFIG_ESP_ISP_AUTO_AE
     esp_isp_ae_config_t ae_cfg = {
