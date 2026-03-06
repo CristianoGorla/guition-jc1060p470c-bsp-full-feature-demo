@@ -144,10 +144,19 @@ static esp_err_t ov02c10_probe_chip_id(uint32_t *out_chip_id)
     }
 
     if (chip_id != (uint32_t)CONFIG_BSP_CAMERA_EXPECTED_CHIP_ID) {
-        LOGE("[OV02C10] Sensor ID mismatch. Expected: 0x%06" PRIX32 ", got: 0x%06" PRIX32,
-             (uint32_t)CONFIG_BSP_CAMERA_EXPECTED_CHIP_ID,
+        uint32_t expected = (uint32_t)CONFIG_BSP_CAMERA_EXPECTED_CHIP_ID;
+        bool same_family = (chip_id & 0xFFFF00U) == (expected & 0xFFFF00U);
+
+        if (!same_family) {
+            LOGE("[OV02C10] Sensor ID mismatch. Expected: 0x%06" PRIX32 ", got: 0x%06" PRIX32,
+                 expected,
+                 chip_id);
+            return ESP_ERR_NOT_FOUND;
+        }
+
+        LOGW("[OV02C10] Sensor revision differs from expected. Expected: 0x%06" PRIX32 ", got: 0x%06" PRIX32,
+             expected,
              chip_id);
-        return ESP_ERR_NOT_FOUND;
     }
 
     LOGI("[OV02C10] ✓ Sensor detected. ID: 0x%06" PRIX32 ".", chip_id);
