@@ -35,13 +35,46 @@ L'overlay che appare quando si clicca su una card della pagina "Hardware Periphe
   - Arancio (`0xFF9800`) per WARN
   - Rosso (`0xF44336`) per ERR
 - **Description text** (2-3 righe di info)
+- **GPIO Pin Configuration** (lista pin utilizzati con formato: `GPIO X (Function)`)  
+  Esempio:
+  ```
+  GPIO 8 (I2C_SCL)
+  GPIO 9 (I2C_SDA)
+  GPIO 45 (RESET)
+  ```
 - **Back button** (chiude overlay e torna alla pagina principale)
 
 **RIMUOVI**:
 - ❌ Bottone "Run Test"
 - ❌ Bottone "View Logs"  
 - ❌ Bottone "Configure"
-- ❌ Sezione configurazione (le info config sono già visibili nella pagina Status)
+- ❌ Sezione configurazione dettagliata (le info sono già visibili nella pagina Status)
+
+#### Esempio layout peripheral overlay:
+```c
+// Titolo
+lv_label_set_text(title_label, "Display LCD");
+
+// Status badge (verde/arancio/rosso)
+lv_obj_set_style_bg_color(status_badge, lv_color_hex(0x4CAF50), 0);
+lv_label_set_text(status_label, "OK");
+
+// Description
+lv_label_set_text(desc_label, 
+    "MIPI DSI Display\n"
+    "800x480 pixels\n"
+    "Running at 60fps"
+);
+
+// GPIO Pins
+lv_label_set_text(pins_label,
+    "Pins:\n"
+    "GPIO 8 (I2C_SCL)\n"
+    "GPIO 9 (I2C_SDA)\n"
+    "GPIO 45 (RESET)\n"
+    "GPIO 47 (BACKLIGHT)"
+);
+```
 
 ---
 
@@ -134,6 +167,7 @@ static void on_debug_card_clicked(lv_event_t *e) {
 - [ ] Swipe funziona correttamente tra 2 pagine (non più 3)
 - [ ] Page indicators mostrano 2 pallini (attivo/inattivo)
 - [ ] Click su peripheral card (pagina 1) → overlay semplice **senza bottoni azione**
+- [ ] Peripheral overlay mostra **GPIO pins** con formato `GPIO X (Function)`
 - [ ] Click su debug tool card (pagina 2) → overlay con **2 bottoni funzionali**
 - [ ] Bottone "Run Tool" stampa log `ESP_LOGI` con nome tool
 - [ ] Bottone "View Logs" stampa log `ESP_LOGI` con nome tool
@@ -153,5 +187,6 @@ static void on_debug_card_clicked(lv_event_t *e) {
 
 - **Riutilizza lo stile** degli overlay esistenti per mantenere coerenza visiva
 - **Memory management**: assicurati che `tool_name` rimanga valido per tutta la vita del callback (usa stringhe statiche o alloca memoria)
+- **GPIO Pins**: usa font monospace per allineare i pin nella lista (es. `lv_obj_set_style_text_font(pins_label, &lv_font_montserrat_14, 0);`)
 - **Estendibilità**: la struttura dei 2 bottoni permette future integrazioni (es. comunicazione con main.c via eventi)
 - **Logs**: usa sempre `ESP_LOGI(TAG, ...)` per debugging, mai `printf()`
