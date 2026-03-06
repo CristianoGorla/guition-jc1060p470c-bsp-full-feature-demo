@@ -96,6 +96,8 @@ static const char *TAG = BSP_LOG_TAG;
 
 #define OV02C10_PREVIEW_WIDTH           1024U
 #define OV02C10_PREVIEW_HEIGHT          600U
+#define OV02C10_PREVIEW_BPP_BYTES       2U
+#define OV02C10_PREVIEW_PITCH_BYTES     (OV02C10_PREVIEW_WIDTH * OV02C10_PREVIEW_BPP_BYTES)
 #define OV02C10_PREVIEW_TASK_STACK      6144
 #define OV02C10_PREVIEW_TASK_PRIO       6
 
@@ -142,8 +144,8 @@ static ppa_client_handle_t s_ppa_srm_client = NULL;
 static TaskHandle_t s_preview_task = NULL;
 static bool s_preview_task_running = false;
 static bool s_preview_enabled = false;
-static void *s_preview_rgb888_frame = NULL;
-static size_t s_preview_rgb888_frame_size = 0;
+static void *s_preview_rgb565_frame = NULL;
+static size_t s_preview_rgb565_frame_size = 0;
 static bsp_camera_preview_frame_cb_t s_preview_frame_cb = NULL;
 static void *s_preview_frame_cb_user_data = NULL;
 #endif
@@ -443,7 +445,7 @@ static esp_err_t ov02c10_init_ppa_scaler(void)
     ppa_client_config_t client_cfg = {
         .oper_type = PPA_OPERATION_SRM,
         .max_pending_trans_num = 1,
-        .data_burst_length = PPA_DATA_BURST_LENGTH_128,
+        .data_burst_length = PPA_DATA_BURST_LENGTH_16,
     };
 
     esp_err_t ret = ppa_register_client(&client_cfg, &s_ppa_srm_client);
@@ -452,17 +454,17 @@ static esp_err_t ov02c10_init_ppa_scaler(void)
         return ret;
     }
 
-    s_preview_rgb888_frame_size = (size_t)OV02C10_PREVIEW_WIDTH *
-                                  (size_t)OV02C10_PREVIEW_HEIGHT * 3U;
-    s_preview_rgb888_frame = heap_caps_aligned_alloc(64,
-                                                     s_preview_rgb888_frame_size,
+    s_preview_rgb565_frame_size = (size_t)OV02C10_PREVIEW_PITCH_BYTES *
+                                  (size_t)OV02C10_PREVIEW_HEIGHT;
+    s_preview_rgb565_frame = heap_caps_aligned_alloc(128,
+                                                     s_preview_rgb565_frame_size,
                                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (s_preview_rgb888_frame == NULL) {
-        LOGE("Failed to allocate preview RGB888 buffer in PSRAM (%u bytes)",
-             (unsigned int)s_preview_rgb888_frame_size);
+    if (s_preview_rgb565_frame == NULL) {
+        LOGE("Failed to allocate preview RGB565 buffer in PSRAM (%u bytes)",
+             (unsigned int)s_preview_rgb565_frame_size);
         (void)ppa_unregister_client(s_ppa_srm_client);
         s_ppa_srm_client = NULL;
-        s_preview_rgb888_frame_size = 0;
+        s_preview_rgb565_frame_size = 0;
         return ESP_ERR_NO_MEM;
     }
 
@@ -477,10 +479,10 @@ static void ov02c10_deinit_ppa_scaler(void)
         s_ppa_srm_client = NULL;
     }
 
-    if (s_preview_rgb888_frame) {
-        heap_caps_free(s_preview_rgb888_frame);
-        s_preview_rgb888_frame = NULL;
-        s_preview_rgb888_frame_size = 0;
+    if (s_preview_rgb565_frame) {
+        heap_caps_free(s_preview_rgb565_frame);
+        s_preview_rgb565_frame = NULL;
+        s_preview_rgb565_frame_size = 0;
     }
 }
 
@@ -494,7 +496,7 @@ static void task_camera_preview(void *arg)
             continue;
         }
 
-        if (!s_preview_enabled || !s_ppa_srm_client || !s_isp_rgb888_frame || !s_preview_rgb888_frame) {
+        if (!s_preview_enabled || !s_ppa_srm_client || !s_isp_rgb888_frame || !s_preview_rgb565_frame) {
             continue;
         }
 
@@ -512,13 +514,13 @@ static void task_camera_preview(void *arg)
                 .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
             },
             .out = {
-                .buffer = s_preview_rgb888_frame,
-                .buffer_size = s_preview_rgb888_frame_size,
+                .buffer = s_preview_rgb565_frame,
+                .buffer_size = s_preview_rgb565_frame_size,
                 .pic_w = OV02C10_PREVIEW_WIDTH,
                 .pic_h = OV02C10_PREVIEW_HEIGHT,
                 .block_offset_x = 0,
                 .block_offset_y = 0,
-                .srm_cm = PPA_SRM_COLOR_MODE_RGB888,
+                .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
                 .yuv_range = PPA_COLOR_RANGE_FULL,
                 .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
             },
@@ -539,6 +541,10 @@ static void task_camera_preview(void *arg)
             LOGW("PPA scale failed: %s", esp_err_to_name(ret));
             continue;
         }
+
+        (void)esp_cache_msync(s_preview_rgb565_frame,
+                              s_preview_rgb565_frame_size,
+                              ESP_CACHE_MSYNC_FLAG_DIR_M2C);
 
         if (s_preview_frame_cb) {
             s_preview_frame_cb(s_preview_frame_cb_user_data);
@@ -1252,10 +1258,13 @@ esp_err_t bsp_camera_start_preview(bsp_camera_preview_frame_cb_t frame_cb, void 
         return ret;
     }
 
-    if (!s_isp_rgb888_frame || !s_preview_rgb888_frame || !s_ppa_srm_client) {
+    if (!s_isp_rgb888_frame || !s_preview_rgb565_frame || !s_ppa_srm_client) {
         (void)bsp_camera_stop_stream();
         return ESP_ERR_INVALID_STATE;
     }
+
+    LOGI("PPA Output: 1024x600, Pitch: %d, Format: RGB565", (int)OV02C10_PREVIEW_PITCH_BYTES);
+    LOGI("Canvas Buffer: %p, Size: %d", s_preview_rgb565_frame, (int)s_preview_rgb565_frame_size);
 
     s_preview_frame_cb = frame_cb;
     s_preview_frame_cb_user_data = user_data;
@@ -1292,7 +1301,7 @@ void bsp_camera_stop_preview(void)
 const uint8_t *bsp_camera_get_preview_buffer(void)
 {
 #if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
-    return (const uint8_t *)s_preview_rgb888_frame;
+    return (const uint8_t *)s_preview_rgb565_frame;
 #else
     return NULL;
 #endif
@@ -1301,7 +1310,7 @@ const uint8_t *bsp_camera_get_preview_buffer(void)
 size_t bsp_camera_get_preview_buffer_size(void)
 {
 #if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
-    return s_preview_rgb888_frame_size;
+    return s_preview_rgb565_frame_size;
 #else
     return 0;
 #endif

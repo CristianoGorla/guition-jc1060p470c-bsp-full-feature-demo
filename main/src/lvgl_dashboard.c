@@ -743,7 +743,7 @@ static void show_camera_tool_overlay(const tool_info_t *tool)
                          (void *)preview_buf,
                          (int32_t)bsp_camera_get_preview_width(),
                          (int32_t)bsp_camera_get_preview_height(),
-                         LV_COLOR_FORMAT_RGB888);
+                         LV_COLOR_FORMAT_RGB565);
     lv_obj_set_pos(s_dash.camera_canvas, 0, 0);
 
     lv_label_set_text(s_dash.camera_status_label, "Preview running");
