@@ -1,7 +1,7 @@
 /*
  * Guition JC1060P470C Board Support Package - Implementation
  * Phase A: Power Manager + Phase D: Peripheral Drivers
- * 
+ *
  * Copyright (c) 2026 Cristiano Gorla
  * SPDX-License-Identifier: Unlicense
  */
@@ -28,6 +28,9 @@
 #endif
 #ifdef CONFIG_BSP_ENABLE_RTC
 #include "../drivers/rx8025t_bsp.h"
+#endif
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+#include "drivers/ov02c10_wrapper.h"
 #endif
 
 /* Include I2C test utilities */
@@ -110,7 +113,7 @@ static bool bsp_needs_hard_reset(void)
 #endif
 
     esp_reset_reason_t reason = esp_reset_reason();
-    
+
     switch (reason) {
         case ESP_RST_POWERON:
         case ESP_RST_SW:
@@ -127,7 +130,7 @@ static bool bsp_needs_hard_reset(void)
 static void bsp_hard_reset(void)
 {
     if (!bsp_needs_hard_reset()) return;
-    
+
     LOGW( "[RESET] === HARD RESET ===");
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << CONFIG_BSP_PIN_SD_POWER_EN),
@@ -144,7 +147,7 @@ static esp_err_t bsp_phase_a_power_manager(void)
 {
     LOGI( "[PHASE A] Power Manager...");
     bsp_hard_reset();
-    
+
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << CONFIG_BSP_PIN_SD_POWER_EN),
         .mode = GPIO_MODE_OUTPUT,
@@ -154,20 +157,25 @@ static esp_err_t bsp_phase_a_power_manager(void)
     vTaskDelay(pdMS_TO_TICKS(CONFIG_BSP_POWER_STABILIZATION_MS));
     gpio_set_level(CONFIG_BSP_PIN_SD_POWER_EN, 1);
     vTaskDelay(pdMS_TO_TICKS(SD_POWER_DELAY_MS));
-    
+
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+    ESP_ERROR_CHECK(bsp_camera_power_on());
+    LOGI( "[PHASE A] [OK] Camera reset sequence");
+#endif
+
     LOGI( "[PHASE A] [OK] POWER_READY");
     return ESP_OK;
 }
 
 static esp_err_t bsp_i2c_bus_init(void)
 {
-#if defined(CONFIG_BSP_ENABLE_TOUCH) || defined(CONFIG_BSP_ENABLE_AUDIO) || defined(CONFIG_BSP_ENABLE_RTC)
+#if defined(CONFIG_BSP_ENABLE_TOUCH) || defined(CONFIG_BSP_ENABLE_AUDIO) || defined(CONFIG_BSP_ENABLE_RTC) || defined(CONFIG_BSP_ENABLE_CAMERA)
     /* Skip if already initialized */
     if (g_i2c_bus_handle != NULL) {
         LOGI( "[I2C] Already initialized");
         return ESP_OK;
     }
-    
+
     i2c_master_bus_config_t bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
@@ -177,16 +185,16 @@ static esp_err_t bsp_i2c_bus_init(void)
         .flags.enable_internal_pullup = true,
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &g_i2c_bus_handle));
-    
+
     /* Enable verbose I2C logging if requested */
 #ifdef CONFIG_DEBUG_I2C_VERBOSE
     esp_log_level_set("i2c", ESP_LOG_VERBOSE);
     esp_log_level_set("i2c.master", ESP_LOG_VERBOSE);
     LOGI( "[I2C] Verbose logging enabled");
 #endif
-    
+
     LOGI( "[I2C] [OK] Ready");
-    
+
     /* Test peripherals after I2C init (if enabled) */
 #ifdef CONFIG_DEBUG_I2C_TEST_PERIPHERALS
     i2c_test_peripherals(g_i2c_bus_handle);
@@ -200,17 +208,17 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
 {
     LOGI( "[PHASE D] Peripheral Drivers...");
 
-    /* 
+    /*
      * CRITICAL: Initialize display FIRST, then I2C
-     * 
-     * The JD9165 MIPI-DSI display controller corrupts the I2C peripheral 
-     * hardware during initialization. The solution is to initialize I2C 
+     *
+     * The JD9165 MIPI-DSI display controller corrupts the I2C peripheral
+     * hardware during initialization. The solution is to initialize I2C
      * AFTER the display, not before.
-     * 
+     *
      * This approach matches the Espressif vendor BSP:
      * - bsp_display_new() - no I2C
      * - bsp_touch_new() - calls bsp_i2c_init()
-     * 
+     *
      * See: docs/I2C_MIPI_DSI_CONFLICT.md
      */
 #ifdef CONFIG_BSP_ENABLE_DISPLAY
@@ -239,6 +247,11 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     LOGI( "[PHASE D] [OK] RTC");
 #endif
 
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+    ESP_ERROR_CHECK(bsp_camera_init());
+    LOGI( "[PHASE D] [OK] Camera probe");
+#endif
+
     LOGI( "[PHASE D] [OK] Complete");
     return ESP_OK;
 }
@@ -251,15 +264,15 @@ esp_err_t bsp_board_init(void)
     LOGI( "  Guition BSP v1.3.0");
     LOGI( "  Hardware Layer Only");
     LOGI("%s", BSP_BANNER_LINE);
-    
+
     ESP_ERROR_CHECK(bsp_phase_a_power_manager());
     ESP_ERROR_CHECK(bsp_phase_d_peripheral_drivers());
-    
+
     LOGI("%s", BSP_BANNER_LINE);
     LOGI( "  [OK] BSP Ready (Hardware only)");
     LOGI( "  App must init LVGL separately");
     LOGI("%s", BSP_BANNER_LINE);
-    
+
     return ESP_OK;
 }
 
@@ -280,6 +293,10 @@ i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void)
 
 void bsp_board_deinit(void)
 {
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+    bsp_camera_deinit();
+#endif
+
     if (g_i2c_bus_handle) {
         i2c_del_master_bus(g_i2c_bus_handle);
         g_i2c_bus_handle = NULL;

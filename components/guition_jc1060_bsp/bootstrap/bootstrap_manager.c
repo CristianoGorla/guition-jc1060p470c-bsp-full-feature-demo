@@ -19,6 +19,10 @@
 #include "esp_vfs_fat.h"
 #include "sdkconfig.h"  // For CONFIG_BSP_ENABLE_SDCARD
 
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+#include "drivers/ov02c10_wrapper.h"
+#endif
+
 // External functions
 #ifdef CONFIG_BSP_ENABLE_SDCARD
 extern esp_err_t sd_card_mount_safe(sdmmc_card_t **card);
@@ -82,11 +86,40 @@ static esp_err_t bootstrap_sd_sequence(sdmmc_card_t **sd_card)
 }
 #endif // CONFIG_BSP_ENABLE_SDCARD
 
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+static esp_err_t bootstrap_camera_phase_a(void)
+{
+    LOGI( "[Phase A] Starting camera HW reset...");
+    esp_err_t ret = bsp_camera_power_on();
+    if (ret != ESP_OK) {
+        LOGE( "[Phase A] Camera reset failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    LOGI( "[Phase A] [OK] Camera XSHUTDN sequence complete");
+    return ESP_OK;
+}
+
+static esp_err_t bootstrap_camera_phase_d(void)
+{
+    LOGI( "[Phase D] Starting OV02C10 SCCB probe + ISP registration...");
+    esp_err_t ret = bsp_camera_init();
+    if (ret != ESP_OK) {
+        LOGE( "[Phase D] Camera init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    LOGI( "[Phase D] [OK] OV02C10 ready");
+    return ESP_OK;
+}
+#endif
+
 /**
  * Initialize bootstrap manager
  * 
- * Note: Phase A (Power) is now handled by BSP (bsp_board_init).
- * Bootstrap manager only handles Phase C (WiFi) and Phase B (SD).
+ * Note: Phase A (Power) is primarily handled by BSP (bsp_board_init).
+ * Bootstrap manager handles Phase C (WiFi) and Phase B (SD), and can
+ * run camera hooks for Phase A/D when enabled.
  * 
  * Both phases are optional and controlled by Kconfig:
  * - CONFIG_BSP_ENABLE_WIFI enables Phase C
@@ -123,6 +156,13 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
         LOGE( "Arbiter init failed: %s", esp_err_to_name(ret));
         return ret;
     }
+
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+    ret = bootstrap_camera_phase_a();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+#endif
     
 #ifdef CONFIG_BSP_ENABLE_WIFI
     // Phase C: WiFi init (initializes SDMMC controller)
@@ -146,6 +186,13 @@ esp_err_t bootstrap_manager_init(bootstrap_manager_t *manager)
     LOGI( "[Phase B] SD Card disabled via Kconfig");
     LOGI( "[Phase B] [OK] Skipped (SD Card disabled)");
     manager->sd_card = NULL;
+#endif
+
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+    ret = bootstrap_camera_phase_d();
+    if (ret != ESP_OK) {
+        return ret;
+    }
 #endif
     
     uint32_t elapsed_ms = (esp_timer_get_time() / 1000) - manager->boot_timestamp_ms;

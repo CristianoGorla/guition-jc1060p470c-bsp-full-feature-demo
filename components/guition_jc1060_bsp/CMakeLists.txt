@@ -27,6 +27,11 @@ if(CONFIG_BSP_ENABLE_RTC)
     list(APPEND COMPONENT_SRCS "utils/rtc_test.c")
 endif()
 
+# Camera wrapper (OV02C10, Phase 1 detection)
+if(CONFIG_BSP_ENABLE_CAMERA)
+    list(APPEND COMPONENT_SRCS "src/drivers/ov02c10_wrapper.c")
+endif()
+
 # I2C test utilities (if any I2C debug feature enabled)
 if(CONFIG_DEBUG_I2C_GPIO_CHECK OR CONFIG_DEBUG_I2C_TEST_PERIPHERALS)
     list(APPEND COMPONENT_SRCS "utils/i2c_test.c")
@@ -81,6 +86,10 @@ endif()
 
 if(CONFIG_BSP_ENABLE_RTC OR CONFIG_BSP_ENABLE_AUDIO)
     list(APPEND COMPONENT_REQUIRES esp_timer)
+endif()
+
+if(CONFIG_BSP_ENABLE_CAMERA AND CONFIG_ESP_ISP_ENABLE)
+    list(APPEND COMPONENT_REQUIRES esp_driver_isp)
 endif()
 
 idf_component_register(

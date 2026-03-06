@@ -217,6 +217,69 @@ menu "Guition JC1060P470C Board Configuration"
 
             endmenu
 
+            config BSP_ENABLE_CAMERA
+                bool "Enable OV02C10 Camera (MIPI CSI-2, 2-lane)"
+                default y
+                depends on BSP_ENABLE_I2C
+                help
+                    Enable OV02C10 sensor wrapper support (Phase 1: detection).
+                    Initialization includes:
+                      - XSHUTDN reset sequence
+                      - SCCB/I2C probe and CHIP_ID read
+                      - Optional ISP instance registration
+
+            menu "Camera Configuration"
+                visible if BSP_ENABLE_CAMERA
+
+                config BSP_PIN_CAMERA_XSHUTDN
+                    int "Camera XSHUTDN GPIO"
+                    default 20
+                    help
+                        OV02C10 reset/power-down control pin.
+                        Keep mapped to GPIO20 as per board schematic.
+
+                config BSP_PIN_CAMERA_MCLK
+                    int "Camera MCLK GPIO"
+                    default 5
+                    help
+                        Camera master clock output pin.
+
+                config BSP_CAMERA_I2C_ADDR
+                    hex "Camera SCCB address"
+                    default 0x6C
+                    help
+                        OV02C10 SCCB address as documented in board notes.
+                        Driver internally converts to 7-bit format for ESP-IDF I2C.
+
+                config BSP_CAMERA_EXPECTED_CHIP_ID
+                    hex "Expected OV02C10 CHIP_ID"
+                    default 0x560203
+
+                choice BSP_CAMERA_RESOLUTION
+                    prompt "Camera default resolution"
+                    default BSP_CAMERA_RES_1080P
+
+                    config BSP_CAMERA_RES_1080P
+                        bool "1920x1080 (1080p)"
+
+                    config BSP_CAMERA_RES_UXGA
+                        bool "1600x1200 (UXGA)"
+                endchoice
+
+                config BSP_CAMERA_FRAME_WIDTH
+                    int
+                    default 1920 if BSP_CAMERA_RES_1080P
+                    default 1600 if BSP_CAMERA_RES_UXGA
+
+                config BSP_CAMERA_FRAME_HEIGHT
+                    int
+                    default 1080 if BSP_CAMERA_RES_1080P
+                    default 1200 if BSP_CAMERA_RES_UXGA
+
+                comment "MIPI CSI-2 data lanes: 2 (hardware fixed, board pins 42-48)"
+
+            endmenu
+
         endmenu # I2C Bus Configuration
 
         comment "────────────────────────────────────────────────────────────────"
