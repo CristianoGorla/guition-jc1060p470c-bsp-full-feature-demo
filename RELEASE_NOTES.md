@@ -153,7 +153,6 @@ CONFIG_BSP_ENABLE_WIFI=y     # WiFi enabled
 ### 📚 Documentation Updates
 
 **New Documents**:
-- [prompts/DASHBOARD_UI.md](prompts/DASHBOARD_UI.md) - System Monitor implementation guide
 - [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md) - LVGL memory optimization guide
 
 **Updated Documents**:
