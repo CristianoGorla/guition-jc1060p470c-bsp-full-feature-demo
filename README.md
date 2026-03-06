@@ -333,15 +333,11 @@ config SYSTEM_MONITOR_REFRESH_INTERVAL_MS
 
 ## 📚 Documentation
 
-### Project Documentation
+### Technical Documentation
 
-- **[prompts/DASHBOARD_UI.md](prompts/DASHBOARD_UI.md)** - System Monitor UI implementation guide
 - **[docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md)** - LVGL memory optimization details
 - **[docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)** - Current development status
 - **[RELEASE_NOTES.md](RELEASE_NOTES.md)** - Version history and changelogs
-
-### Technical Documentation
-
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
 - **[SDMMC_ARBITER_README.md](SDMMC_ARBITER_README.md)** - SDMMC bus arbitration details
 - **[I2C_MIPI_DSI_CONFLICT.md](I2C_MIPI_DSI_CONFLICT.md)** - I2C/MIPI DSI conflict resolution
