@@ -33,6 +33,10 @@
 #define TOOL_CARD_H           116
 #define TOOL_CARD_GAP         9
 
+#define TEST_CARD_W           240
+#define TEST_CARD_H           116
+#define TEST_CARD_GAP         8
+
 #define HEADER_H              70
 #define SUBTITLE_Y            80
 #define CARDS_Y               105
@@ -64,6 +68,14 @@ typedef struct {
 } tool_info_t;
 
 typedef struct {
+    const char *name;
+    const char *description;
+    const char *detail;
+    const char *icon_symbol;
+    test_tool_t test_id;
+} test_info_t;
+
+typedef struct {
     bool initialized;
     uint8_t active_screen;
     dashboard_config_t config;
@@ -71,10 +83,11 @@ typedef struct {
     lv_obj_t *tileview;
     lv_obj_t *tile_peripherals;
     lv_obj_t *tile_debugtools;
+    lv_obj_t *tile_tests;
 
-    lv_obj_t *header_info[2];
-    lv_obj_t *indicator_dot[2][2];
-    lv_obj_t *swipe_hint[2];
+    lv_obj_t *header_info[3];
+    lv_obj_t *indicator_dot[3][3];
+    lv_obj_t *swipe_hint[3];
 
     lv_timer_t *refresh_timer;
 
@@ -148,6 +161,65 @@ static const tool_info_t s_tools[] = {
         .detail = "LVGL render stats",
         .icon_symbol = LV_SYMBOL_LOOP,
         .tool_id = DEBUG_TOOL_PERFORMANCE,
+    },
+};
+
+static const test_info_t s_tests[] = {
+    {
+        .name = "Pattern Test",
+        .description = "Grid, checkerboard, lines",
+        .detail = "Panel uniformity",
+        .icon_symbol = LV_SYMBOL_IMAGE,
+        .test_id = TEST_TOOL_DISPLAY_PATTERN,
+    },
+    {
+        .name = "Color Test",
+        .description = "RGB gradient sweep",
+        .detail = "Dead pixels, color accuracy",
+        .icon_symbol = LV_SYMBOL_EYE_OPEN,
+        .test_id = TEST_TOOL_DISPLAY_COLOR,
+    },
+    {
+        .name = "Gradient Test",
+        .description = "Smooth color transitions",
+        .detail = "Banding detection",
+        .icon_symbol = LV_SYMBOL_REFRESH,
+        .test_id = TEST_TOOL_DISPLAY_GRADIENT,
+    },
+    {
+        .name = "Backlight Control",
+        .description = "Brightness adjustment",
+        .detail = "0-100% PWM duty",
+        .icon_symbol = LV_SYMBOL_SETTINGS,
+        .test_id = TEST_TOOL_DISPLAY_BACKLIGHT,
+    },
+    {
+        .name = "Multi-Touch Test",
+        .description = "5-point simultaneous",
+        .detail = "GT911 full capability",
+        .icon_symbol = LV_SYMBOL_EDIT,
+        .test_id = TEST_TOOL_TOUCH_MULTITOUCH,
+    },
+    {
+        .name = "Calibration Test",
+        .description = "Corner + center accuracy",
+        .detail = "X/Y coordinate validation",
+        .icon_symbol = LV_SYMBOL_GPS,
+        .test_id = TEST_TOOL_TOUCH_CALIBRATION,
+    },
+    {
+        .name = "Gesture Detection",
+        .description = "Swipe, pinch, rotate",
+        .detail = "Multi-finger gestures",
+        .icon_symbol = LV_SYMBOL_SHUFFLE,
+        .test_id = TEST_TOOL_TOUCH_GESTURE,
+    },
+    {
+        .name = "Palm Rejection",
+        .description = "Large contact filtering",
+        .detail = "Accidental touch prevention",
+        .icon_symbol = LV_SYMBOL_WARNING,
+        .test_id = TEST_TOOL_TOUCH_PALM_REJECTION,
     },
 };
 
@@ -353,7 +425,7 @@ static void update_header_info_labels(void)
              (unsigned int)(uptime_sec / 60U),
              (unsigned int)(uptime_sec % 60U));
 
-    for (uint8_t i = 0; i < 2; i++) {
+    for (uint8_t i = 0; i < 3; i++) {
         if (s_dash.header_info[i]) {
             lv_label_set_text(s_dash.header_info[i], info_text);
         }
@@ -381,19 +453,14 @@ static void apply_peripheral_status_to_ui(void)
 
 static void update_page_indicators(void)
 {
-    for (uint8_t screen = 0; screen < 2; screen++) {
-        if (s_dash.indicator_dot[screen][0]) {
-            lv_obj_set_style_bg_color(
-                s_dash.indicator_dot[screen][0],
-                s_dash.active_screen == 0 ? lv_color_hex(COLOR_ACCENT) : lv_color_hex(COLOR_STATUS_OFF),
-                0);
-        }
-
-        if (s_dash.indicator_dot[screen][1]) {
-            lv_obj_set_style_bg_color(
-                s_dash.indicator_dot[screen][1],
-                s_dash.active_screen == 1 ? lv_color_hex(COLOR_ACCENT) : lv_color_hex(COLOR_STATUS_OFF),
-                0);
+    for (uint8_t screen = 0; screen < 3; screen++) {
+        for (uint8_t dot = 0; dot < 3; dot++) {
+            if (s_dash.indicator_dot[screen][dot]) {
+                lv_obj_set_style_bg_color(
+                    s_dash.indicator_dot[screen][dot],
+                    s_dash.active_screen == dot ? lv_color_hex(COLOR_ACCENT) : lv_color_hex(COLOR_STATUS_OFF),
+                    0);
+            }
         }
     }
 
@@ -401,7 +468,10 @@ static void update_page_indicators(void)
         lv_label_set_text(s_dash.swipe_hint[0], "Swipe left for Debug Tools ->");
     }
     if (s_dash.swipe_hint[1]) {
-        lv_label_set_text(s_dash.swipe_hint[1], "<- Swipe right to return");
+        lv_label_set_text(s_dash.swipe_hint[1], "<- Swipe for Tests ->");
+    }
+    if (s_dash.swipe_hint[2]) {
+        lv_label_set_text(s_dash.swipe_hint[2], "<- Swipe right to return");
     }
 }
 
@@ -434,6 +504,21 @@ static void tool_card_event_cb(lv_event_t *e)
     }
 }
 
+static void test_card_event_cb(lv_event_t *e)
+{
+    test_tool_t test_id;
+
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    test_id = (test_tool_t)(uintptr_t)lv_event_get_user_data(e);
+
+    if (s_dash.config.test_callback) {
+        s_dash.config.test_callback(test_id, s_dash.config.user_data);
+    }
+}
+
 static void tileview_event_cb(lv_event_t *e)
 {
     lv_obj_t *active_tile;
@@ -444,7 +529,9 @@ static void tileview_event_cb(lv_event_t *e)
     }
 
     active_tile = lv_tileview_get_tile_active(tv);
-    if (active_tile == s_dash.tile_debugtools) {
+    if (active_tile == s_dash.tile_tests) {
+        s_dash.active_screen = 2;
+    } else if (active_tile == s_dash.tile_debugtools) {
         s_dash.active_screen = 1;
     } else {
         s_dash.active_screen = 0;
@@ -581,6 +668,68 @@ static lv_obj_t *create_debug_tool_card(lv_obj_t *parent, const tool_info_t *too
     return card;
 }
 
+static lv_obj_t *create_test_tool_card(lv_obj_t *parent, const test_info_t *test)
+{
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_t *icon_box;
+    lv_obj_t *icon;
+    lv_obj_t *name;
+    lv_obj_t *desc;
+    lv_obj_t *detail;
+    lv_obj_t *arrow;
+
+    lv_obj_set_size(card, TEST_CARD_W, TEST_CARD_H);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x1a1a2e), 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0xff6600), 0);
+    lv_obj_set_style_border_width(card, 2, 0);
+    lv_obj_set_style_radius(card, 8, 0);
+    lv_obj_set_style_pad_all(card, 10, 0);
+
+    icon_box = lv_obj_create(card);
+    lv_obj_set_size(icon_box, 56, 56);
+    lv_obj_set_style_bg_color(icon_box, lv_color_hex(0x0f3460), 0);
+    lv_obj_set_style_border_color(icon_box, lv_color_hex(0xff6600), 0);
+    lv_obj_set_style_border_width(icon_box, 1, 0);
+    lv_obj_set_style_radius(icon_box, 5, 0);
+    lv_obj_set_style_pad_all(icon_box, 0, 0);
+    lv_obj_align(icon_box, LV_ALIGN_LEFT_MID, 0, 0);
+
+    icon = lv_label_create(icon_box);
+    lv_label_set_text(icon, test->icon_symbol);
+    lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(icon, lv_color_hex(0xff6600), 0);
+    lv_obj_center(icon);
+
+    name = lv_label_create(card);
+    lv_label_set_text(name, test->name);
+    lv_obj_set_style_text_font(name, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(name, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+    lv_obj_align(name, LV_ALIGN_TOP_LEFT, 66, 10);
+
+    desc = lv_label_create(card);
+    lv_label_set_text(desc, test->description);
+    lv_obj_set_style_text_font(desc, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(desc, lv_color_hex(COLOR_TEXT_SECONDARY), 0);
+    lv_obj_align(desc, LV_ALIGN_TOP_LEFT, 66, 36);
+
+    detail = lv_label_create(card);
+    lv_label_set_text(detail, test->detail);
+    lv_obj_set_style_text_font(detail, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(detail, lv_color_hex(COLOR_TEXT_SECONDARY), 0);
+    lv_obj_align(detail, LV_ALIGN_TOP_LEFT, 66, 58);
+
+    arrow = lv_label_create(card);
+    lv_label_set_text(arrow, LV_SYMBOL_PLAY);
+    lv_obj_set_style_text_font(arrow, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(arrow, lv_color_hex(0xff6600), 0);
+    lv_obj_align(arrow, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
+
+    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(card, test_card_event_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)test->test_id);
+
+    return card;
+}
+
 static void create_header(lv_obj_t *tile, const char *subtitle, uint8_t screen_idx)
 {
     lv_obj_t *header = lv_obj_create(tile);
@@ -619,6 +768,7 @@ static void create_page_area(lv_obj_t *tile, uint8_t screen_idx)
     lv_obj_t *area = lv_obj_create(tile);
     lv_obj_t *dot1;
     lv_obj_t *dot2;
+    lv_obj_t *dot3;
 
     lv_obj_set_size(area, LV_PCT(100), INDICATOR_H);
     lv_obj_set_pos(area, 0, INDICATOR_Y);
@@ -632,17 +782,25 @@ static void create_page_area(lv_obj_t *tile, uint8_t screen_idx)
     lv_obj_set_style_radius(dot1, 6, 0);
     lv_obj_set_style_border_width(dot1, 0, 0);
     lv_obj_set_style_pad_all(dot1, 0, 0);
-    lv_obj_align(dot1, LV_ALIGN_TOP_MID, -10, 8);
+    lv_obj_align(dot1, LV_ALIGN_TOP_MID, -20, 8);
 
     dot2 = lv_obj_create(area);
     lv_obj_set_size(dot2, 12, 12);
     lv_obj_set_style_radius(dot2, 6, 0);
     lv_obj_set_style_border_width(dot2, 0, 0);
     lv_obj_set_style_pad_all(dot2, 0, 0);
-    lv_obj_align(dot2, LV_ALIGN_TOP_MID, 10, 8);
+    lv_obj_align(dot2, LV_ALIGN_TOP_MID, 0, 8);
+
+    dot3 = lv_obj_create(area);
+    lv_obj_set_size(dot3, 12, 12);
+    lv_obj_set_style_radius(dot3, 6, 0);
+    lv_obj_set_style_border_width(dot3, 0, 0);
+    lv_obj_set_style_pad_all(dot3, 0, 0);
+    lv_obj_align(dot3, LV_ALIGN_TOP_MID, 20, 8);
 
     s_dash.indicator_dot[screen_idx][0] = dot1;
     s_dash.indicator_dot[screen_idx][1] = dot2;
+    s_dash.indicator_dot[screen_idx][2] = dot3;
 
     s_dash.swipe_hint[screen_idx] = lv_label_create(area);
     lv_obj_set_style_text_font(s_dash.swipe_hint[screen_idx], &lv_font_montserrat_14, 0);
@@ -724,6 +882,34 @@ static void create_screen2_debugtools(lv_obj_t *tile)
     create_footer(tile, "ESP-IDF v5.5.3 | LVGL v9.2.2 | ESP32-P4 @ 400MHz | Touch: enabled");
 }
 
+static void create_screen3_tests(lv_obj_t *tile)
+{
+    lv_obj_t *container = lv_obj_create(tile);
+
+    create_header(tile, "Interactive Display & Touch Tests", 2);
+
+    lv_obj_set_size(container, LV_PCT(100), CARDS_H);
+    lv_obj_set_pos(container, 0, CARDS_Y);
+    lv_obj_set_style_bg_color(container, lv_color_hex(COLOR_BG_DARK), 0);
+    lv_obj_set_style_border_width(container, 0, 0);
+    lv_obj_set_style_radius(container, 0, 0);
+    lv_obj_set_style_pad_left(container, 20, 0);
+    lv_obj_set_style_pad_right(container, 20, 0);
+    lv_obj_set_style_pad_top(container, 8, 0);
+    lv_obj_set_style_pad_bottom(container, 8, 0);
+    lv_obj_set_style_pad_gap(container, TEST_CARD_GAP, 0);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (uint8_t i = 0; i < TEST_TOOL_TEST_MAX; i++) {
+        create_test_tool_card(container, &s_tests[i]);
+    }
+
+    create_page_area(tile, 2);
+    create_footer(tile, "ESP-IDF v5.5.3 | LVGL v9.2.2 | ESP32-P4 @ 400MHz | Test Suite: Display + Touch");
+}
+
 esp_err_t lvgl_dashboard_init(const dashboard_config_t *config)
 {
     dashboard_config_t default_cfg = DASHBOARD_CONFIG_DEFAULT();
@@ -757,8 +943,11 @@ esp_err_t lvgl_dashboard_init(const dashboard_config_t *config)
     s_dash.tile_peripherals = lv_tileview_add_tile(s_dash.tileview, 0, 0, LV_DIR_RIGHT);
     create_screen1_peripherals(s_dash.tile_peripherals);
 
-    s_dash.tile_debugtools = lv_tileview_add_tile(s_dash.tileview, 1, 0, LV_DIR_LEFT);
+    s_dash.tile_debugtools = lv_tileview_add_tile(s_dash.tileview, 1, 0, LV_DIR_LEFT | LV_DIR_RIGHT);
     create_screen2_debugtools(s_dash.tile_debugtools);
+
+    s_dash.tile_tests = lv_tileview_add_tile(s_dash.tileview, 2, 0, LV_DIR_LEFT);
+    create_screen3_tests(s_dash.tile_tests);
 
     lv_obj_set_tile(s_dash.tileview, s_dash.tile_peripherals, LV_ANIM_OFF);
     s_dash.active_screen = 0;
@@ -772,7 +961,8 @@ esp_err_t lvgl_dashboard_init(const dashboard_config_t *config)
     lvgl_port_unlock();
 
     s_dash.initialized = true;
-    ESP_LOGI(TAG, "Dashboard initialized: %u peripherals, %u tools", s_dash.periph_count, DEBUG_TOOL_MAX);
+    ESP_LOGI(TAG, "Dashboard initialized: %u peripherals, %u debug tools, %u tests", 
+             s_dash.periph_count, DEBUG_TOOL_MAX, TEST_TOOL_TEST_MAX);
 
     return ESP_OK;
 }
@@ -810,14 +1000,20 @@ void lvgl_dashboard_load_screen(uint8_t screen_index, bool anim)
         return;
     }
 
-    target_tile = (screen_index == 0) ? s_dash.tile_peripherals : s_dash.tile_debugtools;
+    if (screen_index == 0) {
+        target_tile = s_dash.tile_peripherals;
+    } else if (screen_index == 1) {
+        target_tile = s_dash.tile_debugtools;
+    } else {
+        target_tile = s_dash.tile_tests;
+    }
 
     if (!lvgl_port_lock(portMAX_DELAY)) {
         return;
     }
 
     lv_obj_set_tile(s_dash.tileview, target_tile, anim ? LV_ANIM_ON : LV_ANIM_OFF);
-    s_dash.active_screen = (screen_index == 0) ? 0 : 1;
+    s_dash.active_screen = (screen_index <= 2) ? screen_index : 0;
     update_page_indicators();
 
     lvgl_port_unlock();
