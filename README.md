@@ -97,6 +97,7 @@ Optimized memory configuration with DSI display support:
 1. **ESP-IDF v5.5.3+** installed and configured
 2. **Guition JC1060P470C_I_W_Y** board
 3. **USB-C cable** for programming
+4. **(Optional)** Vendor documentation package - see [Vendor Resources](#-vendor-resources) below
 
 ### Build and Flash
 
@@ -341,6 +342,91 @@ config SYSTEM_MONITOR_REFRESH_INTERVAL_MS
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
 - **[SDMMC_ARBITER_README.md](SDMMC_ARBITER_README.md)** - SDMMC bus arbitration details
 - **[I2C_MIPI_DSI_CONFLICT.md](I2C_MIPI_DSI_CONFLICT.md)** - I2C/MIPI DSI conflict resolution
+
+### Vendor Documentation
+
+- **[docs/vendor_docs/](docs/vendor_docs/)** - Original Guition hardware documentation, datasheets, and reference code
+  - Schematics and PCB layout files
+  - Component datasheets (Display, Touch, Audio, RTC, WiFi module)
+  - Original vendor demo code and configuration examples
+  - Hardware test tools and utilities
+
+---
+
+## 🏭 Vendor Resources
+
+### Hardware Documentation Package
+
+The original vendor documentation package contains essential hardware information:
+- Board schematics and PCB layout
+- Component datasheets (JD9165, GT911, ES8311, RX8025T, ESP32-C6)
+- Reference demo code
+- Hardware test utilities
+- Configuration examples
+
+**Vendor files included in this repository**: See [docs/vendor_docs/](docs/vendor_docs/)
+
+### Downloading the Original Vendor Package
+
+> [!IMPORTANT]
+> **Critical: Download the CORRECT file!**
+> 
+> Multiple similar files exist with nearly identical names. Downloading the wrong package can result in days of failed compilations and incompatible configurations.
+
+**Official Guition Download Portal:**
+```
+https://pan.jczn1688.com/1/HMI%20display
+```
+
+**Manual Download Instructions:**
+
+1. **Navigate to the portal** using the URL above
+
+2. **Locate the CORRECT file**: `JC1060P470C_I_W_Y.zip`
+   - ⚠️ **DO NOT download**: `JC1060P470C_I_W.zip` (missing "_Y" suffix)
+   - ⚠️ **DO NOT download**: Other JC1060P470C variants with different suffixes
+   - ✅ **CORRECT file**: `JC1060P470C_I_W_Y.zip` (230.82 MB)
+
+3. **Verify file details before downloading**:
+   - Filename: `JC1060P470C_I_W_Y.zip`
+   - Date: 2026-01-23 10:41
+   - Size: 230.82 MB
+
+4. **Reference screenshot**: See [docs/vendor_docs/download_guide.jpg](docs/vendor_docs/) for visual confirmation of the correct file selection
+
+**Package Contents:**
+```
+JC1060P470C_I_W_Y.zip
+├── Hardware/
+│   ├── Schematics (PDF)
+│   ├── PCB Layout Files
+│   └── BOM (Bill of Materials)
+├── Datasheets/
+│   ├── ESP32-P4 Datasheet
+│   ├── JD9165 Display Controller
+│   ├── GT911 Touch Controller
+│   ├── ES8311 Audio Codec
+│   ├── RX8025T RTC
+│   └── ESP32-C6 Module
+├── Demo_Code/
+│   ├── ESP-IDF Examples
+│   ├── LVGL Examples
+│   └── Hardware Test Tools
+└── Tools/
+    ├── Flash Download Tools
+    ├── Serial Debugging Tools
+    └── Configuration Utilities
+```
+
+> [!TIP]
+> **Why the correct file matters:**
+> 
+> Different board variants use different component configurations, pinouts, and initialization sequences. Using documentation for a different variant will result in:
+> - Incorrect GPIO mappings
+> - Wrong I2C addresses
+> - Incompatible display initialization
+> - WiFi/SD card conflicts
+> - Failed peripheral detection
 
 ---
 
