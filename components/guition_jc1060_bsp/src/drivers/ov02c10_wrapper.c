@@ -96,8 +96,17 @@ static const char *TAG = BSP_LOG_TAG;
 
 #define OV02C10_PREVIEW_WIDTH           1024U
 #define OV02C10_PREVIEW_HEIGHT          600U
-#define OV02C10_PREVIEW_BPP_BYTES       2U
-#define OV02C10_PREVIEW_PITCH_BYTES     (OV02C10_PREVIEW_WIDTH * OV02C10_PREVIEW_BPP_BYTES)
+#define OV02C10_PPA_SRC_WIDTH_PIXELS    1920U
+#define OV02C10_PPA_SRC_HEIGHT_PIXELS   1080U
+#define OV02C10_PPA_SRC_STRIDE_BYTES    5760U
+#define OV02C10_PPA_DST_STRIDE_BYTES    2048U
+#define OV02C10_PREVIEW_FRAME_BYTES     (OV02C10_PPA_DST_STRIDE_BYTES * OV02C10_PREVIEW_HEIGHT)
+#if (OV02C10_PPA_SRC_STRIDE_BYTES != (OV02C10_PPA_SRC_WIDTH_PIXELS * 3U))
+#error "OV02C10 source stride must be 1920*3 = 5760 bytes"
+#endif
+#if (OV02C10_PPA_DST_STRIDE_BYTES != (OV02C10_PREVIEW_WIDTH * 2U))
+#error "OV02C10 destination stride must be 1024*2 = 2048 bytes"
+#endif
 #define OV02C10_PREVIEW_TASK_STACK      6144
 #define OV02C10_PREVIEW_TASK_PRIO       6
 
@@ -454,8 +463,7 @@ static esp_err_t ov02c10_init_ppa_scaler(void)
         return ret;
     }
 
-    s_preview_rgb565_frame_size = (size_t)OV02C10_PREVIEW_PITCH_BYTES *
-                                  (size_t)OV02C10_PREVIEW_HEIGHT;
+    s_preview_rgb565_frame_size = (size_t)OV02C10_PREVIEW_FRAME_BYTES;
     s_preview_rgb565_frame = heap_caps_aligned_alloc(128,
                                                      s_preview_rgb565_frame_size,
                                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -503,10 +511,10 @@ static void task_camera_preview(void *arg)
         ppa_srm_oper_config_t oper_cfg = {
             .in = {
                 .buffer = s_isp_rgb888_frame,
-                .pic_w = CONFIG_BSP_CAMERA_FRAME_WIDTH,
-                .pic_h = CONFIG_BSP_CAMERA_FRAME_HEIGHT,
-                .block_w = CONFIG_BSP_CAMERA_FRAME_WIDTH,
-                .block_h = CONFIG_BSP_CAMERA_FRAME_HEIGHT,
+                .pic_w = OV02C10_PPA_SRC_WIDTH_PIXELS,
+                .pic_h = OV02C10_PPA_SRC_HEIGHT_PIXELS,
+                .block_w = OV02C10_PPA_SRC_WIDTH_PIXELS,
+                .block_h = OV02C10_PPA_SRC_HEIGHT_PIXELS,
                 .block_offset_x = 0,
                 .block_offset_y = 0,
                 .srm_cm = PPA_SRM_COLOR_MODE_RGB888,
@@ -525,8 +533,8 @@ static void task_camera_preview(void *arg)
                 .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
             },
             .rotation_angle = PPA_SRM_ROTATION_ANGLE_0,
-            .scale_x = (float)OV02C10_PREVIEW_WIDTH / (float)CONFIG_BSP_CAMERA_FRAME_WIDTH,
-            .scale_y = (float)OV02C10_PREVIEW_HEIGHT / (float)CONFIG_BSP_CAMERA_FRAME_HEIGHT,
+            .scale_x = (float)OV02C10_PREVIEW_WIDTH / (float)OV02C10_PPA_SRC_WIDTH_PIXELS,
+            .scale_y = (float)OV02C10_PREVIEW_HEIGHT / (float)OV02C10_PPA_SRC_HEIGHT_PIXELS,
             .mirror_x = false,
             .mirror_y = false,
             .rgb_swap = false,
@@ -543,7 +551,7 @@ static void task_camera_preview(void *arg)
         }
 
         (void)esp_cache_msync(s_preview_rgb565_frame,
-                              s_preview_rgb565_frame_size,
+                              OV02C10_PREVIEW_FRAME_BYTES,
                               ESP_CACHE_MSYNC_FLAG_DIR_M2C);
 
         if (s_preview_frame_cb) {
@@ -1263,7 +1271,8 @@ esp_err_t bsp_camera_start_preview(bsp_camera_preview_frame_cb_t frame_cb, void 
         return ESP_ERR_INVALID_STATE;
     }
 
-    LOGI("PPA Output: 1024x600, Pitch: %d, Format: RGB565", (int)OV02C10_PREVIEW_PITCH_BYTES);
+    LOGI("PPA Input: 1920x1080, Pitch: %d, Format: RGB888", (int)OV02C10_PPA_SRC_STRIDE_BYTES);
+    LOGI("PPA Output: 1024x600, Pitch: %d, Format: RGB565", (int)OV02C10_PPA_DST_STRIDE_BYTES);
     LOGI("Canvas Buffer: %p, Size: %d", s_preview_rgb565_frame, (int)s_preview_rgb565_frame_size);
 
     s_preview_frame_cb = frame_cb;
