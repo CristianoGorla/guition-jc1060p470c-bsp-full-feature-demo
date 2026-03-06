@@ -25,6 +25,7 @@
 
 #if CONFIG_ESP_ISP_ENABLE
 #include "driver/isp.h"
+#include "esp_cache.h"
 #include "esp_heap_caps.h"
 #endif
 
@@ -91,6 +92,7 @@ static const char *TAG = BSP_LOG_TAG;
 #define OV02C10_ISP_AWB_GAIN_MAX        1023U
 #define OV02C10_ISP_TASK_STACK          4096
 #define OV02C10_ISP_TASK_PRIO           5
+#define OV02C10_CACHE_LINE_SIZE         128U
 
 #define OV02C10_PREVIEW_WIDTH           1024U
 #define OV02C10_PREVIEW_HEIGHT          600U
@@ -1073,12 +1075,16 @@ static esp_err_t ov02c10_register_isp_instance(void)
 
     s_isp_rgb888_frame_size = (size_t)CONFIG_BSP_CAMERA_FRAME_WIDTH *
                               (size_t)CONFIG_BSP_CAMERA_FRAME_HEIGHT * 3U;
-    s_isp_rgb888_frame = heap_caps_malloc(s_isp_rgb888_frame_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    s_isp_rgb888_frame_size = (s_isp_rgb888_frame_size + (OV02C10_CACHE_LINE_SIZE - 1U)) & ~(OV02C10_CACHE_LINE_SIZE - 1U);
+    s_isp_rgb888_frame = heap_caps_aligned_alloc(OV02C10_CACHE_LINE_SIZE,
+                                                 s_isp_rgb888_frame_size,
+                                                 MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (s_isp_rgb888_frame == NULL) {
         LOGE("Failed to allocate RGB888 frame buffer in PSRAM (%u bytes)", (unsigned int)s_isp_rgb888_frame_size);
         ov02c10_release_isp_pipeline();
         return ESP_ERR_NO_MEM;
     }
+    LOGI("ISP Buffer aligned @ 128B allocated at: %p", s_isp_rgb888_frame);
     LOGI("ISP RGB888 output buffer allocated in PSRAM (%u bytes)", (unsigned int)s_isp_rgb888_frame_size);
 
 #if CONFIG_ESP_PPA_ENABLE
@@ -1207,6 +1213,13 @@ esp_err_t bsp_camera_start_stream(void)
                         "Failed to set OV02C10 stream mode");
 
     if (s_csi_ctlr) {
+        if (s_isp_rgb888_frame && s_isp_rgb888_frame_size > 0) {
+            ESP_RETURN_ON_ERROR(esp_cache_msync(s_isp_rgb888_frame,
+                                                s_isp_rgb888_frame_size,
+                                                ESP_CACHE_MSYNC_FLAG_DIR_M2C),
+                                TAG,
+                                "Failed to sync ISP buffer cache before CSI start");
+        }
         ESP_RETURN_ON_ERROR(esp_cam_ctlr_start(s_csi_ctlr), TAG, "Failed to start CSI controller");
     }
 
