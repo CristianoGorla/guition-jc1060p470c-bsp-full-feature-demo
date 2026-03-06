@@ -5,9 +5,11 @@ idf_component_register(
         "main.c"
         "lvgl_init.c"
         "lvgl_demo.c"
+        "src/lvgl_dashboard.c"
         "backlight_test.c"
     INCLUDE_DIRS 
         "."
+        "include"
         "${CMAKE_CURRENT_BINARY_DIR}"
     REQUIRES 
         guition_jc1060_bsp

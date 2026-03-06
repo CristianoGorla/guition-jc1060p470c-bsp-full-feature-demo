@@ -31,6 +31,7 @@
 #include "esp_lvgl_port.h"
 #include "lvgl_init.h"
 #include "lvgl_demo.h"
+#include "lvgl_dashboard.h"
 #endif
 
 static const char *TAG = "MAIN";
@@ -107,6 +108,48 @@ static void main_log_centered_plain(const char *text)
     left_pad = (int)((MAIN_BANNER_WIDTH - len) / 2);
     ESP_LOGI(TAG, "%*s%.*s", left_pad, "", (int)len, text);
 }
+
+#ifdef CONFIG_BSP_ENABLE_LVGL
+static void on_debug_tool_selected(debug_tool_t tool, void *user_data)
+{
+    (void)user_data;
+
+    ESP_LOGI(TAG, "Debug tool selected: %d", (int)tool);
+
+    switch (tool) {
+        case DEBUG_TOOL_LOG_MONITOR:
+            ESP_LOGI(TAG, "Launch log monitor (TODO)");
+            break;
+        case DEBUG_TOOL_CAMERA_TEST:
+            ESP_LOGI(TAG, "Camera test not implemented");
+            break;
+        case DEBUG_TOOL_SENSOR_MONITOR:
+            ESP_LOGI(TAG, "Sensor monitor not implemented");
+            break;
+        case DEBUG_TOOL_WIFI_SCANNER:
+            ESP_LOGI(TAG, "WiFi scanner not implemented");
+            break;
+        case DEBUG_TOOL_SD_BROWSER:
+            ESP_LOGI(TAG, "SD browser not implemented");
+            break;
+        case DEBUG_TOOL_I2C_SCANNER:
+            ESP_LOGI(TAG, "I2C scanner not implemented");
+            break;
+        case DEBUG_TOOL_SYSTEM_INFO:
+            ESP_LOGI(TAG, "System info not implemented");
+            break;
+        case DEBUG_TOOL_GPIO_MONITOR:
+            ESP_LOGI(TAG, "GPIO monitor not implemented");
+            break;
+        case DEBUG_TOOL_PERFORMANCE:
+            ESP_LOGI(TAG, "Performance view not implemented");
+            break;
+        default:
+            ESP_LOGW(TAG, "Unknown debug tool: %d", (int)tool);
+            break;
+    }
+}
+#endif
 
 void app_main(void)
 {
@@ -186,9 +229,17 @@ void app_main(void)
 
     /* Step 5: LVGL UI Creation */
 #ifdef CONFIG_BSP_ENABLE_LVGL
-    /* FIX: Use simple demo instead of widgets to test rendering with swap_xy=false */
-    lvgl_demo_simple();
-    ESP_LOGI(TAG, "UI ready");
+    dashboard_config_t dashboard_cfg = DASHBOARD_CONFIG_DEFAULT();
+    dashboard_cfg.tool_callback = on_debug_tool_selected;
+
+    ret = lvgl_dashboard_init(&dashboard_cfg);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "UI ready: dashboard loaded");
+    } else {
+        ESP_LOGW(TAG, "Dashboard init failed (%s), fallback to simple demo", esp_err_to_name(ret));
+        lvgl_demo_simple();
+        ESP_LOGI(TAG, "UI ready: simple demo loaded");
+    }
 #endif
 
 #ifdef CONFIG_BSP_ENABLE_DEBUG_MODE
