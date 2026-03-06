@@ -24,18 +24,6 @@ typedef enum {
 } debug_tool_t;
 
 typedef enum {
-    TEST_TOOL_DISPLAY_PATTERN = 0,
-    TEST_TOOL_DISPLAY_COLOR,
-    TEST_TOOL_DISPLAY_GRADIENT,
-    TEST_TOOL_DISPLAY_BACKLIGHT,
-    TEST_TOOL_TOUCH_MULTITOUCH,
-    TEST_TOOL_TOUCH_CALIBRATION,
-    TEST_TOOL_TOUCH_GESTURE,
-    TEST_TOOL_TOUCH_PALM_REJECTION,
-    TEST_TOOL_TEST_MAX
-} test_tool_t;
-
-typedef enum {
     PERIPH_STATUS_OK = 0,
     PERIPH_STATUS_WARNING,
     PERIPH_STATUS_ERROR,
@@ -44,11 +32,9 @@ typedef enum {
 } periph_status_t;
 
 typedef void (*debug_tool_callback_t)(debug_tool_t tool, void *user_data);
-typedef void (*test_tool_callback_t)(test_tool_t tool, void *user_data);
 
 typedef struct {
     debug_tool_callback_t tool_callback;
-    test_tool_callback_t test_callback;
     void *user_data;
     bool auto_refresh;
     uint32_t refresh_interval_ms;
@@ -56,7 +42,6 @@ typedef struct {
 
 #define DASHBOARD_CONFIG_DEFAULT() { \
     .tool_callback = NULL, \
-    .test_callback = NULL, \
     .user_data = NULL, \
     .auto_refresh = true, \
     .refresh_interval_ms = 2000, \
