@@ -253,7 +253,7 @@ menu "Guition JC1060P470C Board Configuration"
 
                 config BSP_CAMERA_EXPECTED_CHIP_ID
                     hex "Expected OV02C10 CHIP_ID"
-                    default 0x560203
+                    default 0x560243
 
                 choice BSP_CAMERA_RESOLUTION
                     prompt "Camera default resolution"

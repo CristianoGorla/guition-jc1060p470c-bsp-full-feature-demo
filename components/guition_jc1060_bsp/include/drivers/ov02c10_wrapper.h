@@ -27,7 +27,7 @@ esp_err_t bsp_camera_power_on(void);
  * @brief Initialize OV02C10 SCCB interface and detect chip ID.
  *
  * Reads CHIP_ID bytes from 0x300A/0x300B/0x300C and verifies
- * expected ID (0x560203).
+ * expected ID (0x560243).
  */
 esp_err_t bsp_camera_init(void);
 
