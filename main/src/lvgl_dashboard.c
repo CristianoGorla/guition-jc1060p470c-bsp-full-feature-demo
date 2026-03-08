@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "bsp_board.h"
+#include "bsp_sensors.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -41,6 +42,7 @@
 
 #define MAX_DASH_SCREENS      3
 #define DEBUG_TOOLS_PER_PAGE  9
+#define ENV_HISTORY_POINTS    60
 
 #define HEADER_H              70
 #define SUBTITLE_Y            80
@@ -62,6 +64,8 @@ typedef struct {
     lv_obj_t *card;
     lv_obj_t *status_led;
     lv_obj_t *status_label;
+    lv_obj_t *description_label;
+    lv_obj_t *detail_label;
 } peripheral_info_t;
 
 typedef struct {
@@ -87,6 +91,7 @@ typedef struct {
     lv_obj_t *swipe_hint[MAX_DASH_SCREENS];
 
     lv_timer_t *refresh_timer;
+    lv_timer_t *env_timer;
 
     peripheral_info_t peripherals[12];
     uint8_t periph_count;
@@ -102,6 +107,14 @@ typedef struct {
     lv_obj_t *camera_gain_label;
     lv_obj_t *camera_exposure_slider;
     lv_obj_t *camera_exposure_label;
+
+    peripheral_info_t *env_peripheral;
+    lv_obj_t *sensor_tool_detail_label;
+    lv_obj_t *sensor_overlay_detail_label;
+    lv_obj_t *sensor_tool_chart;
+    lv_chart_series_t *sensor_tool_temp_series;
+    lv_chart_series_t *sensor_tool_hum_series;
+    lv_chart_series_t *sensor_tool_press_series;
 } dashboard_state_t;
 
 static const char *TAG = "lvgl_dashboard";
@@ -112,6 +125,7 @@ static void dashboard_camera_preview_frame_ready(void *user_data);
 static void camera_gain_slider_event_cb(lv_event_t *e);
 static void camera_exposure_slider_event_cb(lv_event_t *e);
 #endif
+static void update_env_card_widgets(void);
 
 static const tool_info_t s_tools[] = {
     {
@@ -217,6 +231,7 @@ static void set_peripheral_status(peripheral_info_t *periph)
     esp_lcd_panel_handle_t display;
     esp_lcd_touch_handle_t touch;
     i2c_master_bus_handle_t i2c;
+    bsp_env_data_t env_data = {0};
 
     if (!periph->implemented) {
         periph->status = PERIPH_STATUS_NOT_IMPL;
@@ -248,6 +263,13 @@ static void set_peripheral_status(peripheral_info_t *periph)
 
     if (strcmp(periph->name, "SD Card") == 0) {
         periph->status = PERIPH_STATUS_WARNING;
+        return;
+    }
+
+    if (strcmp(periph->name, "Sensors") == 0) {
+        periph->status = (bsp_env_get_data(&env_data) == ESP_OK && env_data.has_temperature)
+                            ? PERIPH_STATUS_OK
+                            : PERIPH_STATUS_WARNING;
         return;
     }
 
@@ -352,19 +374,23 @@ static void init_peripheral_list(void)
     s_dash.peripherals[s_dash.periph_count++] = (peripheral_info_t){
         .name = "Camera",
         .description = "MIPI CSI interface",
-        .detail = "Not impl.",
+        .detail = "OV02C10 probe + preview",
         .icon_symbol = LV_SYMBOL_EYE_OPEN,
+    #ifdef CONFIG_BSP_ENABLE_CAMERA
+        .enabled_in_config = true,
+    #else
         .enabled_in_config = false,
-        .implemented = false,
+    #endif
+        .implemented = true,
     };
 
     s_dash.peripherals[s_dash.periph_count++] = (peripheral_info_t){
         .name = "Sensors",
         .description = "Temp/Humidity/Pressure",
-        .detail = "Future",
+        .detail = "AHT20 0x38 + BMP280 0x77",
         .icon_symbol = LV_SYMBOL_SETTINGS,
-        .enabled_in_config = false,
-        .implemented = false,
+        .enabled_in_config = true,
+        .implemented = true,
     };
 
     s_dash.peripherals[s_dash.periph_count++] = (peripheral_info_t){
@@ -491,12 +517,80 @@ static void refresh_status_internal(void)
     update_header_info_labels();
     apply_peripheral_status_to_ui();
     update_page_indicators();
+    update_env_card_widgets();
 }
 
 static void refresh_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
     refresh_status_internal();
+}
+
+static void update_env_card_widgets(void)
+{
+    bsp_env_data_t env_data = {0};
+    char text[96];
+    char hum_buf[16];
+    char press_buf[16];
+    const char *src_tag = "";
+
+    if (bsp_env_get_data(&env_data) != ESP_OK) {
+        if (s_dash.env_peripheral && s_dash.env_peripheral->detail_label) {
+            lv_label_set_text(s_dash.env_peripheral->detail_label, "No sensor data");
+        }
+        if (s_dash.sensor_tool_detail_label) {
+            lv_label_set_text(s_dash.sensor_tool_detail_label, "Waiting sensors...");
+        }
+        if (s_dash.sensor_overlay_detail_label) {
+            lv_label_set_text(s_dash.sensor_overlay_detail_label, "Waiting sensors...");
+        }
+        return;
+    }
+
+    src_tag = env_data.temperature_from_internal ? " [Internal]" : "";
+
+    if (env_data.has_humidity) {
+        snprintf(hum_buf, sizeof(hum_buf), "%.1f%%", (double)env_data.humidity_pct);
+    } else {
+        snprintf(hum_buf, sizeof(hum_buf), "n/a");
+    }
+
+    if (env_data.has_pressure) {
+        snprintf(press_buf, sizeof(press_buf), "%.1fhPa", (double)env_data.pressure_hpa);
+    } else {
+        snprintf(press_buf, sizeof(press_buf), "n/a");
+    }
+
+    snprintf(text,
+             sizeof(text),
+             "T %.1fC%s | H %s | P %s",
+             (double)env_data.temperature_c,
+             src_tag,
+             hum_buf,
+             press_buf);
+
+    if (s_dash.env_peripheral && s_dash.env_peripheral->detail_label) {
+        lv_label_set_text(s_dash.env_peripheral->detail_label, text);
+    }
+    if (s_dash.sensor_tool_detail_label) {
+        lv_label_set_text(s_dash.sensor_tool_detail_label, text);
+    }
+    if (s_dash.sensor_overlay_detail_label) {
+        lv_label_set_text(s_dash.sensor_overlay_detail_label, text);
+    }
+
+    if (s_dash.sensor_tool_chart && s_dash.sensor_tool_temp_series) {
+        lv_chart_set_next_value(s_dash.sensor_tool_chart,
+                                s_dash.sensor_tool_temp_series,
+                                (int32_t)(env_data.temperature_c * 10.0f));
+        lv_chart_refresh(s_dash.sensor_tool_chart);
+    }
+}
+
+static void env_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    update_env_card_widgets();
 }
 
 static lv_color_t overlay_status_badge_color(periph_status_t status)
@@ -917,6 +1011,105 @@ static void show_debug_tool_overlay(const tool_info_t *tool)
     }
 #endif
 
+    if (tool->tool_id == DEBUG_TOOL_SENSOR_MONITOR) {
+        lv_obj_t *header;
+        lv_obj_t *back_btn;
+        lv_obj_t *back_label;
+        lv_obj_t *title;
+        lv_obj_t *content;
+        lv_obj_t *live_label;
+        lv_obj_t *chart;
+
+        if (s_dash.overlay) {
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+            if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
+                bsp_camera_stop_preview();
+            }
+#endif
+            lv_obj_del(s_dash.overlay);
+            s_dash.overlay = NULL;
+            s_dash.overlay_periph = NULL;
+            s_dash.overlay_tool = DEBUG_TOOL_MAX;
+            s_dash.camera_canvas = NULL;
+            s_dash.camera_status_label = NULL;
+            s_dash.sensor_overlay_detail_label = NULL;
+            s_dash.sensor_tool_chart = NULL;
+            s_dash.sensor_tool_temp_series = NULL;
+            s_dash.sensor_tool_hum_series = NULL;
+            s_dash.sensor_tool_press_series = NULL;
+        }
+
+        s_dash.overlay = lv_obj_create(lv_scr_act());
+        lv_obj_set_size(s_dash.overlay, LV_PCT(100), LV_PCT(100));
+        lv_obj_set_style_bg_color(s_dash.overlay, lv_color_hex(COLOR_BG_DARK), 0);
+        lv_obj_set_style_border_width(s_dash.overlay, 0, 0);
+        lv_obj_set_style_radius(s_dash.overlay, 0, 0);
+        lv_obj_move_foreground(s_dash.overlay);
+        s_dash.overlay_tool = DEBUG_TOOL_SENSOR_MONITOR;
+
+        header = lv_obj_create(s_dash.overlay);
+        lv_obj_set_size(header, LV_PCT(100), 70);
+        lv_obj_set_pos(header, 0, 0);
+        lv_obj_set_style_bg_color(header, lv_color_hex(COLOR_BG_HEADER), 0);
+        lv_obj_set_style_border_width(header, 0, 0);
+        lv_obj_set_style_radius(header, 0, 0);
+
+        back_btn = lv_button_create(header);
+        lv_obj_set_size(back_btn, 120, 44);
+        lv_obj_align(back_btn, LV_ALIGN_LEFT_MID, 12, 0);
+        lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1a3e66), 0);
+        lv_obj_set_style_border_color(back_btn, lv_color_hex(COLOR_ACCENT), 0);
+        lv_obj_set_style_border_width(back_btn, 1, 0);
+        lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_ALL, NULL);
+
+        back_label = lv_label_create(back_btn);
+        lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
+        lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+        lv_obj_center(back_label);
+
+        title = lv_label_create(header);
+        lv_label_set_text_fmt(title, "%s", tool->name);
+        lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ACCENT), 0);
+        lv_obj_align(title, LV_ALIGN_CENTER, 50, 0);
+
+        content = lv_obj_create(s_dash.overlay);
+        lv_obj_set_size(content, LV_PCT(94), 460);
+        lv_obj_set_pos(content, 30, 92);
+        lv_obj_set_style_bg_color(content, lv_color_hex(COLOR_BG_CARD), 0);
+        lv_obj_set_style_border_color(content, lv_color_hex(COLOR_ACCENT), 0);
+        lv_obj_set_style_border_width(content, 2, 0);
+        lv_obj_set_style_radius(content, 10, 0);
+        lv_obj_set_style_pad_all(content, 16, 0);
+        lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+
+        live_label = lv_label_create(content);
+        lv_label_set_text(live_label, "Waiting sensors...");
+        lv_obj_set_style_text_font(live_label, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(live_label, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+        lv_obj_align(live_label, LV_ALIGN_TOP_LEFT, 4, 4);
+        s_dash.sensor_overlay_detail_label = live_label;
+
+        chart = lv_chart_create(content);
+        lv_obj_set_size(chart, LV_PCT(98), 360);
+        lv_obj_align(chart, LV_ALIGN_BOTTOM_MID, 0, 0);
+        lv_obj_set_style_bg_opa(chart, LV_OPA_30, 0);
+        lv_obj_set_style_border_width(chart, 0, 0);
+        lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
+        lv_chart_set_point_count(chart, ENV_HISTORY_POINTS);
+        lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, -200, 1000);
+        lv_chart_set_update_mode(chart, LV_CHART_UPDATE_MODE_SHIFT);
+        lv_obj_clear_flag(chart, LV_OBJ_FLAG_CLICKABLE);
+
+        s_dash.sensor_tool_temp_series = lv_chart_add_series(chart, lv_palette_main(LV_PALETTE_RED), LV_CHART_AXIS_PRIMARY_Y);
+        s_dash.sensor_tool_hum_series = NULL;
+        s_dash.sensor_tool_press_series = NULL;
+        s_dash.sensor_tool_chart = chart;
+
+        update_env_card_widgets();
+        return;
+    }
+
     if (s_dash.overlay) {
 #ifdef CONFIG_BSP_ENABLE_CAMERA
         if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
@@ -929,6 +1122,11 @@ static void show_debug_tool_overlay(const tool_info_t *tool)
         s_dash.overlay_tool = DEBUG_TOOL_MAX;
         s_dash.camera_canvas = NULL;
         s_dash.camera_status_label = NULL;
+        s_dash.sensor_overlay_detail_label = NULL;
+        s_dash.sensor_tool_chart = NULL;
+        s_dash.sensor_tool_temp_series = NULL;
+        s_dash.sensor_tool_hum_series = NULL;
+        s_dash.sensor_tool_press_series = NULL;
     }
 
     s_dash.overlay = lv_obj_create(lv_scr_act());
@@ -1023,8 +1221,10 @@ static void tool_card_event_cb(lv_event_t *e)
 static void overlay_back_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
+    lv_event_code_t close_code_compat = (lv_event_code_t)8;
     if (code != LV_EVENT_CLICKED && code != LV_EVENT_SHORT_CLICKED &&
-        code != LV_EVENT_RELEASED && code != LV_EVENT_LONG_PRESSED) {
+        code != LV_EVENT_RELEASED && code != LV_EVENT_LONG_PRESSED &&
+        code != close_code_compat) {
         return;
     }
 
@@ -1043,6 +1243,11 @@ static void overlay_back_event_cb(lv_event_t *e)
         s_dash.overlay_tool = DEBUG_TOOL_MAX;
         s_dash.camera_canvas = NULL;
         s_dash.camera_status_label = NULL;
+        s_dash.sensor_overlay_detail_label = NULL;
+        s_dash.sensor_tool_chart = NULL;
+        s_dash.sensor_tool_temp_series = NULL;
+        s_dash.sensor_tool_hum_series = NULL;
+        s_dash.sensor_tool_press_series = NULL;
     }
 }
 
@@ -1072,6 +1277,11 @@ static void show_peripheral_overlay(peripheral_info_t *periph)
         s_dash.overlay_tool = DEBUG_TOOL_MAX;
         s_dash.camera_canvas = NULL;
         s_dash.camera_status_label = NULL;
+        s_dash.sensor_overlay_detail_label = NULL;
+        s_dash.sensor_tool_chart = NULL;
+        s_dash.sensor_tool_temp_series = NULL;
+        s_dash.sensor_tool_hum_series = NULL;
+        s_dash.sensor_tool_press_series = NULL;
     }
 
     s_dash.overlay = lv_obj_create(lv_scr_act());
@@ -1265,6 +1475,13 @@ static lv_obj_t *create_peripheral_card(lv_obj_t *parent, peripheral_info_t *per
     lv_obj_add_event_cb(card, periph_card_event_cb, LV_EVENT_CLICKED, periph);
 
     periph->card = card;
+    periph->description_label = desc;
+    periph->detail_label = detail;
+
+    if (strcmp(periph->name, "Sensors") == 0) {
+        s_dash.env_peripheral = periph;
+    }
+
     return card;
 }
 
@@ -1317,6 +1534,10 @@ static lv_obj_t *create_debug_tool_card(lv_obj_t *parent, const tool_info_t *too
     lv_obj_set_style_text_font(detail, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(detail, lv_color_hex(COLOR_TEXT_SECONDARY), 0);
     lv_obj_align(detail, LV_ALIGN_TOP_LEFT, 68, 62);
+
+    if (tool->tool_id == DEBUG_TOOL_SENSOR_MONITOR) {
+        s_dash.sensor_tool_detail_label = detail;
+    }
 
     arrow = lv_label_create(card);
     lv_label_set_text(arrow, LV_SYMBOL_PLAY);
@@ -1571,6 +1792,9 @@ esp_err_t lvgl_dashboard_init(const dashboard_config_t *config)
         s_dash.refresh_timer = lv_timer_create(refresh_timer_cb, s_dash.config.refresh_interval_ms, NULL);
     }
 
+    s_dash.env_timer = lv_timer_create(env_timer_cb, 1000, NULL);
+    update_env_card_widgets();
+
     lvgl_port_unlock();
 
     s_dash.initialized = true;
@@ -1597,6 +1821,11 @@ esp_err_t lvgl_dashboard_deinit(void)
         s_dash.refresh_timer = NULL;
     }
 
+    if (s_dash.env_timer) {
+        lv_timer_delete(s_dash.env_timer);
+        s_dash.env_timer = NULL;
+    }
+
     if (s_dash.overlay) {
 #ifdef CONFIG_BSP_ENABLE_CAMERA
         if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
@@ -1609,6 +1838,11 @@ esp_err_t lvgl_dashboard_deinit(void)
         s_dash.overlay_tool = DEBUG_TOOL_MAX;
         s_dash.camera_canvas = NULL;
         s_dash.camera_status_label = NULL;
+        s_dash.sensor_overlay_detail_label = NULL;
+        s_dash.sensor_tool_chart = NULL;
+        s_dash.sensor_tool_temp_series = NULL;
+        s_dash.sensor_tool_hum_series = NULL;
+        s_dash.sensor_tool_press_series = NULL;
     }
 
     if (s_dash.tileview) {

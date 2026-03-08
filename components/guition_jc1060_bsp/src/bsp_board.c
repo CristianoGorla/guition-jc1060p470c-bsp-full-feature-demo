@@ -15,6 +15,7 @@
 #include "freertos/task.h"
 #include "esp_sleep.h"
 #include "sdkconfig.h"
+#include "bsp_sensors.h"
 
 /* Include driver headers */
 #ifdef CONFIG_BSP_ENABLE_DISPLAY
@@ -93,6 +94,8 @@ static void bsp_apply_external_log_filter(void)
     const char *noisy_tags[] = {
         "jd9165",
         "GT911",
+        "ov02c10",
+        "temperature_sensor",
         "LVGL",
         "LVGL_INIT",
         "lvgl_demo",
@@ -246,6 +249,15 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
     ESP_ERROR_CHECK(bsp_rtc_init());
     LOGI( "[PHASE D] [OK] RTC");
 #endif
+
+    if (g_i2c_bus_handle != NULL) {
+        esp_err_t sensors_ret = bsp_sensors_init(g_i2c_bus_handle);
+        if (sensors_ret != ESP_OK) {
+            LOGW("[PHASE D] [WARN] Sensors init failed: %s", esp_err_to_name(sensors_ret));
+        }
+    } else {
+        LOGW("[PHASE D] [WARN] Sensors skipped (I2C bus unavailable)");
+    }
 
 #ifdef CONFIG_BSP_ENABLE_CAMERA
     esp_err_t cam_ret = bsp_camera_init();

@@ -14,8 +14,11 @@
 #include "driver/gpio.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch.h"
+#include "esp_timer.h"
 #include "build_info.h"
 #include "bsp_board.h"
+#include "bsp_priv.h"
+#include "bsp_sensors.h"
 #ifdef CONFIG_BSP_ENABLE_DEBUG_MODE
 #include "bsp_tests.h"
 #endif
@@ -26,6 +29,14 @@
 #include "bootstrap_manager.h"
 #include "backlight_test.h"
 
+#ifdef CONFIG_BSP_ENABLE_WIFI
+#include "esp_hosted_wifi.h"
+#include "esp_netif.h"
+#ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
+#include "wifi_config.h"
+#endif
+#endif
+
 #ifdef CONFIG_BSP_ENABLE_LVGL
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
@@ -35,6 +46,9 @@
 #endif
 
 static const char *TAG = "MAIN";
+#if CONFIG_BSP_SENSORS_LOG_UPTIME_TEMP
+static const char *SYSTEM_TAG = "SYSTEM";
+#endif
 static const char *MAIN_BANNER_LINE = "====================================================================================================";
 #define MAIN_BANNER_WIDTH 78
 
@@ -151,6 +165,49 @@ static void on_debug_tool_selected(debug_tool_t tool, void *user_data)
 }
 #endif
 
+#if CONFIG_BSP_SENSORS_LOG_UPTIME_TEMP
+static void uptime_temp_log_task(void *arg)
+{
+    (void)arg;
+
+    while (1) {
+        int64_t uptime_sec = esp_timer_get_time() / 1000000LL;
+        bsp_sensor_data_t sensor_data = {0};
+        char temp_buf[24];
+        char hum_buf[24];
+        char press_buf[24];
+
+        (void)bsp_sensor_get_data(&sensor_data);
+
+        if (sensor_data.has_temperature) {
+            snprintf(temp_buf, sizeof(temp_buf), "%.2f °C", (double)sensor_data.temperature_c);
+        } else {
+            snprintf(temp_buf, sizeof(temp_buf), "n/a");
+        }
+
+        if (sensor_data.has_humidity) {
+            snprintf(hum_buf, sizeof(hum_buf), "%.2f %%", (double)sensor_data.humidity_pct);
+        } else {
+            snprintf(hum_buf, sizeof(hum_buf), "n/a");
+        }
+
+        if (sensor_data.has_pressure) {
+            snprintf(press_buf, sizeof(press_buf), "%.2f hPa", (double)sensor_data.pressure_hpa);
+        } else {
+            snprintf(press_buf, sizeof(press_buf), "n/a");
+        }
+
+        ESP_LOGI(SYSTEM_TAG,
+                 "Uptime: %llds | Temp: %s | Hum: %s | Press: %s",
+                 (long long)uptime_sec,
+                 temp_buf,
+                 hum_buf,
+                 press_buf);
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
+#endif
+
 void app_main(void)
 {
     esp_err_t ret;
@@ -217,6 +274,31 @@ void app_main(void)
     
 #endif
 
+#if defined(CONFIG_BSP_ENABLE_WIFI) && defined(CONFIG_APP_ENABLE_WIFI_CONNECT)
+    if (check_if_already_has_ip()) {
+        ESP_LOGI(TAG, "WiFi already connected (IP assigned)");
+    } else {
+        ESP_LOGI(TAG, "Connecting to: %s", WIFI_SSID);
+        wifi_connect(WIFI_SSID, WIFI_PASSWORD);
+        ESP_LOGI(TAG, "Waiting for IP address (15s timeout)...");
+        wait_for_ip();
+
+        if (check_if_already_has_ip()) {
+            esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+            esp_netif_ip_info_t ip_info;
+
+            if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+                ESP_LOGI(TAG, "WiFi connected");
+                ESP_LOGI(TAG, "IP: " IPSTR, IP2STR(&ip_info.ip));
+                ESP_LOGI(TAG, "GW: " IPSTR, IP2STR(&ip_info.gw));
+                ESP_LOGI(TAG, "Netmask: " IPSTR, IP2STR(&ip_info.netmask));
+            }
+        } else {
+            ESP_LOGW(TAG, "WiFi connect timeout");
+        }
+    }
+#endif
+
     /* Step 4: LVGL Init - AFTER Bootstrap (safe PSRAM allocation) */
 #ifdef CONFIG_BSP_ENABLE_LVGL
     ret = lvgl_port_init_custom();
@@ -254,6 +336,20 @@ void app_main(void)
     ret = bsp_heartbeat_start();
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to start heartbeat: %s", esp_err_to_name(ret));
+    }
+#endif
+
+#if CONFIG_BSP_SENSORS_LOG_UPTIME_TEMP
+    BaseType_t task_ret = xTaskCreate(
+        uptime_temp_log_task,
+        "uptime_temp_log",
+        3072,
+        NULL,
+        1,
+        NULL
+    );
+    if (task_ret != pdPASS) {
+        ESP_LOGW(TAG, "Failed to start uptime temperature log task");
     }
 #endif
 
