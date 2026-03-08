@@ -7,7 +7,9 @@
 #include "driver/i2c_master.h"
 #include "driver/temperature_sensor.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
 
@@ -30,7 +32,9 @@
 #define BSP_I2C_PROBE_TIMEOUT_MS       50
 #define AHT20_ADDR                     0x38
 #define BMP280_ADDR_PRIMARY            0x77
-#define BMP280_ADDR_SECONDARY          0x76
+#define BSP_ENV_SAMPLE_PERIOD_MS       1000
+#define BSP_ENV_SAMPLE_TASK_STACK      4096
+#define BSP_ENV_SAMPLE_TASK_PRIO       4
 
 #define AHT20_CMD_INIT_CALIB_0         0xBE
 #define AHT20_CMD_INIT_CALIB_1         0x08
@@ -75,9 +79,13 @@ static bool s_initialized;
 static bool s_aht20_ready;
 static bool s_bmp280_ready;
 static bool s_tsens_ready;
+static bool s_last_temp_from_internal;
 static float s_last_valid_temp_c = NAN;
 static float s_last_valid_humidity_pct = NAN;
 static float s_last_valid_pressure_hpa = NAN;
+static SemaphoreHandle_t s_env_mutex;
+static TaskHandle_t s_env_task_handle;
+static bsp_env_data_t s_env_data;
 
 static inline uint16_t u16_le(const uint8_t *data)
 {
@@ -104,21 +112,6 @@ static esp_err_t bsp_i2c_probe(uint8_t addr)
     return i2c_master_probe(s_bus_handle, addr, BSP_I2C_PROBE_TIMEOUT_MS);
 }
 
-static void bsp_scan_known_i2c_devices(void)
-{
-    static const uint8_t known_addresses[] = {0x14, 0x18, 0x32, 0x36, 0x38, 0x77, 0x76};
-
-    SENSOR_BOOT_LOGI("I2C0 scan on SDA=7 SCL=8 (shared bus)");
-    for (size_t i = 0; i < sizeof(known_addresses) / sizeof(known_addresses[0]); i++) {
-        esp_err_t ret = bsp_i2c_probe(known_addresses[i]);
-        if (ret == ESP_OK) {
-            SENSOR_BOOT_LOGI("I2C device detected @ 0x%02X", known_addresses[i]);
-        } else {
-            SENSOR_BOOT_LOGW("I2C device not responding @ 0x%02X", known_addresses[i]);
-        }
-    }
-}
-
 static esp_err_t bsp_aht20_init(void)
 {
     esp_err_t ret = bsp_i2c_probe(AHT20_ADDR);
@@ -129,14 +122,14 @@ static esp_err_t bsp_aht20_init(void)
 
     ret = bsp_i2c_add_device(AHT20_ADDR, &s_aht20_dev);
     if (ret != ESP_OK) {
-        LOGE("Failed to add AHT20 I2C device: %s", esp_err_to_name(ret));
+        LOGE("[ERROR] Failed to add AHT20 I2C device: %s", esp_err_to_name(ret));
         return ret;
     }
 
     uint8_t init_cmd[3] = {AHT20_CMD_INIT_CALIB_0, AHT20_CMD_INIT_CALIB_1, AHT20_CMD_INIT_CALIB_2};
     ret = i2c_master_transmit(s_aht20_dev, init_cmd, sizeof(init_cmd), -1);
     if (ret != ESP_OK) {
-        LOGE("AHT20 init command failed: %s", esp_err_to_name(ret));
+        LOGE("[ERROR] AHT20 init command failed: %s", esp_err_to_name(ret));
         i2c_master_bus_rm_device(s_aht20_dev);
         s_aht20_dev = NULL;
         return ret;
@@ -155,28 +148,23 @@ static esp_err_t bsp_bmp280_read_reg(uint8_t reg, uint8_t *data, size_t data_len
 
 static esp_err_t bsp_bmp280_init(void)
 {
-    uint8_t bmp_addr = BMP280_ADDR_PRIMARY;
     esp_err_t ret = bsp_i2c_probe(BMP280_ADDR_PRIMARY);
 
     if (ret != ESP_OK) {
-        ret = bsp_i2c_probe(BMP280_ADDR_SECONDARY);
-        bmp_addr = BMP280_ADDR_SECONDARY;
-    }
-    if (ret != ESP_OK) {
-        LOGW("BMP280 not found at 0x%02X or 0x%02X", BMP280_ADDR_PRIMARY, BMP280_ADDR_SECONDARY);
+        LOGW("BMP280 not found at 0x%02X", BMP280_ADDR_PRIMARY);
         return ret;
     }
 
-    ret = bsp_i2c_add_device(bmp_addr, &s_bmp280_dev);
+    ret = bsp_i2c_add_device(BMP280_ADDR_PRIMARY, &s_bmp280_dev);
     if (ret != ESP_OK) {
-        LOGE("Failed to add BMP280 I2C device: %s", esp_err_to_name(ret));
+        LOGE("[ERROR] Failed to add BMP280 I2C device: %s", esp_err_to_name(ret));
         return ret;
     }
 
     uint8_t chip_id = 0;
     ret = bsp_bmp280_read_reg(BMP280_REG_CHIP_ID, &chip_id, 1);
     if (ret != ESP_OK || chip_id != BMP280_CHIP_ID) {
-        LOGE("BMP280 chip id check failed (id=0x%02X, err=%s)", chip_id, esp_err_to_name(ret));
+        LOGE("[ERROR] BMP280 chip id check failed (id=0x%02X, err=%s)", chip_id, esp_err_to_name(ret));
         i2c_master_bus_rm_device(s_bmp280_dev);
         s_bmp280_dev = NULL;
         return ESP_FAIL;
@@ -185,7 +173,7 @@ static esp_err_t bsp_bmp280_init(void)
     uint8_t calib_buf[24] = {0};
     ret = bsp_bmp280_read_reg(BMP280_REG_CALIB_START, calib_buf, sizeof(calib_buf));
     if (ret != ESP_OK) {
-        LOGE("BMP280 calibration read failed: %s", esp_err_to_name(ret));
+        LOGE("[ERROR] BMP280 calibration read failed: %s", esp_err_to_name(ret));
         i2c_master_bus_rm_device(s_bmp280_dev);
         s_bmp280_dev = NULL;
         return ret;
@@ -205,7 +193,7 @@ static esp_err_t bsp_bmp280_init(void)
     s_bmp280_calib.dig_P9 = s16_le(&calib_buf[22]);
 
     s_bmp280_ready = true;
-    LOGI("BMP280 ready @ 0x%02X", bmp_addr);
+    LOGI("BMP280 ready @ 0x%02X", BMP280_ADDR_PRIMARY);
     return ESP_OK;
 }
 
@@ -333,6 +321,88 @@ static esp_err_t bsp_tsens_read_temp(float *temp_c)
     return temperature_sensor_get_celsius(s_tsens_handle, temp_c);
 }
 
+static esp_err_t bsp_collect_env_data(bsp_env_data_t *out_data)
+{
+    float temp_c = NAN;
+    float humidity_pct = NAN;
+    float pressure_hpa = NAN;
+
+    if (out_data == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memset(out_data, 0, sizeof(*out_data));
+
+    if (s_aht20_ready && bsp_aht20_read_temp_humidity(&temp_c, &humidity_pct) == ESP_OK) {
+        out_data->humidity_pct = humidity_pct;
+        out_data->has_humidity = true;
+        s_last_valid_humidity_pct = humidity_pct;
+    }
+
+    if (s_bmp280_ready && bsp_bmp280_read_temp_pressure(&temp_c, &pressure_hpa) == ESP_OK) {
+        out_data->temperature_c = temp_c;
+        out_data->pressure_hpa = pressure_hpa;
+        out_data->has_temperature = true;
+        out_data->has_pressure = true;
+        out_data->temperature_from_internal = false;
+        s_last_valid_temp_c = temp_c;
+        s_last_valid_pressure_hpa = pressure_hpa;
+        s_last_temp_from_internal = false;
+    }
+
+    if (!out_data->has_temperature && bsp_tsens_read_temp(&temp_c) == ESP_OK) {
+        out_data->temperature_c = temp_c;
+        out_data->has_temperature = true;
+        out_data->temperature_from_internal = true;
+        s_last_valid_temp_c = temp_c;
+        s_last_temp_from_internal = true;
+    }
+
+    if (!out_data->has_temperature && !isnan(s_last_valid_temp_c)) {
+        out_data->temperature_c = s_last_valid_temp_c;
+        out_data->has_temperature = true;
+        out_data->temperature_from_internal = s_last_temp_from_internal;
+    }
+    if (!out_data->has_humidity && !isnan(s_last_valid_humidity_pct)) {
+        out_data->humidity_pct = s_last_valid_humidity_pct;
+        out_data->has_humidity = true;
+    }
+    if (!out_data->has_pressure && !isnan(s_last_valid_pressure_hpa)) {
+        out_data->pressure_hpa = s_last_valid_pressure_hpa;
+        out_data->has_pressure = true;
+    }
+
+    return out_data->has_temperature ? ESP_OK : ESP_FAIL;
+}
+
+static void bsp_publish_env_data(const bsp_env_data_t *sample)
+{
+    if (sample == NULL || s_env_mutex == NULL) {
+        return;
+    }
+
+    if (xSemaphoreTake(s_env_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+        bsp_env_data_t updated = *sample;
+        updated.sample_count = s_env_data.sample_count + 1;
+        updated.timestamp_ms = esp_timer_get_time() / 1000;
+        s_env_data = updated;
+        xSemaphoreGive(s_env_mutex);
+    }
+}
+
+static void bsp_env_sampler_task(void *arg)
+{
+    (void)arg;
+
+    while (1) {
+        bsp_env_data_t sample = {0};
+        if (bsp_collect_env_data(&sample) == ESP_OK) {
+            bsp_publish_env_data(&sample);
+        }
+        vTaskDelay(pdMS_TO_TICKS(BSP_ENV_SAMPLE_PERIOD_MS));
+    }
+}
+
 esp_err_t bsp_sensors_init(i2c_master_bus_handle_t i2c_bus_handle)
 {
     if (s_initialized) {
@@ -341,11 +411,11 @@ esp_err_t bsp_sensors_init(i2c_master_bus_handle_t i2c_bus_handle)
 
     s_bus_handle = i2c_bus_handle;
     if (s_bus_handle == NULL) {
-        LOGE("I2C bus is not initialized");
+        LOGE("[ERROR] I2C bus is not initialized");
         return ESP_ERR_INVALID_STATE;
     }
 
-    bsp_scan_known_i2c_devices();
+    SENSOR_BOOT_LOGI("Targeted sensor probe start (AHT20=0x%02X, BMP280=0x%02X)", AHT20_ADDR, BMP280_ADDR_PRIMARY);
 
     if (bsp_aht20_init() != ESP_OK) {
         LOGW("AHT20 unavailable, will fallback to BMP280/TSENS");
@@ -365,15 +435,38 @@ esp_err_t bsp_sensors_init(i2c_master_bus_handle_t i2c_bus_handle)
         LOGW("[WARN] Sensors partial init (AHT20=%d BMP280=%d)", (int)s_aht20_ready, (int)s_bmp280_ready);
     }
 
+    s_env_mutex = xSemaphoreCreateMutex();
+    if (s_env_mutex == NULL) {
+        LOGE("[ERROR] Failed to create sensor data mutex");
+        return ESP_ERR_NO_MEM;
+    }
+
+    {
+        bsp_env_data_t first_sample = {0};
+        if (bsp_collect_env_data(&first_sample) == ESP_OK) {
+            bsp_publish_env_data(&first_sample);
+        }
+    }
+
+    if (xTaskCreate(bsp_env_sampler_task,
+                    "bsp_env_sampler",
+                    BSP_ENV_SAMPLE_TASK_STACK,
+                    NULL,
+                    BSP_ENV_SAMPLE_TASK_PRIO,
+                    &s_env_task_handle) != pdPASS) {
+        LOGE("[ERROR] Failed to start sensor sampler task");
+        vSemaphoreDelete(s_env_mutex);
+        s_env_mutex = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
     s_initialized = true;
     return (s_aht20_ready || s_bmp280_ready || s_tsens_ready) ? ESP_OK : ESP_FAIL;
 }
 
-esp_err_t bsp_sensor_get_data(bsp_sensor_data_t *out_data)
+esp_err_t bsp_env_get_data(bsp_env_data_t *out_data)
 {
-    float temp_c = NAN;
-    float humidity_pct = NAN;
-    float pressure_hpa = NAN;
+    bsp_env_data_t snapshot = {0};
 
     if (out_data == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -385,46 +478,26 @@ esp_err_t bsp_sensor_get_data(bsp_sensor_data_t *out_data)
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (s_aht20_ready && bsp_aht20_read_temp_humidity(&temp_c, &humidity_pct) == ESP_OK) {
-        out_data->temperature_c = temp_c;
-        out_data->humidity_pct = humidity_pct;
-        out_data->has_temperature = true;
-        out_data->has_humidity = true;
-        s_last_valid_temp_c = temp_c;
-        s_last_valid_humidity_pct = humidity_pct;
+    if (s_env_mutex != NULL && xSemaphoreTake(s_env_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        snapshot = s_env_data;
+        xSemaphoreGive(s_env_mutex);
     }
 
-    if (s_bmp280_ready && bsp_bmp280_read_temp_pressure(&temp_c, &pressure_hpa) == ESP_OK) {
-        if (!out_data->has_temperature) {
-            out_data->temperature_c = temp_c;
-            out_data->has_temperature = true;
-            s_last_valid_temp_c = temp_c;
+    if (snapshot.sample_count == 0) {
+        if (bsp_collect_env_data(&snapshot) == ESP_OK) {
+            snapshot.sample_count = 1;
+            snapshot.timestamp_ms = esp_timer_get_time() / 1000;
+            bsp_publish_env_data(&snapshot);
         }
-        out_data->pressure_hpa = pressure_hpa;
-        out_data->has_pressure = true;
-        s_last_valid_pressure_hpa = pressure_hpa;
     }
 
-    if (!out_data->has_temperature && bsp_tsens_read_temp(&temp_c) == ESP_OK) {
-        out_data->temperature_c = temp_c;
-        out_data->has_temperature = true;
-        s_last_valid_temp_c = temp_c;
-    }
-
-    if (!out_data->has_temperature && !isnan(s_last_valid_temp_c)) {
-        out_data->temperature_c = s_last_valid_temp_c;
-        out_data->has_temperature = true;
-    }
-    if (!out_data->has_humidity && !isnan(s_last_valid_humidity_pct)) {
-        out_data->humidity_pct = s_last_valid_humidity_pct;
-        out_data->has_humidity = true;
-    }
-    if (!out_data->has_pressure && !isnan(s_last_valid_pressure_hpa)) {
-        out_data->pressure_hpa = s_last_valid_pressure_hpa;
-        out_data->has_pressure = true;
-    }
-
+    *out_data = snapshot;
     return out_data->has_temperature ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t bsp_sensor_get_data(bsp_sensor_data_t *out_data)
+{
+    return bsp_env_get_data(out_data);
 }
 
 float bsp_sensor_get_temp(void)

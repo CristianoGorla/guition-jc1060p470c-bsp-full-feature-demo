@@ -615,9 +615,9 @@ menu "Guition JC1060P470C Board Configuration"
             bool "Enable NVS"
             default y
 
-        config BSP_LOG_UPTIME_WITH_TEMP
+        config BSP_SENSORS_LOG_UPTIME_TEMP
             bool "Enable uptime log with temperature"
-            default y
+            default n
             help
                 When enabled, the application logs every 5 seconds using the
                 format: "SYSTEM: Uptime: %llds | Temp: %.2f C".

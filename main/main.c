@@ -46,7 +46,9 @@
 #endif
 
 static const char *TAG = "MAIN";
+#if CONFIG_BSP_SENSORS_LOG_UPTIME_TEMP
 static const char *SYSTEM_TAG = "SYSTEM";
+#endif
 static const char *MAIN_BANNER_LINE = "====================================================================================================";
 #define MAIN_BANNER_WIDTH 78
 
@@ -163,7 +165,7 @@ static void on_debug_tool_selected(debug_tool_t tool, void *user_data)
 }
 #endif
 
-#ifdef CONFIG_BSP_LOG_UPTIME_WITH_TEMP
+#if CONFIG_BSP_SENSORS_LOG_UPTIME_TEMP
 static void uptime_temp_log_task(void *arg)
 {
     (void)arg;
@@ -337,7 +339,7 @@ void app_main(void)
     }
 #endif
 
-#ifdef CONFIG_BSP_LOG_UPTIME_WITH_TEMP
+#if CONFIG_BSP_SENSORS_LOG_UPTIME_TEMP
     BaseType_t task_ret = xTaskCreate(
         uptime_temp_log_task,
         "uptime_temp_log",
