@@ -14,8 +14,11 @@
 #include "driver/gpio.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch.h"
+#include "esp_timer.h"
 #include "build_info.h"
 #include "bsp_board.h"
+#include "bsp_priv.h"
+#include "bsp_sensors.h"
 #ifdef CONFIG_BSP_ENABLE_DEBUG_MODE
 #include "bsp_tests.h"
 #endif
@@ -35,6 +38,7 @@
 #endif
 
 static const char *TAG = "MAIN";
+static const char *SYSTEM_TAG = "SYSTEM";
 static const char *MAIN_BANNER_LINE = "====================================================================================================";
 #define MAIN_BANNER_WIDTH 78
 
@@ -151,6 +155,21 @@ static void on_debug_tool_selected(debug_tool_t tool, void *user_data)
 }
 #endif
 
+#ifdef CONFIG_BSP_LOG_UPTIME_WITH_TEMP
+static void uptime_temp_log_task(void *arg)
+{
+    (void)arg;
+
+    while (1) {
+        int64_t uptime_sec = esp_timer_get_time() / 1000000LL;
+        float temp_c = bsp_sensor_get_temp();
+
+        ESP_LOGI(SYSTEM_TAG, "Uptime: %llds | Temp: %.2f °C", (long long)uptime_sec, (double)temp_c);
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
+#endif
+
 void app_main(void)
 {
     esp_err_t ret;
@@ -187,6 +206,13 @@ void app_main(void)
         ESP_LOGE(TAG, "BSP init failed: %s", esp_err_to_name(ret));
         return;
     }
+
+#ifdef CONFIG_BSP_LOG_UPTIME_WITH_TEMP
+    ret = bsp_sensors_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Sensor HW init failed, uptime log will use available fallback");
+    }
+#endif
 
     /* Step 2: NVS Init */
 #ifdef CONFIG_APP_ENABLE_NVS
@@ -254,6 +280,20 @@ void app_main(void)
     ret = bsp_heartbeat_start();
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to start heartbeat: %s", esp_err_to_name(ret));
+    }
+#endif
+
+#ifdef CONFIG_BSP_LOG_UPTIME_WITH_TEMP
+    BaseType_t task_ret = xTaskCreate(
+        uptime_temp_log_task,
+        "uptime_temp_log",
+        3072,
+        NULL,
+        1,
+        NULL
+    );
+    if (task_ret != pdPASS) {
+        ESP_LOGW(TAG, "Failed to start uptime temperature log task");
     }
 #endif
 

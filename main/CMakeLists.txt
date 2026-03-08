@@ -12,6 +12,7 @@ idf_component_register(
         "include"
         "${CMAKE_CURRENT_BINARY_DIR}"
     REQUIRES 
+        bsp
         guition_jc1060_bsp
         nvs_flash
         esp_netif

@@ -614,6 +614,16 @@ menu "Guition JC1060P470C Board Configuration"
         config APP_ENABLE_NVS
             bool "Enable NVS"
             default y
+
+        config BSP_LOG_UPTIME_WITH_TEMP
+            bool "Enable uptime log with temperature"
+            default y
+            help
+                When enabled, the application logs every 5 seconds using the
+                format: "SYSTEM: Uptime: %llds | Temp: %.2f C".
+                Temperature comes from AHT20/BMP280 on shared I2C0, with TSENS
+                fallback when I2C sensors are not detected.
+
         config APP_ENABLE_WIFI_CONNECT
             bool "WiFi auto-connect"
             default y
