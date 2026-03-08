@@ -63,6 +63,7 @@ endif()
 
 # Build component requirements based on Kconfig
 set(COMPONENT_REQUIRES
+    bsp
     driver
     freertos
     nvs_flash

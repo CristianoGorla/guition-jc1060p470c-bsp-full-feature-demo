@@ -15,6 +15,7 @@
 #include "freertos/task.h"
 #include "esp_sleep.h"
 #include "sdkconfig.h"
+#include "bsp_sensors.h"
 
 /* Include driver headers */
 #ifdef CONFIG_BSP_ENABLE_DISPLAY
@@ -255,6 +256,15 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
         LOGW( "[PHASE D] [WARN] Camera probe failed: %s", esp_err_to_name(cam_ret));
     }
 #endif
+
+    if (g_i2c_bus_handle != NULL) {
+        esp_err_t sensors_ret = bsp_sensors_init(g_i2c_bus_handle);
+        if (sensors_ret != ESP_OK) {
+            LOGW("[PHASE D] [WARN] Sensors init failed: %s", esp_err_to_name(sensors_ret));
+        }
+    } else {
+        LOGW("[PHASE D] [WARN] Sensors skipped (I2C bus unavailable)");
+    }
 
     LOGI( "[PHASE D] [OK] Complete");
     return ESP_OK;

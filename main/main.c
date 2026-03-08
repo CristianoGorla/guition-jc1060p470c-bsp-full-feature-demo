@@ -162,9 +162,37 @@ static void uptime_temp_log_task(void *arg)
 
     while (1) {
         int64_t uptime_sec = esp_timer_get_time() / 1000000LL;
-        float temp_c = bsp_sensor_get_temp();
+        bsp_sensor_data_t sensor_data = {0};
+        char temp_buf[24];
+        char hum_buf[24];
+        char press_buf[24];
 
-        ESP_LOGI(SYSTEM_TAG, "Uptime: %llds | Temp: %.2f °C", (long long)uptime_sec, (double)temp_c);
+        (void)bsp_sensor_get_data(&sensor_data);
+
+        if (sensor_data.has_temperature) {
+            snprintf(temp_buf, sizeof(temp_buf), "%.2f °C", (double)sensor_data.temperature_c);
+        } else {
+            snprintf(temp_buf, sizeof(temp_buf), "n/a");
+        }
+
+        if (sensor_data.has_humidity) {
+            snprintf(hum_buf, sizeof(hum_buf), "%.2f %%", (double)sensor_data.humidity_pct);
+        } else {
+            snprintf(hum_buf, sizeof(hum_buf), "n/a");
+        }
+
+        if (sensor_data.has_pressure) {
+            snprintf(press_buf, sizeof(press_buf), "%.2f hPa", (double)sensor_data.pressure_hpa);
+        } else {
+            snprintf(press_buf, sizeof(press_buf), "n/a");
+        }
+
+        ESP_LOGI(SYSTEM_TAG,
+                 "Uptime: %llds | Temp: %s | Hum: %s | Press: %s",
+                 (long long)uptime_sec,
+                 temp_buf,
+                 hum_buf,
+                 press_buf);
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
@@ -206,13 +234,6 @@ void app_main(void)
         ESP_LOGE(TAG, "BSP init failed: %s", esp_err_to_name(ret));
         return;
     }
-
-#ifdef CONFIG_BSP_LOG_UPTIME_WITH_TEMP
-    ret = bsp_sensors_init();
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Sensor HW init failed, uptime log will use available fallback");
-    }
-#endif
 
     /* Step 2: NVS Init */
 #ifdef CONFIG_APP_ENABLE_NVS
