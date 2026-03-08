@@ -17,9 +17,13 @@
 #include "driver/ledc.h"
 #include "esp_cam_ctlr.h"
 #include "esp_cam_ctlr_csi.h"
+#include "esp_cam_sensor.h"
 #include "esp_check.h"
+#include "esp_sccb_i2c.h"
+#include "esp_sccb_intf.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "ov02c10.h"
 #include "sdkconfig.h"
 #include "soc/soc_caps.h"
 
@@ -68,6 +72,10 @@ static const char *TAG = BSP_LOG_TAG;
 #define CONFIG_BSP_I2C_FREQ_HZ 400000
 #endif
 
+#ifndef CONFIG_BSP_CAMERA_DEBUG_SENSOR_TEST_PATTERN
+#define CONFIG_BSP_CAMERA_DEBUG_SENSOR_TEST_PATTERN 0
+#endif
+
 #define OV02C10_CHIP_ID_MSB_REG  0x300A
 #define OV02C10_CHIP_ID_MID_REG  0x300B
 #define OV02C10_CHIP_ID_LSB_REG  0x300C
@@ -94,6 +102,18 @@ static const char *TAG = BSP_LOG_TAG;
 #define OV02C10_ISP_TASK_PRIO           5
 #define OV02C10_CACHE_LINE_SIZE         128U
 
+/*
+ * ESP32-P4 rev < 3.0: keep ISP auto-controls disabled to avoid unstable
+ * behavior/artifacts on early silicon.
+ */
+#if CONFIG_BSP_ESP32P4_SILICON_REV_LOWER_3
+#define OV02C10_ISP_AUTO_AE_ENABLE      0
+#define OV02C10_ISP_AUTO_AWB_ENABLE     0
+#else
+#define OV02C10_ISP_AUTO_AE_ENABLE      CONFIG_ESP_ISP_AUTO_AE
+#define OV02C10_ISP_AUTO_AWB_ENABLE     CONFIG_ESP_ISP_AUTO_AWB
+#endif
+
 #define OV02C10_PREVIEW_WIDTH           1024U
 #define OV02C10_PREVIEW_HEIGHT          600U
 #define OV02C10_PPA_SRC_WIDTH_PIXELS    1920U
@@ -101,6 +121,8 @@ static const char *TAG = BSP_LOG_TAG;
 #define OV02C10_PPA_SRC_STRIDE_BYTES    5760U
 #define OV02C10_PPA_DST_STRIDE_BYTES    2048U
 #define OV02C10_PREVIEW_FRAME_BYTES     (OV02C10_PPA_DST_STRIDE_BYTES * OV02C10_PREVIEW_HEIGHT)
+#define OV02C10_PPA_CROP_OFFSET_X       ((OV02C10_PPA_SRC_WIDTH_PIXELS - OV02C10_PREVIEW_WIDTH) / 2U)
+#define OV02C10_PPA_CROP_OFFSET_Y       ((OV02C10_PPA_SRC_HEIGHT_PIXELS - OV02C10_PREVIEW_HEIGHT) / 2U)
 #if (OV02C10_PPA_SRC_STRIDE_BYTES != (OV02C10_PPA_SRC_WIDTH_PIXELS * 3U))
 #error "OV02C10 source stride must be 1920*3 = 5760 bytes"
 #endif
@@ -124,7 +146,8 @@ static bool s_powered = false;
 static bool s_initialized = false;
 static bool s_streaming = false;
 static bool s_mclk_running = false;
-static i2c_master_dev_handle_t s_cam_dev_handle = NULL;
+static esp_sccb_io_handle_t s_cam_sccb_handle = NULL;
+static esp_cam_sensor_device_t *s_cam_sensor = NULL;
 static esp_cam_ctlr_handle_t s_csi_ctlr = NULL;
 
 #if CONFIG_ESP_ISP_ENABLE
@@ -153,18 +176,13 @@ static ppa_client_handle_t s_ppa_srm_client = NULL;
 static TaskHandle_t s_preview_task = NULL;
 static bool s_preview_task_running = false;
 static bool s_preview_enabled = false;
-static void *s_preview_rgb565_frame = NULL;
-static size_t s_preview_rgb565_frame_size = 0;
+static void *s_preview_frames[2] = {NULL, NULL};
+static size_t s_preview_frame_size = 0;
+static uint8_t s_preview_front_idx = 0;
 static bsp_camera_preview_frame_cb_t s_preview_frame_cb = NULL;
 static void *s_preview_frame_cb_user_data = NULL;
 #endif
 #endif
-
-typedef struct {
-    uint16_t reg;
-    uint8_t value;
-    uint16_t delay_ms;
-} ov02c10_reg_setting_t;
 
 #if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
 static IRAM_ATTR bool ov02c10_csi_on_get_new_trans(esp_cam_ctlr_handle_t handle,
@@ -204,21 +222,6 @@ static IRAM_ATTR bool ov02c10_csi_on_trans_finished(esp_cam_ctlr_handle_t handle
     return false;
 }
 
-/*
- * 1080p@60 bring-up profile (to be extended with full tuning tables as needed).
- * The final MODE_SELECT write (0x0100=0x01) is issued explicitly at stream start.
- */
-static const ov02c10_reg_setting_t s_ov02c10_1080p60_regs[] = {
-    {0x0103, 0x01, 5}, /* software reset */
-    {0x0100, 0x00, 1}, /* standby */
-    {0x3012, 0x01, 0},
-    {0x3013, 0x12, 0},
-    {0x3808, 0x07, 0}, /* width high: 1920 */
-    {0x3809, 0x80, 0}, /* width low */
-    {0x380A, 0x04, 0}, /* height high: 1080 */
-    {0x380B, 0x38, 0}, /* height low */
-};
-
 static inline uint8_t ov02c10_sccb_addr_7bit(void)
 {
     /*
@@ -236,18 +239,18 @@ static esp_err_t ov02c10_ensure_i2c_device(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (s_cam_dev_handle != NULL) {
+    if (s_cam_sccb_handle != NULL) {
         return ESP_OK;
     }
 
-    i2c_device_config_t dev_cfg = {
+    sccb_i2c_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = ov02c10_sccb_addr_7bit(),
         .scl_speed_hz = CONFIG_BSP_I2C_FREQ_HZ,
     };
 
-    esp_err_t ret = i2c_master_bus_add_device(i2c_bus, &dev_cfg, &s_cam_dev_handle);
-    ESP_RETURN_ON_ERROR(ret, TAG, "Failed to add OV02C10 to SCCB bus");
+    esp_err_t ret = sccb_new_i2c_io(i2c_bus, &dev_cfg, &s_cam_sccb_handle);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Failed to create OV02C10 SCCB interface");
 
     LOGI("SCCB device ready (cfg addr=0x%02X, 7-bit=0x%02X)",
          (unsigned int)CONFIG_BSP_CAMERA_I2C_ADDR,
@@ -255,28 +258,138 @@ static esp_err_t ov02c10_ensure_i2c_device(void)
     return ESP_OK;
 }
 
-static esp_err_t ov02c10_write_reg8(uint16_t reg, uint8_t value)
+static esp_err_t ov02c10_detect_sensor(void)
 {
-    uint8_t payload[3] = {
-        (uint8_t)((reg >> 8) & 0xFFU),
-        (uint8_t)(reg & 0xFFU),
-        value,
-    };
+    if (s_cam_sensor != NULL) {
+        return ESP_OK;
+    }
 
-    if (s_cam_dev_handle == NULL) {
+    if (s_cam_sccb_handle == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    return i2c_master_transmit(s_cam_dev_handle, payload, sizeof(payload), 1000);
+    esp_cam_sensor_config_t cam_cfg = {
+        .sccb_handle = s_cam_sccb_handle,
+        .reset_pin = -1,
+        .pwdn_pin = -1,
+        .xclk_pin = -1,
+        .xclk_freq_hz = (int32_t)OV02C10_MCLK_HZ,
+        .sensor_port = ESP_CAM_SENSOR_MIPI_CSI,
+    };
+
+    s_cam_sensor = ov02c10_detect(&cam_cfg);
+    if (s_cam_sensor == NULL) {
+        LOGE("esp_cam_sensor failed to detect OV02C10 on SCCB 0x%02X", (unsigned int)ov02c10_sccb_addr_7bit());
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    LOGI("esp_cam_sensor detected camera: %s", esp_cam_sensor_get_name(s_cam_sensor));
+    return ESP_OK;
+}
+
+static esp_err_t ov02c10_write_reg8(uint16_t reg, uint8_t value)
+{
+    if (s_cam_sensor == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_cam_sensor_reg_val_t reg_val = {
+        .regaddr = reg,
+        .value = value,
+    };
+    return esp_cam_sensor_ioctl(s_cam_sensor, ESP_CAM_SENSOR_IOC_S_REG, &reg_val);
 }
 
 static esp_err_t ov02c10_set_sensor_stream_mode(bool enable)
 {
-    if (s_cam_dev_handle == NULL) {
+    if (s_cam_sensor == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    return ov02c10_write_reg8(OV02C10_REG_MODE_SELECT, enable ? 0x01 : 0x00);
+    int stream_on = enable ? 1 : 0;
+    return esp_cam_sensor_ioctl(s_cam_sensor, ESP_CAM_SENSOR_IOC_S_STREAM, &stream_on);
+}
+
+static esp_err_t ov02c10_set_sensor_test_pattern_mode(bool enable)
+{
+    if (s_cam_sensor == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    int test_pattern = enable ? 1 : 0;
+    return esp_cam_sensor_ioctl(s_cam_sensor, ESP_CAM_SENSOR_IOC_S_TEST_PATTERN, &test_pattern);
+}
+
+static esp_err_t ov02c10_apply_manual_brightness_boost(void)
+{
+    if (s_cam_sensor == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /*
+     * On ESP32-P4 early silicon (rev < v3.0) ISP auto AE/AWB are disabled.
+     * Apply a conservative manual exposure/gain boost to avoid underexposed preview.
+     */
+    esp_err_t ret;
+    esp_cam_sensor_param_desc_t gain_desc = {
+        .id = ESP_CAM_SENSOR_GAIN,
+    };
+    esp_cam_sensor_param_desc_t exp_desc = {
+        .id = ESP_CAM_SENSOR_EXPOSURE_VAL,
+    };
+
+    ret = esp_cam_sensor_query_para_desc(s_cam_sensor, &gain_desc);
+    if (ret == ESP_OK &&
+        gain_desc.type == ESP_CAM_SENSOR_PARAM_TYPE_ENUMERATION &&
+        gain_desc.enumeration.count > 0) {
+        const uint32_t requested_gain_idx = 160U;
+        uint32_t gain_idx = requested_gain_idx;
+        uint32_t max_idx = gain_desc.enumeration.count - 1U;
+        if (gain_idx > max_idx) {
+            gain_idx = max_idx;
+        }
+
+        ret = esp_cam_sensor_set_para_value(s_cam_sensor,
+                                            ESP_CAM_SENSOR_GAIN,
+                                            &gain_idx,
+                                            sizeof(gain_idx));
+        if (ret == ESP_OK) {
+            LOGW("[OV02C10] Manual gain boost applied: idx=%u", (unsigned int)gain_idx);
+        } else {
+            LOGW("[OV02C10] Failed to set manual gain boost: %s", esp_err_to_name(ret));
+        }
+    } else {
+        LOGW("[OV02C10] Gain descriptor unavailable, skip manual gain boost");
+    }
+
+    ret = esp_cam_sensor_query_para_desc(s_cam_sensor, &exp_desc);
+    if (ret == ESP_OK && exp_desc.type == ESP_CAM_SENSOR_PARAM_TYPE_NUMBER) {
+        const uint32_t requested_exposure = 0x0900U;
+        int32_t min_exposure = exp_desc.number.minimum;
+        int32_t max_exposure = exp_desc.number.maximum;
+
+        uint32_t exposure = requested_exposure;
+        if ((int32_t)exposure < min_exposure) {
+            exposure = (uint32_t)min_exposure;
+        }
+        if ((int32_t)exposure > max_exposure) {
+            exposure = (uint32_t)max_exposure;
+        }
+
+        ret = esp_cam_sensor_set_para_value(s_cam_sensor,
+                                            ESP_CAM_SENSOR_EXPOSURE_VAL,
+                                            &exposure,
+                                            sizeof(exposure));
+        if (ret == ESP_OK) {
+            LOGW("[OV02C10] Manual exposure boost applied: 0x%04X", (unsigned int)exposure);
+        } else {
+            LOGW("[OV02C10] Failed to set manual exposure boost: %s", esp_err_to_name(ret));
+        }
+    } else {
+        LOGW("[OV02C10] Exposure descriptor unavailable, skip manual exposure boost");
+    }
+
+    return ESP_OK;
 }
 
 #if CONFIG_ESP_ISP_ENABLE
@@ -463,17 +576,27 @@ static esp_err_t ov02c10_init_ppa_scaler(void)
         return ret;
     }
 
-    s_preview_rgb565_frame_size = (size_t)OV02C10_PREVIEW_FRAME_BYTES;
-    s_preview_rgb565_frame = heap_caps_aligned_alloc(128,
-                                                     s_preview_rgb565_frame_size,
-                                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (s_preview_rgb565_frame == NULL) {
-        LOGE("Failed to allocate preview RGB565 buffer in PSRAM (%u bytes)",
-             (unsigned int)s_preview_rgb565_frame_size);
-        (void)ppa_unregister_client(s_ppa_srm_client);
-        s_ppa_srm_client = NULL;
-        s_preview_rgb565_frame_size = 0;
-        return ESP_ERR_NO_MEM;
+    s_preview_frame_size = (size_t)OV02C10_PREVIEW_FRAME_BYTES;
+    s_preview_front_idx = 0;
+    for (int i = 0; i < 2; i++) {
+        s_preview_frames[i] = heap_caps_aligned_alloc(128,
+                                                      s_preview_frame_size,
+                                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (s_preview_frames[i] == NULL) {
+            LOGE("Failed to allocate preview RGB buffer[%d] in PSRAM (%u bytes)",
+                 i,
+                 (unsigned int)s_preview_frame_size);
+            for (int j = 0; j < 2; j++) {
+                if (s_preview_frames[j]) {
+                    heap_caps_free(s_preview_frames[j]);
+                    s_preview_frames[j] = NULL;
+                }
+            }
+            (void)ppa_unregister_client(s_ppa_srm_client);
+            s_ppa_srm_client = NULL;
+            s_preview_frame_size = 0;
+            return ESP_ERR_NO_MEM;
+        }
     }
 
     LOGI("[OV02C10] PPA Scaler initialized: 1080p -> 1024x600.");
@@ -487,11 +610,14 @@ static void ov02c10_deinit_ppa_scaler(void)
         s_ppa_srm_client = NULL;
     }
 
-    if (s_preview_rgb565_frame) {
-        heap_caps_free(s_preview_rgb565_frame);
-        s_preview_rgb565_frame = NULL;
-        s_preview_rgb565_frame_size = 0;
+    for (int i = 0; i < 2; i++) {
+        if (s_preview_frames[i]) {
+            heap_caps_free(s_preview_frames[i]);
+            s_preview_frames[i] = NULL;
+        }
     }
+    s_preview_frame_size = 0;
+    s_preview_front_idx = 0;
 }
 
 static void task_camera_preview(void *arg)
@@ -504,26 +630,33 @@ static void task_camera_preview(void *arg)
             continue;
         }
 
-        if (!s_preview_enabled || !s_ppa_srm_client || !s_isp_rgb888_frame || !s_preview_rgb565_frame) {
+        if (!s_preview_enabled || !s_ppa_srm_client || !s_isp_rgb888_frame || !s_preview_frames[0] || !s_preview_frames[1]) {
             continue;
         }
+
+        uint8_t back_idx;
+        portENTER_CRITICAL(&s_isp_lock);
+        back_idx = (uint8_t)(s_preview_front_idx ^ 1U);
+        portEXIT_CRITICAL(&s_isp_lock);
+
+        void *dst_buf = s_preview_frames[back_idx];
 
         ppa_srm_oper_config_t oper_cfg = {
             .in = {
                 .buffer = s_isp_rgb888_frame,
                 .pic_w = OV02C10_PPA_SRC_WIDTH_PIXELS,
                 .pic_h = OV02C10_PPA_SRC_HEIGHT_PIXELS,
-                .block_w = OV02C10_PPA_SRC_WIDTH_PIXELS,
-                .block_h = OV02C10_PPA_SRC_HEIGHT_PIXELS,
-                .block_offset_x = 0,
-                .block_offset_y = 0,
+                .block_w = OV02C10_PREVIEW_WIDTH,
+                .block_h = OV02C10_PREVIEW_HEIGHT,
+                .block_offset_x = OV02C10_PPA_CROP_OFFSET_X,
+                .block_offset_y = OV02C10_PPA_CROP_OFFSET_Y,
                 .srm_cm = PPA_SRM_COLOR_MODE_RGB888,
                 .yuv_range = PPA_COLOR_RANGE_FULL,
                 .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
             },
             .out = {
-                .buffer = s_preview_rgb565_frame,
-                .buffer_size = s_preview_rgb565_frame_size,
+                .buffer = dst_buf,
+                .buffer_size = s_preview_frame_size,
                 .pic_w = OV02C10_PREVIEW_WIDTH,
                 .pic_h = OV02C10_PREVIEW_HEIGHT,
                 .block_offset_x = 0,
@@ -533,8 +666,8 @@ static void task_camera_preview(void *arg)
                 .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,
             },
             .rotation_angle = PPA_SRM_ROTATION_ANGLE_0,
-            .scale_x = (float)OV02C10_PREVIEW_WIDTH / (float)OV02C10_PPA_SRC_WIDTH_PIXELS,
-            .scale_y = (float)OV02C10_PREVIEW_HEIGHT / (float)OV02C10_PPA_SRC_HEIGHT_PIXELS,
+            .scale_x = 1.0f,
+            .scale_y = 1.0f,
             .mirror_x = false,
             .mirror_y = false,
             .rgb_swap = false,
@@ -550,9 +683,13 @@ static void task_camera_preview(void *arg)
             continue;
         }
 
-        (void)esp_cache_msync(s_preview_rgb565_frame,
+        (void)esp_cache_msync(dst_buf,
                               OV02C10_PREVIEW_FRAME_BYTES,
                               ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+
+        portENTER_CRITICAL(&s_isp_lock);
+        s_preview_front_idx = back_idx;
+        portEXIT_CRITICAL(&s_isp_lock);
 
         if (s_preview_frame_cb) {
             s_preview_frame_cb(s_preview_frame_cb_user_data);
@@ -599,7 +736,7 @@ static void ov02c10_stop_preview_task(void)
 
 static void ov02c10_release_isp_pipeline(void)
 {
-#if CONFIG_ESP_ISP_AUTO_AWB
+#if OV02C10_ISP_AUTO_AWB_ENABLE
     if (s_isp_awb_ctlr) {
         (void)esp_isp_awb_controller_stop_continuous_statistics(s_isp_awb_ctlr);
         (void)esp_isp_awb_controller_disable(s_isp_awb_ctlr);
@@ -608,7 +745,7 @@ static void ov02c10_release_isp_pipeline(void)
     }
 #endif
 
-#if CONFIG_ESP_ISP_AUTO_AE
+#if OV02C10_ISP_AUTO_AE_ENABLE
     if (s_isp_ae_ctlr) {
         (void)esp_isp_ae_controller_stop_continuous_statistics(s_isp_ae_ctlr);
         (void)esp_isp_ae_controller_disable(s_isp_ae_ctlr);
@@ -770,16 +907,41 @@ static esp_err_t ov02c10_init_csi_link(void)
 
 static esp_err_t ov02c10_apply_stream_profile(void)
 {
-    for (size_t i = 0; i < (sizeof(s_ov02c10_1080p60_regs) / sizeof(s_ov02c10_1080p60_regs[0])); i++) {
-        const ov02c10_reg_setting_t *reg = &s_ov02c10_1080p60_regs[i];
-        esp_err_t ret = ov02c10_write_reg8(reg->reg, reg->value);
-        if (ret != ESP_OK) {
-            LOGE("SCCB write failed at reg 0x%04X", reg->reg);
-            return ret;
+    if (s_cam_sensor == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t ret = esp_cam_sensor_set_format(s_cam_sensor, NULL);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Failed to load OV02C10 default format from esp_cam_sensor");
+
+    esp_cam_sensor_format_t format = {0};
+    if (esp_cam_sensor_get_format(s_cam_sensor, &format) == ESP_OK) {
+        LOGI("OV02C10 format loaded: %s (%ux%u, lanes=%u, fps=%u)",
+             format.name ? format.name : "unknown",
+             (unsigned int)format.width,
+             (unsigned int)format.height,
+             (unsigned int)format.mipi_info.lane_num,
+             (unsigned int)format.fps);
+
+        if (format.format != ESP_CAM_SENSOR_PIXFORMAT_RAW10) {
+            LOGE("Unsupported sensor format for ISP pipeline: %d (expected RAW10)", (int)format.format);
+            return ESP_ERR_INVALID_STATE;
         }
 
-        if (reg->delay_ms > 0) {
-            vTaskDelay(pdMS_TO_TICKS(reg->delay_ms));
+        if (format.width != OV02C10_PPA_SRC_WIDTH_PIXELS || format.height != OV02C10_PPA_SRC_HEIGHT_PIXELS) {
+            LOGE("Unsupported sensor resolution %ux%u for current preview pipeline (expected %ux%u)",
+                 (unsigned int)format.width,
+                 (unsigned int)format.height,
+                 (unsigned int)OV02C10_PPA_SRC_WIDTH_PIXELS,
+                 (unsigned int)OV02C10_PPA_SRC_HEIGHT_PIXELS);
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        if (format.mipi_info.lane_num != OV02C10_MIPI_DATA_LANES) {
+            LOGE("Unsupported lane count %u for current CSI config (expected %u)",
+                 (unsigned int)format.mipi_info.lane_num,
+                 (unsigned int)OV02C10_MIPI_DATA_LANES);
+            return ESP_ERR_INVALID_STATE;
         }
     }
 
@@ -788,36 +950,32 @@ static esp_err_t ov02c10_apply_stream_profile(void)
 
 static esp_err_t ov02c10_read_reg8(uint16_t reg, uint8_t *value)
 {
-    uint8_t reg_addr[2] = {
-        (uint8_t)((reg >> 8) & 0xFFU),
-        (uint8_t)(reg & 0xFFU),
-    };
-
-    if (s_cam_dev_handle == NULL || value == NULL) {
+    if (s_cam_sensor == NULL || value == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    return i2c_master_transmit_receive(s_cam_dev_handle, reg_addr, sizeof(reg_addr), value, 1, 1000);
+    esp_cam_sensor_reg_val_t reg_val = {
+        .regaddr = reg,
+        .value = 0,
+    };
+    esp_err_t ret = esp_cam_sensor_ioctl(s_cam_sensor, ESP_CAM_SENSOR_IOC_G_REG, &reg_val);
+    if (ret == ESP_OK) {
+        *value = (uint8_t)(reg_val.value & 0xFFU);
+    }
+    return ret;
 }
 
 static esp_err_t ov02c10_probe_chip_id(uint32_t *out_chip_id)
 {
-    esp_err_t ret;
-    uint8_t id_msb = 0;
-    uint8_t id_mid = 0;
-    uint8_t id_lsb = 0;
-    uint32_t chip_id;
+    if (s_cam_sensor == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
-    ret = ov02c10_read_reg8(OV02C10_CHIP_ID_MSB_REG, &id_msb);
-    ESP_RETURN_ON_ERROR(ret, TAG, "SCCB read failed at reg 0x%04X", OV02C10_CHIP_ID_MSB_REG);
+    esp_cam_sensor_id_t sensor_id = {0};
+    esp_err_t ret = esp_cam_sensor_ioctl(s_cam_sensor, ESP_CAM_SENSOR_IOC_G_CHIP_ID, &sensor_id);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Failed to read OV02C10 chip ID via esp_cam_sensor");
 
-    ret = ov02c10_read_reg8(OV02C10_CHIP_ID_MID_REG, &id_mid);
-    ESP_RETURN_ON_ERROR(ret, TAG, "SCCB read failed at reg 0x%04X", OV02C10_CHIP_ID_MID_REG);
-
-    ret = ov02c10_read_reg8(OV02C10_CHIP_ID_LSB_REG, &id_lsb);
-    ESP_RETURN_ON_ERROR(ret, TAG, "SCCB read failed at reg 0x%04X", OV02C10_CHIP_ID_LSB_REG);
-
-    chip_id = ((uint32_t)id_msb << 16) | ((uint32_t)id_mid << 8) | (uint32_t)id_lsb;
+    uint32_t chip_id = ((uint32_t)sensor_id.pid << 8) | (uint32_t)sensor_id.ver;
 
     if (out_chip_id) {
         *out_chip_id = chip_id;
@@ -839,7 +997,10 @@ static esp_err_t ov02c10_probe_chip_id(uint32_t *out_chip_id)
              chip_id);
     }
 
-    LOGI("[OV02C10] Sensor detected. ID: 0x%06" PRIX32 ".", chip_id);
+    LOGI("[OV02C10] Sensor detected. ID: 0x%06" PRIX32 " (pid=0x%04X, ver=0x%02X).",
+         chip_id,
+         (unsigned int)sensor_id.pid,
+         (unsigned int)sensor_id.ver);
     return ESP_OK;
 }
 
@@ -862,7 +1023,7 @@ static esp_err_t ov02c10_register_isp_instance(void)
         .has_line_end_packet = false,
         .h_res = CONFIG_BSP_CAMERA_FRAME_WIDTH,
         .v_res = CONFIG_BSP_CAMERA_FRAME_HEIGHT,
-        .bayer_order = COLOR_RAW_ELEMENT_ORDER_BGGR,
+        .bayer_order = COLOR_RAW_ELEMENT_ORDER_GBRG,
         .intr_priority = 0,
         .flags = {
             .bypass_isp = 0,
@@ -995,7 +1156,7 @@ static esp_err_t ov02c10_register_isp_instance(void)
     s_isp_wbg_enabled = true;
 #endif
 
-#if CONFIG_ESP_ISP_AUTO_AE
+#if OV02C10_ISP_AUTO_AE_ENABLE
     esp_isp_ae_config_t ae_cfg = {
         .sample_point = ISP_AE_SAMPLE_POINT_AFTER_DEMOSAIC,
         .window = {
@@ -1037,7 +1198,7 @@ static esp_err_t ov02c10_register_isp_instance(void)
     }
 #endif
 
-#if CONFIG_ESP_ISP_AUTO_AWB
+#if OV02C10_ISP_AUTO_AWB_ENABLE
     esp_isp_awb_config_t awb_cfg = {
         .sample_point = ISP_AWB_SAMPLE_POINT_AFTER_CCM,
         .window = {
@@ -1116,9 +1277,9 @@ static esp_err_t ov02c10_register_isp_instance(void)
         return ret;
     }
 
-    LOGI("ISP pipeline ready (RAW10 input, RGB888 output, AE=%d, AWB=%d)",
-         (int)CONFIG_ESP_ISP_AUTO_AE,
-         (int)CONFIG_ESP_ISP_AUTO_AWB);
+        LOGI("ISP pipeline ready (RAW10 input, RGB888 output, AE=%d, AWB=%d)",
+            (int)OV02C10_ISP_AUTO_AE_ENABLE,
+            (int)OV02C10_ISP_AUTO_AWB_ENABLE);
     return ESP_OK;
 }
 #endif
@@ -1177,11 +1338,16 @@ esp_err_t bsp_camera_init(void)
         return ret;
     }
 
+    ret = ov02c10_detect_sensor();
+    if (ret != ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     ret = ov02c10_probe_chip_id(&chip_id);
     if (ret != ESP_OK) {
-        if (s_cam_dev_handle) {
-            i2c_master_bus_rm_device(s_cam_dev_handle);
-            s_cam_dev_handle = NULL;
+        if (s_cam_sensor) {
+            esp_cam_sensor_del_dev(s_cam_sensor);
+            s_cam_sensor = NULL;
         }
         return ESP_ERR_INVALID_STATE;
     }
@@ -1216,11 +1382,23 @@ esp_err_t bsp_camera_start_stream(void)
         }
     }
 
-    if (s_cam_dev_handle == NULL) {
+    if (s_cam_sensor == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_RETURN_ON_ERROR(ov02c10_apply_stream_profile(), TAG, "Failed to apply 1080p60 register profile");
+    ESP_RETURN_ON_ERROR(ov02c10_apply_stream_profile(), TAG, "Failed to apply OV02C10 stream profile");
+
+#if !OV02C10_ISP_AUTO_AE_ENABLE
+    (void)ov02c10_apply_manual_brightness_boost();
+#endif
+
+#if CONFIG_BSP_CAMERA_DEBUG_SENSOR_TEST_PATTERN
+    ESP_RETURN_ON_ERROR(ov02c10_set_sensor_test_pattern_mode(true), TAG,
+                        "Failed to enable OV02C10 test pattern mode");
+    LOGW("[OV02C10] Sensor test pattern ENABLED (debug mode)");
+#else
+    (void)ov02c10_set_sensor_test_pattern_mode(false);
+#endif
 
     LOGI("[OV02C10] MIPI Link ready: 2-lane @ 800Mbps. Starting stream...");
     ESP_RETURN_ON_ERROR(ov02c10_set_sensor_stream_mode(true), TAG,
@@ -1243,7 +1421,7 @@ esp_err_t bsp_camera_start_stream(void)
 
 esp_err_t bsp_camera_stop_stream(void)
 {
-    if (!s_initialized || s_cam_dev_handle == NULL) {
+    if (!s_initialized || s_cam_sensor == NULL) {
         return ESP_OK;
     }
 
@@ -1266,14 +1444,19 @@ esp_err_t bsp_camera_start_preview(bsp_camera_preview_frame_cb_t frame_cb, void 
         return ret;
     }
 
-    if (!s_isp_rgb888_frame || !s_preview_rgb565_frame || !s_ppa_srm_client) {
+    if (!s_isp_rgb888_frame || !s_preview_frames[0] || !s_preview_frames[1] || !s_ppa_srm_client) {
         (void)bsp_camera_stop_stream();
         return ESP_ERR_INVALID_STATE;
     }
 
-    LOGI("PPA Input: 1920x1080, Pitch: %d, Format: RGB888", (int)OV02C10_PPA_SRC_STRIDE_BYTES);
+        LOGI("PPA Input: 1920x1080, Pitch: %d, Format: RGB888", (int)OV02C10_PPA_SRC_STRIDE_BYTES);
+        LOGI("PPA Crop: %ux%u @ offset (%u,%u)",
+            (unsigned int)OV02C10_PREVIEW_WIDTH,
+            (unsigned int)OV02C10_PREVIEW_HEIGHT,
+            (unsigned int)OV02C10_PPA_CROP_OFFSET_X,
+            (unsigned int)OV02C10_PPA_CROP_OFFSET_Y);
     LOGI("PPA Output: 1024x600, Pitch: %d, Format: RGB565", (int)OV02C10_PPA_DST_STRIDE_BYTES);
-    LOGI("Canvas Buffer: %p, Size: %d", s_preview_rgb565_frame, (int)s_preview_rgb565_frame_size);
+    LOGI("Canvas Buffer(front): %p, Size: %d", s_preview_frames[s_preview_front_idx], (int)s_preview_frame_size);
 
     s_preview_frame_cb = frame_cb;
     s_preview_frame_cb_user_data = user_data;
@@ -1310,7 +1493,13 @@ void bsp_camera_stop_preview(void)
 const uint8_t *bsp_camera_get_preview_buffer(void)
 {
 #if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
-    return (const uint8_t *)s_preview_rgb565_frame;
+    const uint8_t *buf;
+    uint8_t idx;
+    portENTER_CRITICAL(&s_isp_lock);
+    idx = s_preview_front_idx;
+    buf = (const uint8_t *)s_preview_frames[idx];
+    portEXIT_CRITICAL(&s_isp_lock);
+    return buf;
 #else
     return NULL;
 #endif
@@ -1319,7 +1508,7 @@ const uint8_t *bsp_camera_get_preview_buffer(void)
 size_t bsp_camera_get_preview_buffer_size(void)
 {
 #if CONFIG_ESP_ISP_ENABLE && CONFIG_ESP_PPA_ENABLE
-    return s_preview_rgb565_frame_size;
+    return s_preview_frame_size;
 #else
     return 0;
 #endif
@@ -1335,6 +1524,151 @@ uint16_t bsp_camera_get_preview_height(void)
     return (uint16_t)OV02C10_PREVIEW_HEIGHT;
 }
 
+esp_err_t bsp_camera_get_gain_index_range(uint32_t *min_idx, uint32_t *max_idx, uint32_t *default_idx)
+{
+    if (min_idx == NULL || max_idx == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!s_initialized) {
+        ESP_RETURN_ON_ERROR(bsp_camera_init(), TAG, "Camera init failed while querying gain range");
+    }
+
+    if (s_cam_sensor == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_cam_sensor_param_desc_t desc = {
+        .id = ESP_CAM_SENSOR_GAIN,
+    };
+    esp_err_t ret = esp_cam_sensor_query_para_desc(s_cam_sensor, &desc);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Failed to query gain descriptor");
+
+    if (desc.type != ESP_CAM_SENSOR_PARAM_TYPE_ENUMERATION || desc.enumeration.count == 0) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    *min_idx = 0;
+    *max_idx = desc.enumeration.count - 1U;
+    if (default_idx) {
+        uint32_t def = (uint32_t)desc.default_value;
+        if (def > *max_idx) {
+            def = *max_idx;
+        }
+        *default_idx = def;
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t bsp_camera_get_gain_index(uint32_t *gain_idx)
+{
+    if (gain_idx == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!s_initialized) {
+        ESP_RETURN_ON_ERROR(bsp_camera_init(), TAG, "Camera init failed while reading gain");
+    }
+
+    if (s_cam_sensor == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return esp_cam_sensor_get_para_value(s_cam_sensor, ESP_CAM_SENSOR_GAIN, gain_idx, sizeof(*gain_idx));
+}
+
+esp_err_t bsp_camera_set_gain_index(uint32_t gain_idx)
+{
+    uint32_t min_idx = 0;
+    uint32_t max_idx = 0;
+    esp_err_t ret = bsp_camera_get_gain_index_range(&min_idx, &max_idx, NULL);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Failed to get gain range");
+
+    if (gain_idx < min_idx) {
+        gain_idx = min_idx;
+    }
+    if (gain_idx > max_idx) {
+        gain_idx = max_idx;
+    }
+
+    return esp_cam_sensor_set_para_value(s_cam_sensor, ESP_CAM_SENSOR_GAIN, &gain_idx, sizeof(gain_idx));
+}
+
+esp_err_t bsp_camera_get_exposure_range(uint32_t *min_exposure, uint32_t *max_exposure, uint32_t *default_exposure)
+{
+    if (min_exposure == NULL || max_exposure == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!s_initialized) {
+        ESP_RETURN_ON_ERROR(bsp_camera_init(), TAG, "Camera init failed while querying exposure range");
+    }
+
+    if (s_cam_sensor == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_cam_sensor_param_desc_t desc = {
+        .id = ESP_CAM_SENSOR_EXPOSURE_VAL,
+    };
+    esp_err_t ret = esp_cam_sensor_query_para_desc(s_cam_sensor, &desc);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Failed to query exposure descriptor");
+
+    if (desc.type != ESP_CAM_SENSOR_PARAM_TYPE_NUMBER) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    *min_exposure = (uint32_t)desc.number.minimum;
+    *max_exposure = (uint32_t)desc.number.maximum;
+    if (default_exposure) {
+        uint32_t def = (uint32_t)desc.default_value;
+        if (def < *min_exposure) {
+            def = *min_exposure;
+        }
+        if (def > *max_exposure) {
+            def = *max_exposure;
+        }
+        *default_exposure = def;
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t bsp_camera_get_exposure_value(uint32_t *exposure)
+{
+    if (exposure == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!s_initialized) {
+        ESP_RETURN_ON_ERROR(bsp_camera_init(), TAG, "Camera init failed while reading exposure");
+    }
+
+    if (s_cam_sensor == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return esp_cam_sensor_get_para_value(s_cam_sensor, ESP_CAM_SENSOR_EXPOSURE_VAL, exposure, sizeof(*exposure));
+}
+
+esp_err_t bsp_camera_set_exposure_value(uint32_t exposure)
+{
+    uint32_t min_exposure = 0;
+    uint32_t max_exposure = 0;
+    esp_err_t ret = bsp_camera_get_exposure_range(&min_exposure, &max_exposure, NULL);
+    ESP_RETURN_ON_ERROR(ret, TAG, "Failed to get exposure range");
+
+    if (exposure < min_exposure) {
+        exposure = min_exposure;
+    }
+    if (exposure > max_exposure) {
+        exposure = max_exposure;
+    }
+
+    return esp_cam_sensor_set_para_value(s_cam_sensor, ESP_CAM_SENSOR_EXPOSURE_VAL, &exposure, sizeof(exposure));
+}
+
 void bsp_camera_deinit(void)
 {
     if (s_csi_ctlr) {
@@ -1348,9 +1682,14 @@ void bsp_camera_deinit(void)
     ov02c10_release_isp_pipeline();
 #endif
 
-    if (s_cam_dev_handle) {
-        i2c_master_bus_rm_device(s_cam_dev_handle);
-        s_cam_dev_handle = NULL;
+    if (s_cam_sensor) {
+        esp_cam_sensor_del_dev(s_cam_sensor);
+        s_cam_sensor = NULL;
+    }
+
+    if (s_cam_sccb_handle) {
+        esp_sccb_del_i2c_io(s_cam_sccb_handle);
+        s_cam_sccb_handle = NULL;
     }
 
     if (s_mclk_running) {

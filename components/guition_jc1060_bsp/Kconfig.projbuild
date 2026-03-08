@@ -312,6 +312,15 @@ menu "Guition JC1060P470C Board Configuration"
                     default 1080 if BSP_CAMERA_RES_1080P
                     default 1200 if BSP_CAMERA_RES_UXGA
 
+                config BSP_CAMERA_DEBUG_SENSOR_TEST_PATTERN
+                    bool "Debug: Enable OV02C10 sensor test pattern"
+                    default n
+                    help
+                        Enables the OV02C10 internal test pattern through
+                        ESP_CAM_SENSOR_IOC_S_TEST_PATTERN when stream starts.
+                        Useful to isolate sensor/ISP/display pipeline issues.
+                        Keep disabled for normal operation.
+
                 comment "MIPI CSI-2 data lanes: 2 (hardware fixed, board pins 42-48)"
 
             endmenu

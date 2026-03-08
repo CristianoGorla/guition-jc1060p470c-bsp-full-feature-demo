@@ -66,6 +66,8 @@ set(COMPONENT_REQUIRES
     nvs_flash
     esp_driver_cam
     esp_driver_ppa
+    esp_cam_sensor
+    esp_sccb_intf
 )
 
 if(CONFIG_BSP_ENABLE_DISPLAY)

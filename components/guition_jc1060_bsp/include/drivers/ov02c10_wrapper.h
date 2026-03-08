@@ -66,6 +66,36 @@ uint16_t bsp_camera_get_preview_width(void);
 uint16_t bsp_camera_get_preview_height(void);
 
 /**
+ * @brief Get sensor gain index supported range.
+ */
+esp_err_t bsp_camera_get_gain_index_range(uint32_t *min_idx, uint32_t *max_idx, uint32_t *default_idx);
+
+/**
+ * @brief Get current sensor gain index.
+ */
+esp_err_t bsp_camera_get_gain_index(uint32_t *gain_idx);
+
+/**
+ * @brief Set sensor gain index (value is clamped to supported range).
+ */
+esp_err_t bsp_camera_set_gain_index(uint32_t gain_idx);
+
+/**
+ * @brief Get exposure register supported range.
+ */
+esp_err_t bsp_camera_get_exposure_range(uint32_t *min_exposure, uint32_t *max_exposure, uint32_t *default_exposure);
+
+/**
+ * @brief Get current exposure register value.
+ */
+esp_err_t bsp_camera_get_exposure_value(uint32_t *exposure);
+
+/**
+ * @brief Set exposure register value (value is clamped to supported range).
+ */
+esp_err_t bsp_camera_set_exposure_value(uint32_t exposure);
+
+/**
  * @brief Deinitialize camera wrapper resources.
  */
 void bsp_camera_deinit(void);

@@ -97,6 +97,11 @@ typedef struct {
     debug_tool_t overlay_tool;
     lv_obj_t *camera_canvas;
     lv_obj_t *camera_status_label;
+    lv_obj_t *camera_ctrl_panel;
+    lv_obj_t *camera_gain_slider;
+    lv_obj_t *camera_gain_label;
+    lv_obj_t *camera_exposure_slider;
+    lv_obj_t *camera_exposure_label;
 } dashboard_state_t;
 
 static const char *TAG = "lvgl_dashboard";
@@ -104,6 +109,8 @@ static dashboard_state_t s_dash = {0};
 
 #ifdef CONFIG_BSP_ENABLE_CAMERA
 static void dashboard_camera_preview_frame_ready(void *user_data);
+static void camera_gain_slider_event_cb(lv_event_t *e);
+static void camera_exposure_slider_event_cb(lv_event_t *e);
 #endif
 
 static const tool_info_t s_tools[] = {
@@ -640,6 +647,8 @@ static void on_debug_tool_logs_clicked(lv_event_t *e)
 #ifdef CONFIG_BSP_ENABLE_CAMERA
 static void dashboard_camera_preview_frame_ready(void *user_data)
 {
+    const uint8_t *preview_buf;
+
     (void)user_data;
 
     if (!s_dash.camera_canvas) {
@@ -650,8 +659,51 @@ static void dashboard_camera_preview_frame_ready(void *user_data)
         return;
     }
 
+    preview_buf = bsp_camera_get_preview_buffer();
+    if (preview_buf) {
+        lv_canvas_set_buffer(s_dash.camera_canvas,
+                             (void *)preview_buf,
+                             (int32_t)bsp_camera_get_preview_width(),
+                             (int32_t)bsp_camera_get_preview_height(),
+                             LV_COLOR_FORMAT_RGB565);
+    }
+
     lv_obj_invalidate(s_dash.camera_canvas);
     lvgl_port_unlock();
+}
+
+static void camera_gain_slider_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) {
+        return;
+    }
+
+    int32_t gain = lv_slider_get_value(lv_event_get_target_obj(e));
+    esp_err_t ret = bsp_camera_set_gain_index((uint32_t)gain);
+    if (ret == ESP_OK) {
+        if (s_dash.camera_gain_label) {
+            lv_label_set_text_fmt(s_dash.camera_gain_label, "Gain: %ld", (long)gain);
+        }
+    } else if (s_dash.camera_status_label) {
+        lv_label_set_text_fmt(s_dash.camera_status_label, "Gain set failed: %s", esp_err_to_name(ret));
+    }
+}
+
+static void camera_exposure_slider_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) {
+        return;
+    }
+
+    int32_t exposure = lv_slider_get_value(lv_event_get_target_obj(e));
+    esp_err_t ret = bsp_camera_set_exposure_value((uint32_t)exposure);
+    if (ret == ESP_OK) {
+        if (s_dash.camera_exposure_label) {
+            lv_label_set_text_fmt(s_dash.camera_exposure_label, "Exposure: 0x%04lX", (unsigned long)exposure);
+        }
+    } else if (s_dash.camera_status_label) {
+        lv_label_set_text_fmt(s_dash.camera_status_label, "Exposure set failed: %s", esp_err_to_name(ret));
+    }
 }
 
 static void show_camera_tool_overlay(const tool_info_t *tool)
@@ -660,8 +712,20 @@ static void show_camera_tool_overlay(const tool_info_t *tool)
     lv_obj_t *back_btn;
     lv_obj_t *back_label;
     lv_obj_t *title;
+    lv_obj_t *gain_slider;
+    lv_obj_t *exp_slider;
+    lv_obj_t *gain_title;
+    lv_obj_t *exp_title;
     esp_err_t ret;
     const uint8_t *preview_buf;
+    uint32_t gain_min = 0;
+    uint32_t gain_max = 255;
+    uint32_t gain_default = 0;
+    uint32_t gain_cur = 0;
+    uint32_t exp_min = 0x0100;
+    uint32_t exp_max = 0x0FFF;
+    uint32_t exp_default = 0;
+    uint32_t exp_cur = 0;
 
     if (tool == NULL) {
         return;
@@ -678,6 +742,11 @@ static void show_camera_tool_overlay(const tool_info_t *tool)
         s_dash.overlay_periph = NULL;
         s_dash.camera_canvas = NULL;
         s_dash.camera_status_label = NULL;
+        s_dash.camera_ctrl_panel = NULL;
+        s_dash.camera_gain_slider = NULL;
+        s_dash.camera_gain_label = NULL;
+        s_dash.camera_exposure_slider = NULL;
+        s_dash.camera_exposure_label = NULL;
     }
 
     s_dash.overlay = lv_obj_create(lv_scr_act());
@@ -745,8 +814,82 @@ static void show_camera_tool_overlay(const tool_info_t *tool)
                          (int32_t)bsp_camera_get_preview_height(),
                          LV_COLOR_FORMAT_RGB565);
     lv_obj_set_pos(s_dash.camera_canvas, 0, 0);
+    lv_obj_add_flag(s_dash.camera_canvas, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_dash.camera_canvas, overlay_back_event_cb, LV_EVENT_LONG_PRESSED, NULL);
 
-    lv_label_set_text(s_dash.camera_status_label, "Preview running");
+    (void)bsp_camera_get_gain_index_range(&gain_min, &gain_max, &gain_default);
+    if (bsp_camera_get_gain_index(&gain_cur) != ESP_OK) {
+        gain_cur = gain_default;
+    }
+    if (gain_cur < gain_min) {
+        gain_cur = gain_min;
+    }
+    if (gain_cur > gain_max) {
+        gain_cur = gain_max;
+    }
+
+    (void)bsp_camera_get_exposure_range(&exp_min, &exp_max, &exp_default);
+    if (bsp_camera_get_exposure_value(&exp_cur) != ESP_OK) {
+        exp_cur = exp_default;
+    }
+    if (exp_cur < exp_min) {
+        exp_cur = exp_min;
+    }
+    if (exp_cur > exp_max) {
+        exp_cur = exp_max;
+    }
+
+    s_dash.camera_ctrl_panel = lv_obj_create(s_dash.overlay);
+    lv_obj_set_size(s_dash.camera_ctrl_panel, 430, 120);
+    lv_obj_align(s_dash.camera_ctrl_panel, LV_ALIGN_BOTTOM_RIGHT, -10, -10);
+    lv_obj_set_style_bg_color(s_dash.camera_ctrl_panel, lv_color_hex(0x0b1729), 0);
+    lv_obj_set_style_bg_opa(s_dash.camera_ctrl_panel, LV_OPA_70, 0);
+    lv_obj_set_style_border_color(s_dash.camera_ctrl_panel, lv_color_hex(COLOR_ACCENT), 0);
+    lv_obj_set_style_border_width(s_dash.camera_ctrl_panel, 1, 0);
+    lv_obj_set_style_radius(s_dash.camera_ctrl_panel, 10, 0);
+    lv_obj_set_style_pad_all(s_dash.camera_ctrl_panel, 8, 0);
+
+    gain_title = lv_label_create(s_dash.camera_ctrl_panel);
+    lv_label_set_text(gain_title, "Gain");
+    lv_obj_set_style_text_font(gain_title, &lv_font_montserrat_12, 0);
+    lv_obj_align(gain_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    s_dash.camera_gain_label = lv_label_create(s_dash.camera_ctrl_panel);
+    lv_label_set_text_fmt(s_dash.camera_gain_label, "Gain: %lu", (unsigned long)gain_cur);
+    lv_obj_set_style_text_font(s_dash.camera_gain_label, &lv_font_montserrat_12, 0);
+    lv_obj_align(s_dash.camera_gain_label, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+    gain_slider = lv_slider_create(s_dash.camera_ctrl_panel);
+    s_dash.camera_gain_slider = gain_slider;
+    lv_obj_set_width(gain_slider, 410);
+    lv_obj_align(gain_slider, LV_ALIGN_TOP_MID, 0, 20);
+    lv_slider_set_range(gain_slider, (int32_t)gain_min, (int32_t)gain_max);
+    lv_slider_set_value(gain_slider, (int32_t)gain_cur, LV_ANIM_OFF);
+    lv_obj_add_event_cb(gain_slider, camera_gain_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    exp_title = lv_label_create(s_dash.camera_ctrl_panel);
+    lv_label_set_text(exp_title, "Exposure");
+    lv_obj_set_style_text_font(exp_title, &lv_font_montserrat_12, 0);
+    lv_obj_align(exp_title, LV_ALIGN_TOP_LEFT, 0, 56);
+
+    s_dash.camera_exposure_label = lv_label_create(s_dash.camera_ctrl_panel);
+    lv_label_set_text_fmt(s_dash.camera_exposure_label, "Exposure: 0x%04lX", (unsigned long)exp_cur);
+    lv_obj_set_style_text_font(s_dash.camera_exposure_label, &lv_font_montserrat_12, 0);
+    lv_obj_align(s_dash.camera_exposure_label, LV_ALIGN_TOP_RIGHT, 0, 56);
+
+    exp_slider = lv_slider_create(s_dash.camera_ctrl_panel);
+    s_dash.camera_exposure_slider = exp_slider;
+    lv_obj_set_width(exp_slider, 410);
+    lv_obj_align(exp_slider, LV_ALIGN_TOP_MID, 0, 76);
+    lv_slider_set_range(exp_slider, (int32_t)exp_min, (int32_t)exp_max);
+    lv_slider_set_value(exp_slider, (int32_t)exp_cur, LV_ANIM_OFF);
+    lv_obj_add_event_cb(exp_slider, camera_exposure_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    /* Keep header controls above full-screen canvas. */
+    lv_obj_move_foreground(header);
+    lv_obj_move_foreground(s_dash.camera_ctrl_panel);
+
+    lv_label_set_text(s_dash.camera_status_label, "Preview running (long press to exit)");
 }
 #endif
 
