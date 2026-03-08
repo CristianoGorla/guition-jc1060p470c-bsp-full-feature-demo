@@ -70,6 +70,12 @@ set(COMPONENT_REQUIRES
     esp_driver_cam
     esp_driver_ppa
     esp_sccb_intf
+    sdmmc
+    fatfs
+    esp_netif
+    esp_wifi
+    lwip
+    esp_timer
 )
 
 if(CONFIG_BSP_ENABLE_DISPLAY)
@@ -81,18 +87,6 @@ if(CONFIG_BSP_ENABLE_TOUCH)
 endif()
 
 # LVGL moved to main component - BSP only handles hardware
-
-if(CONFIG_BSP_ENABLE_SDCARD)
-    list(APPEND COMPONENT_REQUIRES sdmmc fatfs)
-endif()
-
-if(CONFIG_BSP_ENABLE_WIFI)
-    list(APPEND COMPONENT_REQUIRES esp_netif esp_wifi lwip)
-endif()
-
-if(CONFIG_BSP_ENABLE_RTC OR CONFIG_BSP_ENABLE_AUDIO)
-    list(APPEND COMPONENT_REQUIRES esp_timer)
-endif()
 
 if(CONFIG_BSP_ENABLE_CAMERA AND CONFIG_ESP_ISP_ENABLE)
     list(APPEND COMPONENT_REQUIRES esp_driver_isp)
