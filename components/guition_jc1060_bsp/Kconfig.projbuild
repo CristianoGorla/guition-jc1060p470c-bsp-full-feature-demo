@@ -463,7 +463,7 @@ menu "Guition JC1060P470C Board Configuration"
 
         config BSP_ENABLE_WIFI
             bool "▶ Enable WiFi (ESP-Hosted SDIO @ 40MHz on Slot 1)"
-            default n
+            default y
 
         menu "WiFi ESP-Hosted Configuration"
             visible if BSP_ENABLE_WIFI
@@ -844,6 +844,17 @@ menu "Guition JC1060P470C Board Configuration"
                       • Total devices found
                     
                     Safe for production use.
+
+            config BSP_SENSOR_DETAILED_BOOT_LOGS
+                bool "Detailed sensor boot logs (AHT20/BMP280)"
+                default n
+                depends on BSP_ENABLE_DEBUG_MODE
+                help
+                    Enable detailed per-address sensor probe logs during boot
+                    for the AHT20/BMP280 sensor layer.
+
+                    When disabled, the sensor layer keeps startup output
+                    compact and only reports summary/warnings.
 
             config DEBUG_I2C_VERBOSE
                 bool "⚠️  Verbose I2C transaction logging"

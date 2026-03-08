@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 
 #define BSP_LOG_TAG "BSP"
 #define BSP_PANEL_FMT "| %-10s | "
@@ -16,6 +17,14 @@
 #define LOGI(fmt, ...) ESP_LOGI(BSP_LOG_TAG, BSP_PANEL_FMT fmt, LOG_UNIT, ##__VA_ARGS__)
 #define LOGW(fmt, ...) ESP_LOGW(BSP_LOG_TAG, BSP_PANEL_FMT fmt, LOG_UNIT, ##__VA_ARGS__)
 #define LOGE(fmt, ...) ESP_LOGE(BSP_LOG_TAG, BSP_PANEL_FMT fmt, LOG_UNIT, ##__VA_ARGS__)
+
+#ifdef CONFIG_BSP_SENSOR_DETAILED_BOOT_LOGS
+#define SENSOR_BOOT_LOGI(fmt, ...) LOGI(fmt, ##__VA_ARGS__)
+#define SENSOR_BOOT_LOGW(fmt, ...) LOGW(fmt, ##__VA_ARGS__)
+#else
+#define SENSOR_BOOT_LOGI(fmt, ...)
+#define SENSOR_BOOT_LOGW(fmt, ...)
+#endif
 
 #define BSP_I2C_SPEED_HZ               100000
 #define BSP_I2C_PROBE_TIMEOUT_MS       50
@@ -99,13 +108,13 @@ static void bsp_scan_known_i2c_devices(void)
 {
     static const uint8_t known_addresses[] = {0x14, 0x18, 0x32, 0x36, 0x38, 0x77, 0x76};
 
-    LOGI("I2C0 scan on SDA=7 SCL=8 (shared bus)");
+    SENSOR_BOOT_LOGI("I2C0 scan on SDA=7 SCL=8 (shared bus)");
     for (size_t i = 0; i < sizeof(known_addresses) / sizeof(known_addresses[0]); i++) {
         esp_err_t ret = bsp_i2c_probe(known_addresses[i]);
         if (ret == ESP_OK) {
-            LOGI("I2C device detected @ 0x%02X", known_addresses[i]);
+            SENSOR_BOOT_LOGI("I2C device detected @ 0x%02X", known_addresses[i]);
         } else {
-            LOGW("I2C device not responding @ 0x%02X", known_addresses[i]);
+            SENSOR_BOOT_LOGW("I2C device not responding @ 0x%02X", known_addresses[i]);
         }
     }
 }

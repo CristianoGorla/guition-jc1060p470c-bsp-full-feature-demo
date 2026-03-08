@@ -94,6 +94,8 @@ static void bsp_apply_external_log_filter(void)
     const char *noisy_tags[] = {
         "jd9165",
         "GT911",
+        "ov02c10",
+        "temperature_sensor",
         "LVGL",
         "LVGL_INIT",
         "lvgl_demo",
