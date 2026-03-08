@@ -29,6 +29,14 @@
 #include "bootstrap_manager.h"
 #include "backlight_test.h"
 
+#ifdef CONFIG_BSP_ENABLE_WIFI
+#include "esp_hosted_wifi.h"
+#include "esp_netif.h"
+#ifdef CONFIG_APP_ENABLE_WIFI_CONNECT
+#include "wifi_config.h"
+#endif
+#endif
+
 #ifdef CONFIG_BSP_ENABLE_LVGL
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
@@ -262,6 +270,31 @@ void app_main(void)
         esp_restart();
     }
     
+#endif
+
+#if defined(CONFIG_BSP_ENABLE_WIFI) && defined(CONFIG_APP_ENABLE_WIFI_CONNECT)
+    if (check_if_already_has_ip()) {
+        ESP_LOGI(TAG, "WiFi already connected (IP assigned)");
+    } else {
+        ESP_LOGI(TAG, "Connecting to: %s", WIFI_SSID);
+        wifi_connect(WIFI_SSID, WIFI_PASSWORD);
+        ESP_LOGI(TAG, "Waiting for IP address (15s timeout)...");
+        wait_for_ip();
+
+        if (check_if_already_has_ip()) {
+            esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+            esp_netif_ip_info_t ip_info;
+
+            if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+                ESP_LOGI(TAG, "WiFi connected");
+                ESP_LOGI(TAG, "IP: " IPSTR, IP2STR(&ip_info.ip));
+                ESP_LOGI(TAG, "GW: " IPSTR, IP2STR(&ip_info.gw));
+                ESP_LOGI(TAG, "Netmask: " IPSTR, IP2STR(&ip_info.netmask));
+            }
+        } else {
+            ESP_LOGW(TAG, "WiFi connect timeout");
+        }
+    }
 #endif
 
     /* Step 4: LVGL Init - AFTER Bootstrap (safe PSRAM allocation) */
