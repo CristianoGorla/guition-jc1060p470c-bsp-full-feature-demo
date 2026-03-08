@@ -373,10 +373,14 @@ static void init_peripheral_list(void)
     s_dash.peripherals[s_dash.periph_count++] = (peripheral_info_t){
         .name = "Camera",
         .description = "MIPI CSI interface",
-        .detail = "Not impl.",
+        .detail = "OV02C10 probe + preview",
         .icon_symbol = LV_SYMBOL_EYE_OPEN,
+    #ifdef CONFIG_BSP_ENABLE_CAMERA
+        .enabled_in_config = true,
+    #else
         .enabled_in_config = false,
-        .implemented = false,
+    #endif
+        .implemented = true,
     };
 
     s_dash.peripherals[s_dash.periph_count++] = (peripheral_info_t){
