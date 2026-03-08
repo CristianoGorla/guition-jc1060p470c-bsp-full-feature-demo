@@ -30,6 +30,8 @@ endif()
 # Camera wrapper (OV02C10, Phase 1 detection)
 if(CONFIG_BSP_ENABLE_CAMERA)
     list(APPEND COMPONENT_SRCS "src/drivers/ov02c10_wrapper.c")
+    list(APPEND COMPONENT_SRCS "camera_slim/src/esp_cam_sensor.c")
+    list(APPEND COMPONENT_SRCS "camera_slim/src/ov02c10.c")
 endif()
 
 # I2C test utilities (if any I2C debug feature enabled)
@@ -66,7 +68,6 @@ set(COMPONENT_REQUIRES
     nvs_flash
     esp_driver_cam
     esp_driver_ppa
-    esp_cam_sensor
     esp_sccb_intf
 )
 
@@ -100,6 +101,7 @@ idf_component_register(
     SRCS ${COMPONENT_SRCS}
     INCLUDE_DIRS
         "include"
+        "camera_slim/include"
         "drivers"
         "bootstrap"
         "utils"

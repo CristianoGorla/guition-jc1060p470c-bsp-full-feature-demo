@@ -773,7 +773,7 @@ static void show_camera_tool_overlay(const tool_info_t *tool)
     lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1a3e66), 0);
     lv_obj_set_style_border_color(back_btn, lv_color_hex(COLOR_ACCENT), 0);
     lv_obj_set_style_border_width(back_btn, 1, 0);
-    lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_ALL, NULL);
 
     back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
@@ -889,7 +889,7 @@ static void show_camera_tool_overlay(const tool_info_t *tool)
     lv_obj_move_foreground(header);
     lv_obj_move_foreground(s_dash.camera_ctrl_panel);
 
-    lv_label_set_text(s_dash.camera_status_label, "Preview running (long press to exit)");
+    lv_label_set_text(s_dash.camera_status_label, "Preview running (press Back to exit)");
 }
 #endif
 
@@ -952,7 +952,7 @@ static void show_debug_tool_overlay(const tool_info_t *tool)
     lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1a3e66), 0);
     lv_obj_set_style_border_color(back_btn, lv_color_hex(COLOR_ACCENT), 0);
     lv_obj_set_style_border_width(back_btn, 1, 0);
-    lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_ALL, NULL);
 
     back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
@@ -1022,13 +1022,16 @@ static void tool_card_event_cb(lv_event_t *e)
 
 static void overlay_back_event_cb(lv_event_t *e)
 {
-    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_CLICKED && code != LV_EVENT_SHORT_CLICKED &&
+        code != LV_EVENT_RELEASED && code != LV_EVENT_LONG_PRESSED) {
         return;
     }
 
     (void)lv_event_get_user_data(e);
 
     if (s_dash.overlay) {
+        ESP_LOGI(TAG, "Closing overlay via back event (code=%d, tool=%d)", (int)code, (int)s_dash.overlay_tool);
 #ifdef CONFIG_BSP_ENABLE_CAMERA
         if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
             bsp_camera_stop_preview();
@@ -1092,7 +1095,7 @@ static void show_peripheral_overlay(peripheral_info_t *periph)
     lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1a3e66), 0);
     lv_obj_set_style_border_color(back_btn, lv_color_hex(COLOR_ACCENT), 0);
     lv_obj_set_style_border_width(back_btn, 1, 0);
-    lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_ALL, NULL);
 
     back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");

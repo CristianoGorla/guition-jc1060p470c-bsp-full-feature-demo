@@ -321,6 +321,80 @@ menu "Guition JC1060P470C Board Configuration"
                         Useful to isolate sensor/ISP/display pipeline issues.
                         Keep disabled for normal operation.
 
+                comment "OV02C10 slim driver compatibility options"
+
+                config CAMERA_OV02C10
+                    bool
+                    default y
+
+                config CAMERA_OV02C10_MAX_SUPPORT
+                    int
+                    default 1
+
+                config CAMERA_OV02C10_AUTO_DETECT
+                    bool
+                    default y
+
+                config CAMERA_OV02C10_AUTO_DETECT_MIPI_INTERFACE_SENSOR
+                    bool
+                    default y
+                    depends on CAMERA_OV02C10_AUTO_DETECT
+
+                choice CAMERA_OV02C10_MIPI_DEFAULT_FMT
+                    prompt "OV02C10 default MIPI format"
+                    default CAMERA_OV02C10_MIPI_RAW10_1920x1080_2LAN_30FPS
+
+                    config CAMERA_OV02C10_MIPI_RAW10_1288x728_30FPS
+                        bool "RAW10 1288x728 30fps"
+                    config CAMERA_OV02C10_MIPI_RAW10_1920x1080_30FPS
+                        bool "RAW10 1920x1080 30fps (1 lane)"
+                    config CAMERA_OV02C10_MIPI_RAW10_1920x1080_2LAN_30FPS
+                        bool "RAW10 1920x1080 30fps (2 lanes)"
+                endchoice
+
+                config CAMERA_OV02C10_MIPI_IF_FORMAT_INDEX_DAFAULT
+                    int
+                    default 0 if CAMERA_OV02C10_MIPI_RAW10_1288x728_30FPS
+                    default 1 if CAMERA_OV02C10_MIPI_RAW10_1920x1080_30FPS
+                    default 2 if CAMERA_OV02C10_MIPI_RAW10_1920x1080_2LAN_30FPS
+
+                config CAMERA_OV02C10_CSI_LINESYNC_ENABLE
+                    bool
+                    default y
+
+                config CAMERA_OV02C10_ISP_AF_ENABLE
+                    bool
+                    default n
+
+                config CAMERA_OV02C10_ABSOLUTE_GAIN_LIMIT
+                    int
+                    default 66016
+                    range 4000 126016
+
+                choice CAMERA_OV02C10_ABS_GAIN_MAP_PRIORITY
+                    prompt "OV02C10 gain map priority"
+                    default CAMERA_OV02C10_ANA_GAIN_PRIORITY
+
+                    config CAMERA_OV02C10_ANA_GAIN_PRIORITY
+                        bool "Analog gain priority"
+                    config CAMERA_OV02C10_DIG_GAIN_PRIORITY
+                        bool "Digital gain priority"
+                endchoice
+
+                choice CAMERA_OV02C10_IPA_JSON_CONFIGURATION_FILE
+                    prompt "OV02C10 IPA JSON configuration"
+                    default CAMERA_OV02C10_DEFAULT_IPA_JSON_CONFIGURATION_FILE
+
+                    config CAMERA_OV02C10_DEFAULT_IPA_JSON_CONFIGURATION_FILE
+                        bool "Default"
+                    config CAMERA_OV02C10_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE
+                        bool "Customized"
+                endchoice
+
+                config CAMERA_OV02C10_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE_PATH
+                    string "OV02C10 customized JSON configuration file path"
+                    depends on CAMERA_OV02C10_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE
+
                 comment "MIPI CSI-2 data lanes: 2 (hardware fixed, board pins 42-48)"
 
             endmenu
