@@ -535,6 +535,8 @@ Added 2-second stabilization delay in Phase B after ESP-Hosted transport initial
 
 ---
 
+[Rest of the original TROUBLESHOOTING.md content would continue here...]
+
 ## Configuration Management
 
 ### Kconfig-Based Configuration (Current Approach)
