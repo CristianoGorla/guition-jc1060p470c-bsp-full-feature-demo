@@ -7,6 +7,13 @@
 
 ### ✨ Major Features
 
+#### Camera Test Tool (NEW)
+- ✅ **Live MIPI CSI preview** integrated in System Monitor tools page
+- ✅ **Display-aligned preview path**: RGB565 output and center-crop to 1024x600
+- ✅ **In-UI tuning controls**: real-time `Gain` and `Exposure` sliders
+- ✅ **Reliable exit UX**: long-press on preview canvas + foreground header/back controls
+- ✅ **BSP camera tuning APIs** exposed for UI/runtime control (`get/set` for gain and exposure)
+
 #### System Monitor Dashboard (NEW)
 - ✅ **Professional LVGL v9 UI** with two interactive screens
   - **Screen 1**: 12 hardware peripheral status cards with live monitoring
@@ -19,7 +26,7 @@
 - 📸 **Screenshots**: Added to repository (20260306_092912.jpg, 20260306_092922.jpg)
 
 #### LVGL v9.2.2 Integration
-- ✅ **Memory-optimized configuration**: ~2.0 MB total (display + LVGL buffers)
+- ✅ **Validated memory configuration** for current DSI + LVGL pipeline
 - ✅ **DSI configuration**: `avoid_tearing=false` + `num_fbs=1` (saved 800 KB)
 - ✅ **DMA2D acceleration**: Hardware graphics acceleration enabled
 - ✅ **Touch input integration**: GT911 fully integrated with LVGL input driver
@@ -57,7 +64,7 @@
 #### ⚠️ Experimental/Disabled
 - **SD Card**: Disabled by default due to SDMMC slot arbitration issue (Error 0x108)
   - Simultaneous WiFi + SD Card causes boot loop
-  - See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for technical details
+  - See [troubleshooting.md](troubleshooting.md) for technical details
 
 ### 🎨 System Monitor Features
 
@@ -77,12 +84,12 @@ Each card displays:
 5. Real-Time Clock (RX8025T @ 0x32)
 6. SD Card (SDMMC Slot 0) - ⚠️ Experimental
 7. WiFi (ESP-Hosted, SDMMC Slot 1)
-8. Camera (MIPI CSI) - 🚧 Not implemented
+8. Camera (MIPI CSI) - ✅ Live preview + runtime tuning controls
 9-12. Future expansion slots
 
 #### Debug Tools (Screen 2)
 1. **Serial Log Monitor** - ESP-IDF log viewer
-2. **Camera Test** - Live preview (pending implementation)
+2. **Camera Test** - Live preview + Gain/Exposure sliders (implemented)
 3. **Sensor Monitor** - Real-time data graphs
 4. **WiFi Scanner** - Network discovery with RSSI
 5. **SD Card Browser** - File manager
@@ -148,7 +155,7 @@ CONFIG_BSP_ENABLE_SDCARD=n  # SD Card disabled
 CONFIG_BSP_ENABLE_WIFI=y     # WiFi enabled
 ```
 
-**Status**: Issue documented, driver-level fix required in ESP-Hosted. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for complete technical analysis.
+**Status**: Issue documented, driver-level fix required in ESP-Hosted. See [troubleshooting.md](troubleshooting.md) for complete technical analysis.
 
 ### 📚 Documentation Updates
 
@@ -158,14 +165,15 @@ CONFIG_BSP_ENABLE_WIFI=y     # WiFi enabled
 **Updated Documents**:
 - [README.md](README.md) - Restructured with "What This Project Does" section, display photos
 - [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) - Current development status
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - SD Card slot arbitration analysis
+- [troubleshooting.md](troubleshooting.md) - SD Card slot arbitration analysis
 
 ### 🎯 Roadmap
 
 **Immediate (v1.3.x)**:
 - [ ] Implement debug tool functions (Log Monitor, I2C Scanner, etc.)
 - [ ] Audio playback integration with LVGL controls
-- [ ] Camera live preview (MIPI CSI)
+- [ ] Camera still capture and save flow
+- [ ] Extended camera controls (AWB/AE presets, profile switching)
 - [ ] WiFi configuration UI screen
 - [ ] Settings persistence (NVS integration)
 
@@ -188,7 +196,7 @@ CONFIG_BSP_ENABLE_WIFI=y     # WiFi enabled
 - ✅ All I2C peripherals stable (Touch, Audio, RTC)
 - ✅ WiFi stable when enabled (disabled by default)
 - ✅ Display 1024×600 with LVGL v9 stable
-- ✅ Memory usage optimized (~2.0 MB)
+- ✅ Memory profile validated for current BSP display configuration
 - ✅ Boot sequence deterministic (~3.6s)
 - ⚠️ SD Card disabled due to slot arbitration issue
 

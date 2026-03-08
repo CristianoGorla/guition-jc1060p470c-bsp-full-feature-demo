@@ -43,7 +43,7 @@ Each card shows:
 
 **9 interactive tool launchers** for hardware testing and diagnostics:
 - **Serial Log Monitor** - ESP-IDF log viewer with filtering
-- **Camera Test** - Live preview and capture
+- **Camera Test** - Live preview with touch controls (Gain/Exposure)
 - **Sensor Monitor** - Real-time data graphs
 - **WiFi Scanner** - Network discovery with RSSI
 - **SD Card Browser** - File manager
@@ -57,7 +57,7 @@ Each card shows:
 - Auto-refresh every 2 seconds (configurable via Kconfig)
 - Horizontal swipe navigation with page indicators
 - Dark theme with cyan accent colors
-- Memory-optimized LVGL v9.2.2 configuration (~2.0 MB total)
+- Validated LVGL v9.2.2 configuration for DSI + touch dashboard workflows
 
 ### 🔧 Hardware Support
 
@@ -82,9 +82,9 @@ All peripherals can be enabled/disabled via menuconfig without code changes.
 
 **LVGL v9 Integration:**
 Optimized memory configuration with DSI display support:
-- Single hardware frame buffer (1.2 MB)
-- Dual LVGL draw buffers in PSRAM (~800 KB)
-- Total memory: **2.0 MB** (saved 800 KB vs alternative config)
+- Dual hardware frame buffers in current BSP display configuration (~2.4 MB)
+- LVGL draw buffer in PSRAM (~750 KB)
+- End-to-end DSI/LVGL pipeline validated on ESP32-P4
 - DMA2D acceleration enabled
 - Touch input integrated
 
@@ -282,7 +282,7 @@ config SYSTEM_MONITOR_REFRESH_INTERVAL_MS
 | Component | Status | Notes |
 |-----------|--------|-------|
 | **SD Card** | ⚠️ Disabled by default | See Known Limitations below |
-| **Camera** | 🚧 Not implemented | MIPI CSI interface available |
+| **Camera** | ✅ Preview tool available | OV02C10 live preview, long-press exit, Gain/Exposure sliders |
 
 ---
 
@@ -339,7 +339,7 @@ config SYSTEM_MONITOR_REFRESH_INTERVAL_MS
 - **[docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md)** - LVGL memory optimization details
 - **[docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)** - Current development status
 - **[RELEASE_NOTES.md](RELEASE_NOTES.md)** - Version history and changelogs
-- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
+- **[troubleshooting.md](troubleshooting.md)** - Common issues and solutions
 - **[SDMMC_ARBITER_README.md](SDMMC_ARBITER_README.md)** - SDMMC bus arbitration details
 - **[I2C_MIPI_DSI_CONFLICT.md](I2C_MIPI_DSI_CONFLICT.md)** - I2C/MIPI DSI conflict resolution
 
@@ -586,7 +586,7 @@ See [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md) for details
 3. `CONFIG_APP_ENABLE_WIFI_CONNECT=y` in menuconfig
 4. ESP-Hosted initialized successfully (check boot log)
 
-**See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for complete troubleshooting guide.**
+**See [troubleshooting.md](troubleshooting.md) for complete troubleshooting guide.**
 
 ---
 
@@ -600,7 +600,7 @@ See [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md) for details
 | **PSRAM** | 32 MB @ 200MHz | External RAM |
 | **Flash** | 16 MB @ 40MHz | SPI flash (QIO mode) |
 | **LVGL** | v9.2.2 | Graphics library |
-| **Memory Usage** | ~2.0 MB | Display + LVGL buffers |
+| **Memory Usage** | ~3.2 MB | Current BSP dual-FB display + LVGL draw buffer |
 | **Boot Time** | ~3.6 seconds | Reset to UI ready |
 
 ---
@@ -618,7 +618,8 @@ See [docs/LVGL_DSI_CONFIGURATION.md](docs/LVGL_DSI_CONFIGURATION.md) for details
 
 - [ ] Debug tool implementations (Log Monitor, I2C Scanner, etc.)
 - [ ] Audio playback integration with LVGL
-- [ ] Camera live preview (MIPI CSI)
+- [ ] Camera still capture/save workflow (from Camera Test)
+- [ ] Additional camera controls (AWB/AE presets, profile switching)
 - [ ] Custom application templates
 - [ ] Power management integration
 - [ ] ESP-Hosted slot arbitration fix
@@ -675,4 +676,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 **Project**: Guition JC1060P470C BSP - Full Feature Demo  
 **Branch**: develop/v1.3.0  
 **Status**: ✅ System Monitor Stable | LVGL v9 Stable | WiFi Supported  
-**Last Updated**: 2026-03-06
+**Last Updated**: 2026-03-08

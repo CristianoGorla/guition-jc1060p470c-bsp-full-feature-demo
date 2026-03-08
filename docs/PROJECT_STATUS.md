@@ -1,6 +1,6 @@
 # Project Status - Guition JC1060P470C BSP Full Feature Demo
 
-**Last Updated**: 2026-03-06 23:10 CET  
+**Last Updated**: 2026-03-08 00:30 CET  
 **Branch**: `develop/v1.3.0` (LVGL feature branch merged and frozen)  
 **Status**: ✅ **LVGL v9 INTEGRATED & PRODUCTION READY**
 
@@ -22,7 +22,7 @@
    - ✅ LVGL 9.2.2 with ESP_LVGL_PORT
    - ✅ RGB565 color format
    - ✅ DSI DPI interface configuration **optimized**
-   - ✅ Memory-efficient configuration (~2.0 MB)
+   - ✅ Validated memory configuration (current BSP dual-FB mode)
    - ✅ Hardware acceleration (DMA2D)
    - ✅ Touch input integration (native esp_lvgl_port)
    - ✅ Production-ready logging (no debug spam)
@@ -33,9 +33,40 @@
    - ✅ Phase-based initialization (Power → Peripherals → LVGL)
    - ✅ Hard reset protection for warm boots
 
+4. **Camera Preview Path (OV02C10)** ✨
+   - ✅ CSI RAW10 → ISP → PPA → LVGL canvas pipeline active
+   - ✅ RGB565 preview output aligned with display format
+   - ✅ Center-crop mapping to 1024x600 to reduce edge artifacts
+   - ✅ Runtime tuning from UI: Gain and Exposure sliders
+   - ✅ Robust exit UX: long-press on preview + foreground header controls
+
 ---
 
 ## 🔧 Recent Fixes
+
+### Fix #5: Camera Preview Stabilization + UI Controls (2026-03-08)
+
+**Issue**: Camera preview path required stabilization (brightness/edge behavior), and runtime image tuning was missing from UI.
+
+**Solution Applied**:
+
+- Camera pipeline updates in BSP wrapper:
+   - RGB565 output path for preview
+   - Center-crop geometry for 1024x600 display target
+   - Manual brightness compensation path when AE is not active
+- New BSP runtime parameter APIs:
+   - `bsp_camera_get_gain_index_range()` / `bsp_camera_get_gain_index()` / `bsp_camera_set_gain_index()`
+   - `bsp_camera_get_exposure_range()` / `bsp_camera_get_exposure_value()` / `bsp_camera_set_exposure_value()`
+- Dashboard integration:
+   - Camera control panel in overlay
+   - Real-time Gain/Exposure sliders with live label updates
+   - Long-press exit path and header kept in foreground
+
+**Result**:
+
+- ✅ Camera test tool is now interactive (not preview-only)
+- ✅ Operators can tune image brightness/exposure directly from touchscreen
+- ✅ Preview UX is recoverable and aligned with display format
 
 ### Fix #4: BSP Test Service + Unified Banner/Logging (2026-03-05)
 
@@ -494,7 +525,7 @@ guition-jc1060p470c-bsp-full-feature-demo/
 │  ├─ main.c                    # Application entry point
 │  └─ lvgl_init.c               # LVGL init (no wrapper) ✨
 ├─ docs/
-│  ├─ PROJECT_STATUS.md            # This file (updated 2026-03-05)
+│  ├─ PROJECT_STATUS.md            # This file (updated 2026-03-08)
 │  ├─ LVGL_TOUCH_FIX.md            # Touch integration guide
 │  ├─ LVGL_DSI_CONFIGURATION.md    # DSI memory optimization
 │  ├─ LVGL_V9_FRAME_BUFFER_FIX.md  # Original frame buffer fix
@@ -564,35 +595,37 @@ guition-jc1060p470c-bsp-full-feature-demo/
 ```
 Project: Guition JC1060P470C BSP Full Feature Demo
 
-Current Status (2026-03-05):
+Current Status (2026-03-08):
 - LVGL v9.2.2 fully integrated, production-ready
-- Display: 1024×600 MIPI DSI with optimized memory
+- Display: 1024x600 MIPI DSI with optimized memory
 - Touch: GT911 working via native esp_lvgl_port (no wrapper)
-- Recent fix: Touch debug wrapper removed (clean console)
-  (see PROJECT_STATUS.md - Fix #3)
+- Camera: OV02C10 preview active with UI Gain/Exposure controls
+- Recent fix: Camera preview stabilization + runtime tuning panel
+   (see PROJECT_STATUS.md - Fix #5)
 
 Configuration (Production-Ready):
-- DPI num_fbs = 1 (single hardware frame buffer)
+- DPI num_fbs = 2 (current BSP display configuration)
 - LVGL avoid_tearing = false (software buffer management)
 - Touch: Native esp_lvgl_port (5ms FreeRTOS timer)
 - GPIO 21/22 (RST/INT): Not configured (autonomous mode)
 - Console: Clean logging (5 lines/sec, no spam)
-- Memory: ~2.0 MB total (optimized)
+- Memory: ~3.2 MB total in current display + LVGL setup
 
 Next Tasks:
 - Test complex LVGL demos
 - Integrate audio (ES8311)
 - Configure RTC (RX8025T)
-- Develop custom UI applications
+- Expand camera controls (AWB/AE profiles, presets)
+- Add still capture/save flow from Camera Test
 
 Key Documents:
-- docs/PROJECT_STATUS.md (this file - updated 2026-03-05)
+- docs/PROJECT_STATUS.md (this file - updated 2026-03-08)
 - docs/LVGL_TOUCH_FIX.md (touch integration)
 - docs/LVGL_DSI_CONFIGURATION.md (memory optimization)
 
 Repository: https://github.com/CristianoGorla/guition-jc1060p470c-bsp-full-feature-demo
 Branch: develop/v1.3.0
-Latest Commit: 189ae57 (touch wrapper removal)
+Latest Milestone: 2026-03-08 camera preview controls integrated
 ```
 
 ---
