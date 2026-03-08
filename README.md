@@ -273,6 +273,7 @@ config SYSTEM_MONITOR_REFRESH_INTERVAL_MS
 | **I2C Bus** | 400kHz | ✅ Stable | GPIO7/8 |
 | **Audio** | ES8311 | ✅ Stable | I2S codec + PA |
 | **RTC** | RX8025T | ✅ Stable | Battery-backed |
+| **Camera** | OV02C10 | ✅ Stable | Live preview, long-press exit, Gain/Exposure sliders |
 | **WiFi** | ESP-Hosted | ✅ Stable | SDMMC Slot 1 (disabled by default) |
 | **PSRAM** | 32MB | ✅ Stable | 200MHz |
 | **Flash** | 16MB | ✅ Stable | 40MHz QIO |
@@ -282,7 +283,6 @@ config SYSTEM_MONITOR_REFRESH_INTERVAL_MS
 | Component | Status | Notes |
 |-----------|--------|-------|
 | **SD Card** | ⚠️ Disabled by default | See Known Limitations below |
-| **Camera** | ✅ Preview tool available | OV02C10 live preview, long-press exit, Gain/Exposure sliders |
 
 ---
 
