@@ -153,7 +153,7 @@ static void on_debug_tool_selected(debug_tool_t tool, void *user_data)
             ESP_LOGI(TAG, "System info not implemented");
             break;
         case DEBUG_TOOL_GPIO_MONITOR:
-            ESP_LOGI(TAG, "GPIO monitor not implemented");
+            ESP_LOGI(TAG, "Radar monitor not implemented");
             break;
         case DEBUG_TOOL_PERFORMANCE:
             ESP_LOGI(TAG, "Performance view not implemented");

@@ -16,6 +16,7 @@
 #include "esp_sleep.h"
 #include "sdkconfig.h"
 #include "bsp_sensors.h"
+#include "bsp_radar.h"
 
 /* Include driver headers */
 #ifdef CONFIG_BSP_ENABLE_DISPLAY
@@ -259,6 +260,13 @@ static esp_err_t bsp_phase_d_peripheral_drivers(void)
         LOGW("[PHASE D] [WARN] Sensors skipped (I2C bus unavailable)");
     }
 
+#ifdef CONFIG_BSP_RADAR_LD2410C_ENABLE
+    esp_err_t radar_ret = bsp_radar_init();
+    if (radar_ret != ESP_OK) {
+        LOGW("[PHASE D] [WARN] Radar init failed: %s", esp_err_to_name(radar_ret));
+    }
+#endif
+
 #ifdef CONFIG_BSP_ENABLE_CAMERA
     esp_err_t cam_ret = bsp_camera_init();
     if (cam_ret == ESP_OK) {
@@ -309,6 +317,10 @@ i2c_master_bus_handle_t bsp_i2c_get_bus_handle(void)
 
 void bsp_board_deinit(void)
 {
+#ifdef CONFIG_BSP_RADAR_LD2410C_ENABLE
+    bsp_radar_deinit();
+#endif
+
 #ifdef CONFIG_BSP_ENABLE_CAMERA
     bsp_camera_deinit();
 #endif

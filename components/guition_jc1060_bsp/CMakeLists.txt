@@ -5,6 +5,10 @@ set(COMPONENT_SRCS
     "src/bsp_tests.c"
 )
 
+if(CONFIG_BSP_RADAR_LD2410C_ENABLE)
+    list(APPEND COMPONENT_SRCS "src/bsp_radar.c")
+endif()
+
 # Display driver (always needed if BSP enabled)
 if(CONFIG_BSP_ENABLE_DISPLAY)
     list(APPEND COMPONENT_SRCS "drivers/jd9165_bsp.c")

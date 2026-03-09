@@ -1,4 +1,5 @@
 dependencies:
   espressif/esp_lcd_jd9165: "==1.0.2"
   espressif/esp_lcd_touch_gt911: "==1.1.3"
+  shyndman/esp32-ld2410: "*"
   # LVGL moved to main component (application layer)

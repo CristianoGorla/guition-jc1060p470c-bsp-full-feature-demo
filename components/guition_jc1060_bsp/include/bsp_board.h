@@ -23,7 +23,7 @@ extern "C" {
  * 
  * Performs hardware initialization:
  * - Phase A: Power Manager (hard reset, power rails)
- * - Phase D: Peripheral Drivers (I2C, Display HW, Touch HW, Audio, RTC)
+ * - Phase D: Peripheral Drivers (I2C, Display HW, Touch HW, Audio, RTC, Radar)
  * 
  * NOTE: Only initializes hardware drivers. Application layer (LVGL)
  *       should be initialized separately in main.

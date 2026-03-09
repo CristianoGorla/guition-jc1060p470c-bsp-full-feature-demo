@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "bsp_board.h"
+#include "bsp_radar.h"
 #include "bsp_sensors.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
@@ -178,9 +179,9 @@ static const tool_info_t s_tools[] = {
         .tool_id = DEBUG_TOOL_SYSTEM_INFO,
     },
     {
-        .name = "GPIO Monitor",
-        .description = "Pin state viewer",
-        .detail = "Input/output levels",
+        .name = "Radar Monitor",
+        .description = "Presence and distance",
+        .detail = "LD2410C realtime",
         .icon_symbol = LV_SYMBOL_CHARGE,
         .tool_id = DEBUG_TOOL_GPIO_MONITOR,
     },
@@ -232,6 +233,7 @@ static void set_peripheral_status(peripheral_info_t *periph)
     esp_lcd_touch_handle_t touch;
     i2c_master_bus_handle_t i2c;
     bsp_env_data_t env_data = {0};
+    bsp_radar_data_t radar_data = {0};
 
     if (!periph->implemented) {
         periph->status = PERIPH_STATUS_NOT_IMPL;
@@ -268,6 +270,13 @@ static void set_peripheral_status(peripheral_info_t *periph)
 
     if (strcmp(periph->name, "Sensors") == 0) {
         periph->status = (bsp_env_get_data(&env_data) == ESP_OK && env_data.has_temperature)
+                            ? PERIPH_STATUS_OK
+                            : PERIPH_STATUS_WARNING;
+        return;
+    }
+
+    if (strcmp(periph->name, "Radar") == 0) {
+        periph->status = (bsp_radar_get_data(&radar_data) == ESP_OK && radar_data.initialized)
                             ? PERIPH_STATUS_OK
                             : PERIPH_STATUS_WARNING;
         return;
@@ -394,12 +403,16 @@ static void init_peripheral_list(void)
     };
 
     s_dash.peripherals[s_dash.periph_count++] = (peripheral_info_t){
-        .name = "GPIO Exp",
-        .description = "I2C I/O expander",
-        .detail = "Future",
-        .icon_symbol = LV_SYMBOL_LIST,
+        .name = "Radar",
+        .description = "HLK-LD2410C presence",
+        .detail = "UART2 + LP_GPIO4",
+        .icon_symbol = LV_SYMBOL_CHARGE,
+    #ifdef CONFIG_BSP_RADAR_LD2410C_ENABLE
+        .enabled_in_config = true,
+    #else
         .enabled_in_config = false,
-        .implemented = false,
+    #endif
+        .implemented = true,
     };
 
     s_dash.peripherals[s_dash.periph_count++] = (peripheral_info_t){
@@ -529,9 +542,11 @@ static void refresh_timer_cb(lv_timer_t *timer)
 static void update_env_card_widgets(void)
 {
     bsp_env_data_t env_data = {0};
-    char text[96];
+    bsp_radar_data_t radar_data = {0};
+    char text[128];
     char hum_buf[16];
     char press_buf[16];
+    char radar_buf[24];
     const char *src_tag = "";
 
     if (bsp_env_get_data(&env_data) != ESP_OK) {
@@ -561,13 +576,24 @@ static void update_env_card_widgets(void)
         snprintf(press_buf, sizeof(press_buf), "n/a");
     }
 
+    if (bsp_radar_get_data(&radar_data) == ESP_OK && radar_data.initialized) {
+        snprintf(radar_buf,
+                 sizeof(radar_buf),
+                 "R %s %ucm",
+                 radar_data.present ? "ON" : "OFF",
+                 (unsigned)radar_data.distance_cm);
+    } else {
+        snprintf(radar_buf, sizeof(radar_buf), "R n/a");
+    }
+
     snprintf(text,
              sizeof(text),
-             "T %.1fC%s | H %s | P %s",
+             "T %.1fC%s | H %s | P %s | %s",
              (double)env_data.temperature_c,
              src_tag,
              hum_buf,
-             press_buf);
+             press_buf,
+             radar_buf);
 
     if (s_dash.env_peripheral && s_dash.env_peripheral->detail_label) {
         lv_label_set_text(s_dash.env_peripheral->detail_label, text);
@@ -706,6 +732,18 @@ static void get_peripheral_gpio_text(const peripheral_info_t *periph, char *buf,
                  CONFIG_BSP_PIN_WIFI_SDIO_CLK,
                  CONFIG_BSP_PIN_WIFI_SDIO_CMD,
                  CONFIG_BSP_PIN_WIFI_SDIO_D0);
+        return;
+    }
+
+    if (strcmp(periph->name, "Radar") == 0) {
+        snprintf(buf,
+                 buf_size,
+                 "GPIO %d (RADAR_RX)\n"
+                 "GPIO %d (RADAR_TX)\n"
+                 "GPIO %d (RADAR_OUT LP)",
+                 CONFIG_BSP_RADAR_RX_PIN,
+                 CONFIG_BSP_RADAR_TX_PIN,
+                 CONFIG_BSP_RADAR_OUT_PIN);
         return;
     }
 

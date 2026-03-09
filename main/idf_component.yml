@@ -15,5 +15,8 @@ dependencies:
   # Networking (keep current versions)
   espressif/esp_hosted: ^2.12.0
   espressif/esp_wifi_remote: ^1.4.0
+
+  # Radar presence sensor
+  shyndman/esp32-ld2410: "*"
   
   idf: '>=5.3'

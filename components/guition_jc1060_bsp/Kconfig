@@ -83,3 +83,56 @@ menu "Graphics Configuration"
         default 270 if LVGL_DISP_ROTATION_270
 
 endmenu
+
+menu "Radar Configuration"
+
+    config BSP_RADAR_LD2410C_ENABLE
+        bool "Enable HLK-LD2410C radar support"
+        default y
+        help
+          Enable HLK-LD2410C radar integration through the official
+          shyndman/esp32-ld2410 component.
+
+    config BSP_RADAR_UART_PORT
+        int "Radar UART port"
+        default 2
+        depends on BSP_RADAR_LD2410C_ENABLE
+
+    config BSP_RADAR_RX_PIN
+        int "Radar UART RX GPIO"
+        default 32
+        depends on BSP_RADAR_LD2410C_ENABLE
+
+    config BSP_RADAR_TX_PIN
+        int "Radar UART TX GPIO"
+        default 33
+        depends on BSP_RADAR_LD2410C_ENABLE
+
+    config BSP_RADAR_OUT_PIN
+        int "Radar OUT GPIO"
+        default 4
+        depends on BSP_RADAR_LD2410C_ENABLE
+
+    config BSP_RADAR_SLEEP_WAKEUP
+        bool "Enable deep sleep wakeup from radar OUT pin"
+        default y
+        depends on BSP_RADAR_LD2410C_ENABLE
+
+    config BSP_RADAR_LOG_SILENT
+        bool "Silence periodic radar sampling logs"
+        default y
+        depends on BSP_RADAR_LD2410C_ENABLE
+
+endmenu
+
+config LD2410_UART_PORT_NUM
+    int
+    default BSP_RADAR_UART_PORT if BSP_RADAR_LD2410C_ENABLE
+
+config LD2410_UART_RX
+    int
+    default BSP_RADAR_RX_PIN if BSP_RADAR_LD2410C_ENABLE
+
+config LD2410_UART_TX
+    int
+    default BSP_RADAR_TX_PIN if BSP_RADAR_LD2410C_ENABLE
