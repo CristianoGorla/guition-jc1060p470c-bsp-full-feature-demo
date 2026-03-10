@@ -18,6 +18,7 @@
 #include "build_info.h"
 #include "bsp_board.h"
 #include "bsp_priv.h"
+#include "bsp_radar.h"
 #include "bsp_sensors.h"
 #ifdef CONFIG_BSP_ENABLE_DEBUG_MODE
 #include "bsp_tests.h"
@@ -28,6 +29,9 @@
 #include "rtc_ntp_sync.h"
 #include "bootstrap_manager.h"
 #include "backlight_test.h"
+#if CONFIG_BSP_RADAR_LD2410C_ENABLE && CONFIG_BSP_ENABLE_DISPLAY
+#include "jd9165_bsp.h"
+#endif
 
 #ifdef CONFIG_BSP_ENABLE_WIFI
 #include "esp_hosted_wifi.h"
@@ -51,6 +55,83 @@ static const char *SYSTEM_TAG = "SYSTEM";
 #endif
 static const char *MAIN_BANNER_LINE = "====================================================================================================";
 #define MAIN_BANNER_WIDTH 78
+
+#if CONFIG_BSP_RADAR_LD2410C_ENABLE && CONFIG_BSP_ENABLE_DISPLAY
+#define RADAR_BACKLIGHT_STANDBY_TIMEOUT_MS 60000LL
+#define RADAR_BACKLIGHT_POLL_MS            200U
+
+static void radar_backlight_standby_task(void *arg)
+{
+    (void)arg;
+
+    const TickType_t poll_ticks = pdMS_TO_TICKS(RADAR_BACKLIGHT_POLL_MS);
+    uint8_t restore_brightness_pct = (CONFIG_BSP_LCD_BL_DEFAULT_DUTY > 100) ? 100 : CONFIG_BSP_LCD_BL_DEFAULT_DUTY;
+    bool have_last_out_state = false;
+    bool last_out_high = false;
+    bool forced_off = false;
+    int64_t out_low_since_ms = 0;
+
+    while (1) {
+        bsp_radar_data_t radar_data = {0};
+        bool out_high = false;
+
+        if (bsp_radar_get_data(&radar_data) != ESP_OK || !radar_data.initialized) {
+            vTaskDelay(poll_ticks);
+            continue;
+        }
+
+        out_high = radar_data.out_pin_high;
+
+        if (!have_last_out_state) {
+            have_last_out_state = true;
+            last_out_high = out_high;
+            out_low_since_ms = out_high ? 0 : (esp_timer_get_time() / 1000);
+            vTaskDelay(poll_ticks);
+            continue;
+        }
+
+        if (out_high) {
+            out_low_since_ms = 0;
+
+            if (!last_out_high && forced_off) {
+                if (bsp_display_set_brightness(restore_brightness_pct) == ESP_OK) {
+                    forced_off = false;
+                    ESP_LOGI(TAG, "Radar standby: OUT HIGH, restoring backlight to %u%%", (unsigned)restore_brightness_pct);
+                } else {
+                    ESP_LOGW(TAG, "Radar standby: failed to restore backlight");
+                }
+            }
+        } else {
+            int64_t now_ms = esp_timer_get_time() / 1000;
+
+            if (out_low_since_ms == 0) {
+                out_low_since_ms = now_ms;
+            }
+
+            if (!forced_off && (now_ms - out_low_since_ms) >= RADAR_BACKLIGHT_STANDBY_TIMEOUT_MS) {
+                uint8_t current_brightness_pct = bsp_display_get_brightness();
+
+                if (current_brightness_pct > 0) {
+                    restore_brightness_pct = current_brightness_pct;
+                }
+
+                if (bsp_display_set_brightness(0) == ESP_OK) {
+                    forced_off = true;
+                    ESP_LOGI(TAG,
+                             "Radar standby: OUT LOW for >= %lld ms, backlight OFF (restore=%u%%)",
+                             (long long)RADAR_BACKLIGHT_STANDBY_TIMEOUT_MS,
+                             (unsigned)restore_brightness_pct);
+                } else {
+                    ESP_LOGW(TAG, "Radar standby: failed to switch backlight OFF");
+                }
+            }
+        }
+
+        last_out_high = out_high;
+        vTaskDelay(poll_ticks);
+    }
+}
+#endif
 
 static void main_log_banner_border(int top)
 {
@@ -170,14 +251,40 @@ static void uptime_temp_log_task(void *arg)
 {
     (void)arg;
 
+    static const uint16_t RADAR_NEAR_MAX_CM = (uint16_t)((BSP_RADAR_PROFILE_MOVING_GATE_MAX + 1U) * BSP_RADAR_PROFILE_RESOLUTION_CM);
+    static const uint16_t RADAR_MID_MAX_CM = 100;
+    static const uint16_t RADAR_FAR_MAX_CM = 180;
+
     while (1) {
         int64_t uptime_sec = esp_timer_get_time() / 1000000LL;
+        int64_t now_ms = esp_timer_get_time() / 1000;
+        int64_t env_age_ms = -1;
+        bool env_refresh_ok = false;
         bsp_sensor_data_t sensor_data = {0};
+        bsp_radar_data_t radar_data = {0};
+        uint16_t radar_range_cm = 0;
         char temp_buf[24];
         char hum_buf[24];
         char press_buf[24];
+        char env_meta_buf[32];
+        char trg_buf[8];
+        char dist_buf[16];
+        char eng_buf[16];
 
+        /* Keep cyclic log aligned with an immediate sensor acquisition. */
+        env_refresh_ok = (bsp_env_refresh_now() == ESP_OK);
         (void)bsp_sensor_get_data(&sensor_data);
+
+        if (sensor_data.timestamp_ms > 0 && now_ms >= sensor_data.timestamp_ms) {
+            env_age_ms = now_ms - sensor_data.timestamp_ms;
+        }
+
+        snprintf(env_meta_buf,
+                 sizeof(env_meta_buf),
+                 "A:%lldms S:%llu R:%s",
+                 (long long)((env_age_ms >= 0) ? env_age_ms : 0),
+                 (unsigned long long)sensor_data.sample_count,
+                 env_refresh_ok ? "OK" : "FAIL");
 
         if (sensor_data.has_temperature) {
             snprintf(temp_buf, sizeof(temp_buf), "%.2f °C", (double)sensor_data.temperature_c);
@@ -198,11 +305,51 @@ static void uptime_temp_log_task(void *arg)
         }
 
         ESP_LOGI(SYSTEM_TAG,
-                 "Uptime: %llds | Temp: %s | Hum: %s | Press: %s",
+                 "Uptime: %llds | Temp: %s | Hum: %s | Press: %s | %s",
                  (long long)uptime_sec,
                  temp_buf,
                  hum_buf,
-                 press_buf);
+                 press_buf,
+                 env_meta_buf);
+
+#if CONFIG_BSP_RADAR_LD2410C_ENABLE
+        if (bsp_radar_get_data(&radar_data) == ESP_OK && radar_data.initialized) {
+            radar_range_cm = radar_data.distance_cm;
+            if (radar_range_cm == 0) {
+                radar_range_cm = (radar_data.moving_distance_cm > radar_data.stationary_distance_cm)
+                                    ? radar_data.moving_distance_cm
+                                    : radar_data.stationary_distance_cm;
+            }
+
+            if (radar_range_cm > 0 && radar_range_cm <= RADAR_NEAR_MAX_CM) {
+                snprintf(trg_buf, sizeof(trg_buf), "NEAR");
+            } else if (radar_range_cm > RADAR_NEAR_MAX_CM && radar_range_cm <= RADAR_MID_MAX_CM) {
+                snprintf(trg_buf, sizeof(trg_buf), "MID");
+            } else if (radar_range_cm > RADAR_MID_MAX_CM && radar_range_cm <= RADAR_FAR_MAX_CM) {
+                snprintf(trg_buf, sizeof(trg_buf), "FAR");
+            } else {
+                snprintf(trg_buf, sizeof(trg_buf), "NONE");
+            }
+
+            snprintf(dist_buf, sizeof(dist_buf), "%ucm", (unsigned)radar_range_cm);
+            snprintf(eng_buf, sizeof(eng_buf), "%u%%", (unsigned)radar_data.energy_pct);
+        } else {
+            snprintf(trg_buf, sizeof(trg_buf), "NONE");
+            snprintf(dist_buf, sizeof(dist_buf), "n/a");
+            snprintf(eng_buf, sizeof(eng_buf), "n/a");
+        }
+#else
+        snprintf(trg_buf, sizeof(trg_buf), "OFF");
+        snprintf(dist_buf, sizeof(dist_buf), "n/a");
+        snprintf(eng_buf, sizeof(eng_buf), "n/a");
+#endif
+
+        ESP_LOGI(SYSTEM_TAG,
+                 "TRG: %s | DIST: %s | ENG: %s",
+                 trg_buf,
+                 dist_buf,
+                 eng_buf);
+
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
@@ -336,6 +483,22 @@ void app_main(void)
     ret = bsp_heartbeat_start();
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to start heartbeat: %s", esp_err_to_name(ret));
+    }
+#endif
+
+#if CONFIG_BSP_RADAR_LD2410C_ENABLE && CONFIG_BSP_ENABLE_DISPLAY
+    {
+        BaseType_t task_ret = xTaskCreate(
+            radar_backlight_standby_task,
+            "radar_bl_standby",
+            3072,
+            NULL,
+            3,
+            NULL
+        );
+        if (task_ret != pdPASS) {
+            ESP_LOGW(TAG, "Failed to start radar backlight standby task");
+        }
     }
 #endif
 

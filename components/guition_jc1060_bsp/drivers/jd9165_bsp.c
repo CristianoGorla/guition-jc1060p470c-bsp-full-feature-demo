@@ -91,6 +91,7 @@ static const jd9165_lcd_init_cmd_t lcd_init_cmds[] = {
 
 static ledc_channel_t g_bl_channel = LCD_LEDC_CHANNEL;
 static esp_lcd_panel_io_handle_t g_dsi_io_handle = NULL;  // ✓ Store for LVGL
+static uint8_t g_backlight_percent = 100;
 
 static esp_err_t backlight_init(void)
 {
@@ -226,6 +227,13 @@ esp_err_t bsp_display_set_brightness(uint8_t brightness_percent)
                         "Failed to set backlight duty");
     ESP_RETURN_ON_ERROR(ledc_update_duty(LEDC_LOW_SPEED_MODE, g_bl_channel), TAG,
                         "Failed to update backlight");
+
+    g_backlight_percent = brightness_percent;
     
     return ESP_OK;
+}
+
+uint8_t bsp_display_get_brightness(void)
+{
+    return g_backlight_percent;
 }

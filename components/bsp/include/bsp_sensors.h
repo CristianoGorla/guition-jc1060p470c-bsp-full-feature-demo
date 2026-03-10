@@ -25,6 +25,7 @@ typedef struct {
 typedef bsp_env_data_t bsp_sensor_data_t;
 
 esp_err_t bsp_sensors_init(i2c_master_bus_handle_t i2c_bus_handle);
+esp_err_t bsp_env_refresh_now(void);
 esp_err_t bsp_env_get_data(bsp_env_data_t *out_data);
 esp_err_t bsp_sensor_get_data(bsp_sensor_data_t *out_data);
 float bsp_sensor_get_temp(void);

@@ -464,6 +464,22 @@ esp_err_t bsp_sensors_init(i2c_master_bus_handle_t i2c_bus_handle)
     return (s_aht20_ready || s_bmp280_ready || s_tsens_ready) ? ESP_OK : ESP_FAIL;
 }
 
+esp_err_t bsp_env_refresh_now(void)
+{
+    bsp_env_data_t sample = {0};
+
+    if (!s_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (bsp_collect_env_data(&sample) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    bsp_publish_env_data(&sample);
+    return ESP_OK;
+}
+
 esp_err_t bsp_env_get_data(bsp_env_data_t *out_data)
 {
     bsp_env_data_t snapshot = {0};

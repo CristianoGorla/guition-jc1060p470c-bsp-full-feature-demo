@@ -124,15 +124,3 @@ menu "Radar Configuration"
         depends on BSP_RADAR_LD2410C_ENABLE
 
 endmenu
-
-config LD2410_UART_PORT_NUM
-    int
-    default BSP_RADAR_UART_PORT if BSP_RADAR_LD2410C_ENABLE
-
-config LD2410_UART_RX
-    int
-    default BSP_RADAR_RX_PIN if BSP_RADAR_LD2410C_ENABLE
-
-config LD2410_UART_TX
-    int
-    default BSP_RADAR_TX_PIN if BSP_RADAR_LD2410C_ENABLE

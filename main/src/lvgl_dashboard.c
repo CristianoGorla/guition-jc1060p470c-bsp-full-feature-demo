@@ -2,6 +2,7 @@
 
 #include "lvgl_dashboard.h"
 
+#include <math.h>
 #include <string.h>
 
 #include "bsp_board.h"
@@ -53,6 +54,14 @@
 #define INDICATOR_H           70
 #define FOOTER_Y              560
 #define FOOTER_H              40
+
+#define RADAR_SCOPE_W                 470
+#define RADAR_SCOPE_H                 320
+#define RADAR_SCOPE_CENTER_X          235
+#define RADAR_SCOPE_CENTER_Y          300
+#define RADAR_SCOPE_MAX_RADIUS_PX     200
+#define RADAR_SCOPE_MAX_RANGE_CM      180
+#define RADAR_SCOPE_GATE_COUNT        9
 
 typedef struct {
     const char *name;
@@ -116,6 +125,15 @@ typedef struct {
     lv_chart_series_t *sensor_tool_temp_series;
     lv_chart_series_t *sensor_tool_hum_series;
     lv_chart_series_t *sensor_tool_press_series;
+
+    lv_obj_t *radar_overlay_out_led;
+    lv_obj_t *radar_overlay_out_label;
+    lv_obj_t *radar_overlay_settings_label;
+    lv_obj_t *radar_overlay_detail_label;
+    lv_obj_t *radar_overlay_scope;
+    lv_obj_t *radar_overlay_dot_moving;
+    lv_obj_t *radar_overlay_dot_stationary;
+    lv_obj_t *radar_overlay_dot_presence;
 } dashboard_state_t;
 
 static const char *TAG = "lvgl_dashboard";
@@ -127,6 +145,8 @@ static void camera_gain_slider_event_cb(lv_event_t *e);
 static void camera_exposure_slider_event_cb(lv_event_t *e);
 #endif
 static void update_env_card_widgets(void);
+static void update_radar_overlay_widgets(void);
+static void format_radar_profile_text(char *buf, size_t buf_size);
 
 static const tool_info_t s_tools[] = {
     {
@@ -405,7 +425,7 @@ static void init_peripheral_list(void)
     s_dash.peripherals[s_dash.periph_count++] = (peripheral_info_t){
         .name = "Radar",
         .description = "HLK-LD2410C presence",
-        .detail = "UART2 + LP_GPIO4",
+        .detail = "UART2 + RADAR_OUT pin",
         .icon_symbol = LV_SYMBOL_CHARGE,
     #ifdef CONFIG_BSP_RADAR_LD2410C_ENABLE
         .enabled_in_config = true,
@@ -531,6 +551,7 @@ static void refresh_status_internal(void)
     apply_peripheral_status_to_ui();
     update_page_indicators();
     update_env_card_widgets();
+    update_radar_overlay_widgets();
 }
 
 static void refresh_timer_cb(lv_timer_t *timer)
@@ -617,6 +638,242 @@ static void env_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
     update_env_card_widgets();
+    update_radar_overlay_widgets();
+}
+
+static const char *radar_status_to_text(uint8_t status)
+{
+    switch (status) {
+        case 0:
+            return "No target";
+        case 1:
+            return "Moving";
+        case 2:
+            return "Stationary";
+        case 3:
+            return "Moving+Stationary";
+        case 4:
+            return "Auto thresholding";
+        case 5:
+            return "Auto threshold OK";
+        case 6:
+            return "Auto threshold FAIL";
+        default:
+            return "Invalid";
+    }
+}
+
+static const char *radar_zone_to_text(uint16_t distance_cm)
+{
+    const uint16_t near_max_cm = (uint16_t)((BSP_RADAR_PROFILE_MOVING_GATE_MAX + 1U) * BSP_RADAR_PROFILE_RESOLUTION_CM);
+
+    if (distance_cm > 0 && distance_cm <= near_max_cm) {
+        return "NEAR";
+    }
+    if (distance_cm > near_max_cm && distance_cm <= 100) {
+        return "MID";
+    }
+    if (distance_cm > 100 && distance_cm <= 180) {
+        return "FAR";
+    }
+    return "NONE";
+}
+
+static void format_radar_profile_text(char *buf, size_t buf_size)
+{
+    const unsigned step_cm = BSP_RADAR_PROFILE_RESOLUTION_CM;
+
+    snprintf(buf,
+             buf_size,
+             "Profile: %ucm/gate | Radar gates: G0..G%u\n"
+             "Gate map: G0..G%u (0-%ucm visualized with 9 semicircles)\n"
+             "UART%d RX%d TX%d | INT source: OUT GPIO%d\n"
+             "INT policy: moving or stationary <=%ucm | stationary gate=%u\n"
+             "Wakeup/ext0: %s | Hold=%us | Sampler: %ums",
+             step_cm,
+             (unsigned)(RADAR_SCOPE_GATE_COUNT - 1U),
+             (unsigned)(RADAR_SCOPE_GATE_COUNT - 1U),
+             (unsigned)(RADAR_SCOPE_GATE_COUNT * BSP_RADAR_PROFILE_RESOLUTION_CM),
+             CONFIG_BSP_RADAR_UART_PORT,
+             CONFIG_BSP_RADAR_RX_PIN,
+             CONFIG_BSP_RADAR_TX_PIN,
+             CONFIG_BSP_RADAR_OUT_PIN,
+             (unsigned)((BSP_RADAR_PROFILE_MOVING_GATE_MAX + 1U) * BSP_RADAR_PROFILE_RESOLUTION_CM),
+             (unsigned)BSP_RADAR_PROFILE_STATIONARY_GATE_MAX,
+#if CONFIG_BSP_RADAR_SLEEP_WAKEUP
+             "enabled",
+#else
+             "disabled",
+#endif
+             (unsigned)BSP_RADAR_PROFILE_NO_ONE_WINDOW_S,
+             (unsigned)BSP_RADAR_PROFILE_SAMPLE_PERIOD_MS);
+}
+
+static void radar_hide_dot(lv_obj_t *dot)
+{
+    if (dot) {
+        lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void radar_plot_dot(lv_obj_t *dot, uint16_t distance_cm, float angle_deg)
+{
+    float clamped_cm;
+    float radius_px;
+    float angle_rad;
+    int32_t x;
+    int32_t y;
+
+    if (!dot || !s_dash.radar_overlay_scope || distance_cm == 0) {
+        radar_hide_dot(dot);
+        return;
+    }
+
+    clamped_cm = (distance_cm > RADAR_SCOPE_MAX_RANGE_CM) ? (float)RADAR_SCOPE_MAX_RANGE_CM : (float)distance_cm;
+    radius_px = (clamped_cm / (float)RADAR_SCOPE_MAX_RANGE_CM) * (float)RADAR_SCOPE_MAX_RADIUS_PX;
+    if (radius_px < 8.0f) {
+        radius_px = 8.0f;
+    }
+
+    angle_rad = angle_deg * 0.01745329252f;
+    x = (int32_t)((float)RADAR_SCOPE_CENTER_X + radius_px * sinf(angle_rad));
+    y = (int32_t)((float)RADAR_SCOPE_CENTER_Y - radius_px * cosf(angle_rad));
+
+    lv_obj_set_pos(dot, x - 5, y - 5);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void update_radar_overlay_widgets(void)
+{
+    bsp_radar_data_t radar_data = {0};
+    char profile[256];
+    char details[320];
+    const char *frame_state = "WAIT";
+    uint16_t distance_cm = 0;
+    uint16_t moving_cm = 0;
+    uint16_t stationary_cm = 0;
+    int64_t now_ms = esp_timer_get_time() / 1000;
+    int64_t age_ms = -1;
+
+    if (s_dash.overlay_tool != DEBUG_TOOL_GPIO_MONITOR) {
+        return;
+    }
+
+    if (!s_dash.radar_overlay_detail_label) {
+        return;
+    }
+
+    if (s_dash.radar_overlay_settings_label) {
+        format_radar_profile_text(profile, sizeof(profile));
+        lv_label_set_text(s_dash.radar_overlay_settings_label, profile);
+    }
+
+    if (bsp_radar_get_data(&radar_data) != ESP_OK || !radar_data.initialized) {
+        if (s_dash.radar_overlay_out_led) {
+            lv_obj_set_style_bg_color(s_dash.radar_overlay_out_led, lv_color_hex(COLOR_STATUS_OFF), 0);
+        }
+        if (s_dash.radar_overlay_out_label) {
+            lv_label_set_text_fmt(s_dash.radar_overlay_out_label, "INT GPIO%d: n/a", CONFIG_BSP_RADAR_OUT_PIN);
+        }
+        lv_label_set_text(s_dash.radar_overlay_detail_label, "Waiting radar data...");
+        radar_hide_dot(s_dash.radar_overlay_dot_moving);
+        radar_hide_dot(s_dash.radar_overlay_dot_stationary);
+        radar_hide_dot(s_dash.radar_overlay_dot_presence);
+        return;
+    }
+
+    if (radar_data.timestamp_ms > 0 && now_ms >= radar_data.timestamp_ms) {
+        age_ms = now_ms - radar_data.timestamp_ms;
+    }
+
+    if (radar_data.sample_count == 0) {
+        frame_state = "WAIT";
+    } else if (age_ms > 1500) {
+        frame_state = "STALE";
+    } else {
+        frame_state = "LIVE";
+    }
+
+    {
+        int64_t int_age_ms = 0;
+        if (radar_data.interrupt_timestamp_ms > 0 && now_ms >= radar_data.interrupt_timestamp_ms) {
+            int_age_ms = now_ms - radar_data.interrupt_timestamp_ms;
+        }
+
+        if (s_dash.radar_overlay_out_label) {
+            lv_label_set_text_fmt(
+                s_dash.radar_overlay_out_label,
+                "INT GPIO%d: %s | E:%llu | A:%lldms",
+                CONFIG_BSP_RADAR_OUT_PIN,
+                radar_data.out_pin_high ? "ACTIVE" : "IDLE",
+                (unsigned long long)radar_data.interrupt_count,
+                (long long)int_age_ms);
+        }
+    }
+
+    distance_cm = radar_data.distance_cm;
+    moving_cm = radar_data.moving_distance_cm;
+    stationary_cm = radar_data.stationary_distance_cm;
+    if (distance_cm == 0) {
+        distance_cm = (moving_cm > stationary_cm) ? moving_cm : stationary_cm;
+    }
+
+    if (s_dash.radar_overlay_out_led) {
+        lv_obj_set_style_bg_color(
+            s_dash.radar_overlay_out_led,
+            radar_data.out_pin_high ? lv_color_hex(COLOR_STATUS_OK) : lv_color_hex(COLOR_STATUS_OFF),
+            0);
+    }
+
+    snprintf(details,
+             sizeof(details),
+             "Presence: %s | Zone: %s | Frame: %s\n"
+             "Distance: %ucm (M:%ucm S:%ucm)\n"
+             "Energy: %u%% (M:%u%% S:%u%%)\n"
+             "Targets: Moving=%s | Stationary=%s\n"
+             "Status: %s (%u) | Samples: %llu | Age: %lldms",
+             radar_data.present ? "DETECTED" : "CLEAR",
+             radar_zone_to_text(distance_cm),
+             frame_state,
+             (unsigned)distance_cm,
+             (unsigned)radar_data.moving_distance_cm,
+             (unsigned)radar_data.stationary_distance_cm,
+             (unsigned)radar_data.energy_pct,
+             (unsigned)radar_data.moving_signal_pct,
+             (unsigned)radar_data.stationary_signal_pct,
+             radar_data.moving_target ? "YES" : "NO",
+             radar_data.stationary_target ? "YES" : "NO",
+             radar_status_to_text(radar_data.status),
+             (unsigned)radar_data.status,
+             (unsigned long long)radar_data.sample_count,
+             (long long)((age_ms >= 0) ? age_ms : 0));
+
+    lv_label_set_text(s_dash.radar_overlay_detail_label, details);
+
+    if (age_ms > 1500) {
+        radar_hide_dot(s_dash.radar_overlay_dot_moving);
+        radar_hide_dot(s_dash.radar_overlay_dot_stationary);
+        radar_hide_dot(s_dash.radar_overlay_dot_presence);
+        return;
+    }
+
+    if (radar_data.moving_target && moving_cm > 0) {
+        radar_plot_dot(s_dash.radar_overlay_dot_moving, moving_cm, -28.0f);
+    } else {
+        radar_hide_dot(s_dash.radar_overlay_dot_moving);
+    }
+
+    if (radar_data.stationary_target && stationary_cm > 0) {
+        radar_plot_dot(s_dash.radar_overlay_dot_stationary, stationary_cm, 28.0f);
+    } else {
+        radar_hide_dot(s_dash.radar_overlay_dot_stationary);
+    }
+
+    if (radar_data.present && !radar_data.moving_target && !radar_data.stationary_target && distance_cm > 0) {
+        radar_plot_dot(s_dash.radar_overlay_dot_presence, distance_cm, 0.0f);
+    } else {
+        radar_hide_dot(s_dash.radar_overlay_dot_presence);
+    }
 }
 
 static lv_color_t overlay_status_badge_color(periph_status_t status)
@@ -879,6 +1136,9 @@ static void show_camera_tool_overlay(const tool_info_t *tool)
         s_dash.camera_gain_label = NULL;
         s_dash.camera_exposure_slider = NULL;
         s_dash.camera_exposure_label = NULL;
+        s_dash.radar_overlay_out_led = NULL;
+        s_dash.radar_overlay_out_label = NULL;
+        s_dash.radar_overlay_detail_label = NULL;
     }
 
     s_dash.overlay = lv_obj_create(lv_scr_act());
@@ -1075,6 +1335,9 @@ static void show_debug_tool_overlay(const tool_info_t *tool)
             s_dash.sensor_tool_temp_series = NULL;
             s_dash.sensor_tool_hum_series = NULL;
             s_dash.sensor_tool_press_series = NULL;
+            s_dash.radar_overlay_out_led = NULL;
+            s_dash.radar_overlay_out_label = NULL;
+            s_dash.radar_overlay_detail_label = NULL;
         }
 
         s_dash.overlay = lv_obj_create(lv_scr_act());
@@ -1148,6 +1411,235 @@ static void show_debug_tool_overlay(const tool_info_t *tool)
         return;
     }
 
+    if (tool->tool_id == DEBUG_TOOL_GPIO_MONITOR) {
+        lv_obj_t *header;
+        lv_obj_t *back_btn;
+        lv_obj_t *back_label;
+        lv_obj_t *title;
+        lv_obj_t *content;
+        lv_obj_t *scope;
+        lv_obj_t *arc;
+        lv_obj_t *range_label;
+        lv_obj_t *center_dot;
+        lv_obj_t *panel;
+        lv_obj_t *out_row;
+        lv_obj_t *out_caption;
+        lv_obj_t *out_led;
+        lv_obj_t *out_label;
+        lv_obj_t *settings_label;
+        lv_obj_t *live_label;
+        uint16_t arc_radius;
+        uint16_t gate_max_cm;
+        uint8_t i;
+
+        if (s_dash.overlay) {
+#ifdef CONFIG_BSP_ENABLE_CAMERA
+            if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
+                bsp_camera_stop_preview();
+            }
+#endif
+            lv_obj_del(s_dash.overlay);
+            s_dash.overlay = NULL;
+            s_dash.overlay_periph = NULL;
+            s_dash.overlay_tool = DEBUG_TOOL_MAX;
+            s_dash.camera_canvas = NULL;
+            s_dash.camera_status_label = NULL;
+            s_dash.sensor_overlay_detail_label = NULL;
+            s_dash.sensor_tool_chart = NULL;
+            s_dash.sensor_tool_temp_series = NULL;
+            s_dash.sensor_tool_hum_series = NULL;
+            s_dash.sensor_tool_press_series = NULL;
+            s_dash.radar_overlay_out_led = NULL;
+            s_dash.radar_overlay_out_label = NULL;
+            s_dash.radar_overlay_detail_label = NULL;
+        }
+
+        s_dash.overlay = lv_obj_create(lv_scr_act());
+        lv_obj_set_size(s_dash.overlay, LV_PCT(100), LV_PCT(100));
+        lv_obj_set_style_bg_color(s_dash.overlay, lv_color_hex(COLOR_BG_DARK), 0);
+        lv_obj_set_style_border_width(s_dash.overlay, 0, 0);
+        lv_obj_set_style_radius(s_dash.overlay, 0, 0);
+        lv_obj_move_foreground(s_dash.overlay);
+        s_dash.overlay_tool = DEBUG_TOOL_GPIO_MONITOR;
+
+        header = lv_obj_create(s_dash.overlay);
+        lv_obj_set_size(header, LV_PCT(100), 70);
+        lv_obj_set_pos(header, 0, 0);
+        lv_obj_set_style_bg_color(header, lv_color_hex(COLOR_BG_HEADER), 0);
+        lv_obj_set_style_border_width(header, 0, 0);
+        lv_obj_set_style_radius(header, 0, 0);
+
+        back_btn = lv_button_create(header);
+        lv_obj_set_size(back_btn, 120, 44);
+        lv_obj_align(back_btn, LV_ALIGN_LEFT_MID, 12, 0);
+        lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1a3e66), 0);
+        lv_obj_set_style_border_color(back_btn, lv_color_hex(COLOR_ACCENT), 0);
+        lv_obj_set_style_border_width(back_btn, 1, 0);
+        lv_obj_add_event_cb(back_btn, overlay_back_event_cb, LV_EVENT_ALL, NULL);
+
+        back_label = lv_label_create(back_btn);
+        lv_label_set_text(back_label, LV_SYMBOL_LEFT " Back");
+        lv_obj_set_style_text_color(back_label, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+        lv_obj_center(back_label);
+
+        title = lv_label_create(header);
+        lv_label_set_text_fmt(title, "%s", tool->name);
+        lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(title, lv_color_hex(COLOR_ACCENT), 0);
+        lv_obj_align(title, LV_ALIGN_CENTER, 50, 0);
+
+        content = lv_obj_create(s_dash.overlay);
+        lv_obj_set_size(content, LV_PCT(94), 460);
+        lv_obj_set_pos(content, 30, 92);
+        lv_obj_set_style_bg_color(content, lv_color_hex(COLOR_BG_CARD), 0);
+        lv_obj_set_style_border_color(content, lv_color_hex(COLOR_ACCENT), 0);
+        lv_obj_set_style_border_width(content, 2, 0);
+        lv_obj_set_style_radius(content, 10, 0);
+        lv_obj_set_style_pad_all(content, 8, 0);
+        lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+
+        scope = lv_obj_create(content);
+        lv_obj_set_size(scope, RADAR_SCOPE_W, RADAR_SCOPE_H);
+        lv_obj_set_pos(scope, 10, 12);
+        lv_obj_set_style_bg_color(scope, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_border_color(scope, lv_color_hex(0x00aa44), 0);
+        lv_obj_set_style_border_width(scope, 2, 0);
+        lv_obj_set_style_radius(scope, 8, 0);
+        lv_obj_set_style_pad_all(scope, 0, 0);
+        lv_obj_clear_flag(scope, LV_OBJ_FLAG_SCROLLABLE);
+        s_dash.radar_overlay_scope = scope;
+
+        for (i = 0; i < RADAR_SCOPE_GATE_COUNT; i++) {
+            arc_radius = (uint16_t)(((uint32_t)(i + 1U) * RADAR_SCOPE_MAX_RADIUS_PX) / RADAR_SCOPE_GATE_COUNT);
+            gate_max_cm = (uint16_t)((i + 1U) * BSP_RADAR_PROFILE_RESOLUTION_CM);
+
+            arc = lv_arc_create(scope);
+            lv_obj_set_size(arc, arc_radius * 2U, arc_radius * 2U);
+            lv_obj_set_pos(arc,
+                           RADAR_SCOPE_CENTER_X - (int32_t)arc_radius,
+                           RADAR_SCOPE_CENTER_Y - (int32_t)arc_radius);
+            lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(arc, 0, 0);
+            lv_obj_set_style_arc_width(arc, 2, LV_PART_MAIN);
+            lv_obj_set_style_arc_color(arc, lv_color_hex(0x00aa44), LV_PART_MAIN);
+            lv_obj_set_style_arc_opa(arc, LV_OPA_80, LV_PART_MAIN);
+            lv_obj_set_style_arc_opa(arc, LV_OPA_TRANSP, LV_PART_INDICATOR);
+            lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
+            lv_arc_set_bg_angles(arc, 180, 360);
+            lv_arc_set_value(arc, 0);
+            lv_obj_remove_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+
+            /* Left endpoint (arc start @ 180deg): distance in cm. */
+            range_label = lv_label_create(scope);
+            lv_label_set_text_fmt(range_label, "%ucm", (unsigned)gate_max_cm);
+            lv_obj_set_style_text_font(range_label, &lv_font_montserrat_12, 0);
+            lv_obj_set_style_text_color(range_label, lv_color_hex(0x49e57b), 0);
+            lv_obj_set_pos(range_label,
+                           RADAR_SCOPE_CENTER_X - (int32_t)arc_radius - 36,
+                           RADAR_SCOPE_CENTER_Y - 8);
+
+            /* Right endpoint (arc end @ 360deg): gate number. */
+            {
+                lv_obj_t *gate_label = lv_label_create(scope);
+                lv_label_set_text_fmt(gate_label, "G%u", (unsigned)i);
+                lv_obj_set_style_text_font(gate_label, &lv_font_montserrat_12, 0);
+                lv_obj_set_style_text_color(gate_label, lv_color_hex(0x2fc463), 0);
+                lv_obj_set_pos(gate_label,
+                               RADAR_SCOPE_CENTER_X + (int32_t)arc_radius + 6,
+                               RADAR_SCOPE_CENTER_Y - 8);
+            }
+        }
+
+        center_dot = lv_obj_create(scope);
+        lv_obj_set_size(center_dot, 8, 8);
+        lv_obj_set_style_radius(center_dot, 4, 0);
+        lv_obj_set_style_bg_color(center_dot, lv_color_hex(0x22ff66), 0);
+        lv_obj_set_style_border_width(center_dot, 0, 0);
+        lv_obj_set_style_pad_all(center_dot, 0, 0);
+        lv_obj_set_pos(center_dot, RADAR_SCOPE_CENTER_X - 4, RADAR_SCOPE_CENTER_Y - 4);
+
+        s_dash.radar_overlay_dot_moving = lv_obj_create(scope);
+        lv_obj_set_size(s_dash.radar_overlay_dot_moving, 10, 10);
+        lv_obj_set_style_radius(s_dash.radar_overlay_dot_moving, 5, 0);
+        lv_obj_set_style_bg_color(s_dash.radar_overlay_dot_moving, lv_color_hex(0xff3b30), 0);
+        lv_obj_set_style_border_width(s_dash.radar_overlay_dot_moving, 0, 0);
+        lv_obj_add_flag(s_dash.radar_overlay_dot_moving, LV_OBJ_FLAG_HIDDEN);
+
+        s_dash.radar_overlay_dot_stationary = lv_obj_create(scope);
+        lv_obj_set_size(s_dash.radar_overlay_dot_stationary, 10, 10);
+        lv_obj_set_style_radius(s_dash.radar_overlay_dot_stationary, 5, 0);
+        lv_obj_set_style_bg_color(s_dash.radar_overlay_dot_stationary, lv_color_hex(0xff3b30), 0);
+        lv_obj_set_style_border_width(s_dash.radar_overlay_dot_stationary, 0, 0);
+        lv_obj_add_flag(s_dash.radar_overlay_dot_stationary, LV_OBJ_FLAG_HIDDEN);
+
+        s_dash.radar_overlay_dot_presence = lv_obj_create(scope);
+        lv_obj_set_size(s_dash.radar_overlay_dot_presence, 10, 10);
+        lv_obj_set_style_radius(s_dash.radar_overlay_dot_presence, 5, 0);
+        lv_obj_set_style_bg_color(s_dash.radar_overlay_dot_presence, lv_color_hex(0xff3b30), 0);
+        lv_obj_set_style_border_width(s_dash.radar_overlay_dot_presence, 0, 0);
+        lv_obj_add_flag(s_dash.radar_overlay_dot_presence, LV_OBJ_FLAG_HIDDEN);
+
+        panel = lv_obj_create(content);
+        lv_obj_set_size(panel, 458, 436);
+        lv_obj_set_pos(panel, 494, 12);
+        lv_obj_set_style_bg_color(panel, lv_color_hex(0x08131f), 0);
+        lv_obj_set_style_border_color(panel, lv_color_hex(0x175f8f), 0);
+        lv_obj_set_style_border_width(panel, 1, 0);
+        lv_obj_set_style_radius(panel, 8, 0);
+        lv_obj_set_style_pad_all(panel, 10, 0);
+        lv_obj_set_style_pad_row(panel, 10, 0);
+        lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+
+        out_row = lv_obj_create(panel);
+        lv_obj_set_size(out_row, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_opa(out_row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(out_row, 0, 0);
+        lv_obj_set_style_pad_all(out_row, 0, 0);
+        lv_obj_set_style_pad_column(out_row, 10, 0);
+        lv_obj_set_flex_flow(out_row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(out_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+        out_caption = lv_label_create(out_row);
+        lv_label_set_text(out_caption, "Interrupt");
+        lv_obj_set_style_text_font(out_caption, &lv_font_montserrat_18, 0);
+        lv_obj_set_style_text_color(out_caption, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+
+        out_led = lv_obj_create(out_row);
+        lv_obj_set_size(out_led, 16, 16);
+        lv_obj_set_style_radius(out_led, 8, 0);
+        lv_obj_set_style_bg_color(out_led, lv_color_hex(COLOR_STATUS_OFF), 0);
+        lv_obj_set_style_border_width(out_led, 0, 0);
+        lv_obj_set_style_pad_all(out_led, 0, 0);
+        s_dash.radar_overlay_out_led = out_led;
+
+        out_label = lv_label_create(out_row);
+        lv_label_set_text_fmt(out_label, "INT GPIO%d: n/a", CONFIG_BSP_RADAR_OUT_PIN);
+        lv_obj_set_style_text_font(out_label, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(out_label, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+        s_dash.radar_overlay_out_label = out_label;
+
+        settings_label = lv_label_create(panel);
+        lv_label_set_text(settings_label, "Loading profile...");
+        lv_obj_set_style_text_font(settings_label, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(settings_label, lv_color_hex(COLOR_TEXT_SECONDARY), 0);
+        lv_label_set_long_mode(settings_label, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(settings_label, LV_PCT(100));
+        s_dash.radar_overlay_settings_label = settings_label;
+
+        live_label = lv_label_create(panel);
+        lv_label_set_text(live_label, "Waiting radar data...");
+        lv_obj_set_style_text_font(live_label, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(live_label, lv_color_hex(COLOR_TEXT_PRIMARY), 0);
+        lv_label_set_long_mode(live_label, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(live_label, LV_PCT(100));
+        s_dash.radar_overlay_detail_label = live_label;
+
+        update_radar_overlay_widgets();
+        return;
+    }
+
     if (s_dash.overlay) {
 #ifdef CONFIG_BSP_ENABLE_CAMERA
         if (s_dash.overlay_tool == DEBUG_TOOL_CAMERA_TEST) {
@@ -1165,6 +1657,9 @@ static void show_debug_tool_overlay(const tool_info_t *tool)
         s_dash.sensor_tool_temp_series = NULL;
         s_dash.sensor_tool_hum_series = NULL;
         s_dash.sensor_tool_press_series = NULL;
+        s_dash.radar_overlay_out_led = NULL;
+        s_dash.radar_overlay_out_label = NULL;
+        s_dash.radar_overlay_detail_label = NULL;
     }
 
     s_dash.overlay = lv_obj_create(lv_scr_act());
@@ -1286,6 +1781,9 @@ static void overlay_back_event_cb(lv_event_t *e)
         s_dash.sensor_tool_temp_series = NULL;
         s_dash.sensor_tool_hum_series = NULL;
         s_dash.sensor_tool_press_series = NULL;
+        s_dash.radar_overlay_out_led = NULL;
+        s_dash.radar_overlay_out_label = NULL;
+        s_dash.radar_overlay_detail_label = NULL;
     }
 }
 
@@ -1320,6 +1818,9 @@ static void show_peripheral_overlay(peripheral_info_t *periph)
         s_dash.sensor_tool_temp_series = NULL;
         s_dash.sensor_tool_hum_series = NULL;
         s_dash.sensor_tool_press_series = NULL;
+        s_dash.radar_overlay_out_led = NULL;
+        s_dash.radar_overlay_out_label = NULL;
+        s_dash.radar_overlay_detail_label = NULL;
     }
 
     s_dash.overlay = lv_obj_create(lv_scr_act());
@@ -1400,6 +1901,42 @@ static void show_peripheral_overlay(peripheral_info_t *periph)
     lv_label_set_text_fmt(pins_label, "GPIO Pins:\n%s", pins_buf);
     lv_obj_set_style_text_font(pins_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(pins_label, lv_color_hex(COLOR_TEXT_SECONDARY), 0);
+
+    if (strcmp(periph->name, "Radar") == 0) {
+        lv_obj_t *radar_cfg_label;
+        char radar_cfg[320];
+        bsp_radar_data_t radar_data = {0};
+
+        snprintf(radar_cfg,
+                 sizeof(radar_cfg),
+                 "Sensor Settings:\n"
+                 "- Resolution: %ucm/gate\n"
+                 "- Moving gates: G%u..G%u (0-%ucm)\n"
+                 "- Visual radar gates: 9 (G0..G8)\n"
+                 "- Interrupt: OUT GPIO%d (HIGH=presence)\n"
+                 "- Wakeup/ext0: %s\n"
+                 "- Sampler: %ums\n"
+                 "- OUT state now: %s",
+                 (unsigned)BSP_RADAR_PROFILE_RESOLUTION_CM,
+                 (unsigned)BSP_RADAR_PROFILE_MOVING_GATE_MIN,
+                 (unsigned)BSP_RADAR_PROFILE_MOVING_GATE_MAX,
+                 (unsigned)((BSP_RADAR_PROFILE_MOVING_GATE_MAX + 1U) * BSP_RADAR_PROFILE_RESOLUTION_CM),
+                 CONFIG_BSP_RADAR_OUT_PIN,
+#if CONFIG_BSP_RADAR_SLEEP_WAKEUP
+                 "enabled",
+#else
+                 "disabled",
+#endif
+                 (unsigned)BSP_RADAR_PROFILE_SAMPLE_PERIOD_MS,
+                 (bsp_radar_get_data(&radar_data) == ESP_OK && radar_data.initialized)
+                     ? (radar_data.out_pin_high ? "HIGH" : "LOW")
+                     : "n/a");
+
+        radar_cfg_label = lv_label_create(content);
+        lv_label_set_text(radar_cfg_label, radar_cfg);
+        lv_obj_set_style_text_font(radar_cfg_label, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(radar_cfg_label, lv_color_hex(COLOR_TEXT_SECONDARY), 0);
+    }
 
     s_dash.overlay_periph = periph;
 
@@ -1881,6 +2418,9 @@ esp_err_t lvgl_dashboard_deinit(void)
         s_dash.sensor_tool_temp_series = NULL;
         s_dash.sensor_tool_hum_series = NULL;
         s_dash.sensor_tool_press_series = NULL;
+        s_dash.radar_overlay_out_led = NULL;
+        s_dash.radar_overlay_out_label = NULL;
+        s_dash.radar_overlay_detail_label = NULL;
     }
 
     if (s_dash.tileview) {

@@ -47,6 +47,13 @@ esp_lcd_panel_io_handle_t bsp_jd9165_get_io(void);
  */
 esp_err_t bsp_display_set_brightness(uint8_t brightness_percent);
 
+/**
+ * @brief Get display backlight brightness
+ *
+ * @return Brightness level 0-100%
+ */
+uint8_t bsp_display_get_brightness(void);
+
 #ifdef __cplusplus
 }
 #endif
